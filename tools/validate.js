@@ -140,6 +140,21 @@ for (const [id, mon] of Object.entries(MONSTERS)) {
     else pool += QUIZZES[t].length;
   }
   if (pool < mon.hp) err(`몬스터 ${id}: 퀴즈 수(${pool}) < HP(${mon.hp})`);
+
+  // 통일성: 모든 몬스터는 '마음의 선택'을 가진다
+  if (!mon.mercy) { err(`몬스터 ${id}: mercy(마음의 선택) 없음`); continue; }
+  if (!mon.mercy.prompt) err(`몬스터 ${id}: mercy.prompt 없음`);
+  if (!mon.mercy.options || mon.mercy.options.length !== 3) {
+    err(`몬스터 ${id}: mercy 선택지는 3개여야 함`);
+  } else {
+    let mercyCount = 0;
+    for (const o of mon.mercy.options) {
+      if (!o.label || !o.reply) err(`몬스터 ${id}: mercy 선택지에 label/reply 없음`);
+      if (!['mercy', 'neutral', 'harsh'].includes(o.kind)) err(`몬스터 ${id}: mercy kind '${o.kind}' 잘못됨`);
+      if (o.kind === 'mercy') mercyCount++;
+    }
+    if (mercyCount !== 1) err(`몬스터 ${id}: 'mercy' 선택지는 정확히 1개여야 함 (현재 ${mercyCount})`);
+  }
 }
 
 // 맵 출력 (눈으로 확인용)

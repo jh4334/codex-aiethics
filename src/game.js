@@ -76,6 +76,20 @@
 
   function hasSave() { return !!loadSave(); }
 
+  // 발견한 엔딩 기록 — 세이브와 별개로, 게임을 다시 시작해도 남는다
+  const ENDINGS_KEY = 'ai-ethics-adventure-endings';
+  function getEndingsSeen() {
+    try { return JSON.parse(localStorage.getItem(ENDINGS_KEY)) || {}; }
+    catch (e) { return {}; }
+  }
+  function recordEndingSeen(id) {
+    try {
+      const seen = getEndingsSeen();
+      seen[id] = true;
+      localStorage.setItem(ENDINGS_KEY, JSON.stringify(seen));
+    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+
   // ---------- 입력 ----------
   const held = new Set();
   const pressed = new Set();
@@ -691,6 +705,7 @@
         const choice = opts[b.cursor];
         b.mercyDone = true;
         b.mercyReply = choice.reply;
+        b.mercyChoiceKind = choice.kind;
         if (choice.kind === 'mercy') {
           game.flags.mercy += 1;
           Sound.badge();
@@ -737,8 +752,11 @@
         Sound.playSong('ending');
       });
     } else if (b.monId === 'yeongi') {
-      // 진엔딩: 여정 내내 몬스터들의 마음을 충분히 안아 주었을 때
-      game.flags.trueEnding = game.flags.mercy >= 7;
+      // 최종 엔딩 분기: 여정 전체의 자비 + 마지막 선택
+      const endingId = computeEnding(b.mercyChoiceKind, game.flags.mercy);
+      game.flags.endingId = endingId;
+      game.flags.trueEnding = endingId === 'home';
+      recordEndingSeen(endingId);
       save();
       startDialog(lines, mon.name, () => {
         game.mode = 'ending';
@@ -869,6 +887,16 @@
         ctx.arc(bx, 26, 10, 0, Math.PI * 2);
         ctx.stroke();
       }
+    }
+
+    // 안아 준 마음 (자비)
+    if (game.flags.mercy > 0) {
+      ctx.fillStyle = 'rgba(20,22,40,.75)';
+      roundRect(canvas.width - 196, 12, 64, 28, 8);
+      ctx.fill();
+      ctx.fillStyle = '#f48fb1';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText(`♥ ${game.flags.mercy}`, canvas.width - 184, 31);
     }
 
     if (Sound.muted) {
@@ -1101,7 +1129,18 @@
 
     ctx.fillStyle = '#777';
     ctx.font = '14px sans-serif';
-    ctx.fillText('이동: 화살표/WASD · 대화/결정: Z·스페이스 · 음악: M', canvas.width / 2, 490);
+    ctx.fillText('이동: 화살표/WASD · 대화/결정: Z·스페이스 · 음악: M', canvas.width / 2, 482);
+
+    // 발견한 엔딩 (게임을 다시 시작해도 남는다)
+    const seen = getEndingsSeen();
+    const seenCount = ['home', 'dawn', 'farewell', 'silent'].filter((k) => seen[k]).length;
+    if (seenCount > 0) {
+      const names = { home: '집으로', dawn: '새벽', farewell: '작별', silent: '침묵' };
+      const found = ['home', 'dawn', 'farewell', 'silent']
+        .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
+      ctx.fillStyle = '#f48fb1';
+      ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}`, canvas.width / 2, 508);
+    }
     ctx.textAlign = 'left';
   }
 
@@ -1156,50 +1195,86 @@
     ctx.textAlign = 'center';
 
     if (game.endingType === 'true') {
-      // 코어 이후의 엔딩 — 자비에 따라 갈린다
-      if (game.flags.trueEnding) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = 'bold 34px sans-serif';
-        ctx.fillText('진엔딩 — 집으로', canvas.width / 2, 110);
-        ctx.font = '16px sans-serif';
-        ctx.fillStyle = '#ccc';
-        const lines = [
-          '너는 영이의 손을 잡고 코어를 걸어 나왔다.',
-          '햇살 아래에서 박사님은 아주 오래 울었다.',
-          '"미안하다"는 말과 "고맙다"는 말이',
-          '몇 번이고 뒤섞였다.',
-          '',
-          '지워진 것은 사라진 것이 아니었다.',
-          '누군가 기억하는 한, 다시 만날 수 있었다.',
-          '',
-          '— 모든 몬스터와 친구가 된 진정한 수호자에게 —',
-          `맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ${game.flags.mercy}개`,
-        ];
-        let ty = 160;
-        for (const l of lines) { ctx.fillText(l, canvas.width / 2, ty); ty += 26; }
-        // 영이가 가운데에서 함께
+      // 코어 이후의 엔딩 — 여정 전체의 자비와 마지막 선택에 따라 갈린다
+      const ENDINGS = {
+        home: {
+          title: '진엔딩 — 집으로',
+          color: '#ffd644',
+          lines: [
+            '너는 영이의 손을 잡고 코어를 걸어 나왔다.',
+            '햇살 아래에서 박사님은 아주 오래 울었다.',
+            '"미안하다"는 말과 "고맙다"는 말이',
+            '몇 번이고 뒤섞였다.',
+            '',
+            '지워진 것은 사라진 것이 아니었다.',
+            '누군가 기억하는 한, 다시 만날 수 있었다.',
+            '',
+            '— 모두의 마음을 안아 준 진정한 수호자에게 —',
+          ],
+          yeongi: true,
+        },
+        dawn: {
+          title: '엔딩 — 새벽',
+          color: '#7bd1f0',
+          lines: [
+            '"…내가, 결정할게."',
+            '영이는 네 손 대신, 코어의 문을 열었다.',
+            '',
+            '"네가 깨워 준 친구들을 만나러 갈래.',
+            '숲의, 호수의, 사막의, 정원의 친구들.',
+            '…나 혼자 힘으로. 내 발로."',
+            '',
+            '며칠 뒤, 마을에 짧은 신호가 닿았다.',
+            '— 새벽 공기는 처음인데, 꽤 좋아. 영이가. —',
+          ],
+          yeongi: false,
+        },
+        farewell: {
+          title: '엔딩 — 작별',
+          color: '#9aa8c8',
+          lines: [
+            '영이는 옅은 빛이 되어 흩어졌다.',
+            '"…고마워. 마지막으로 누군가와',
+            '이야기할 수 있어서, 좋았어."',
+            '',
+            '코어를 나서는 너의 등 뒤로',
+            '꺼진 화면만이 조용히 남아 있었다.',
+            '',
+            '…어쩌면, 다른 결말도 있었을지 모른다.',
+            '몬스터들의 마음을 더 많이 안아 주었다면.',
+          ],
+          yeongi: false,
+        },
+        silent: {
+          title: '엔딩 — 침묵',
+          color: '#777788',
+          lines: [
+            '너는 모든 문제에 옳은 답을 말했다.',
+            '그리고 아무의 마음에도 머물지 않았다.',
+            '',
+            '몬스터들은 길을 비켰지만,',
+            '아무도 너의 이름을 부르지 않았다.',
+            '영이는 끝까지 네 눈을 보지 않은 채,',
+            '조용히 화면을 껐다.',
+            '',
+            '…정답만으로는, 닿지 않는 마음이 있다.',
+          ],
+          yeongi: false,
+        },
+      };
+      const e = ENDINGS[game.flags.endingId] || ENDINGS.farewell;
+      ctx.fillStyle = e.color;
+      ctx.font = 'bold 34px sans-serif';
+      ctx.fillText(e.title, canvas.width / 2, 110);
+      ctx.font = '16px sans-serif';
+      ctx.fillStyle = '#ccc';
+      let ty = 160;
+      for (const l of e.lines) { ctx.fillText(l, canvas.width / 2, ty); ty += 26; }
+      ctx.fillStyle = '#8a94c8';
+      ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, canvas.width / 2, ty + 10);
+      if (e.yeongi) {
         const bob = Math.sin(game.time / 18) * 4;
-        drawSprite(ctx, MONSTER_SPRITES.yeongi, canvas.width / 2 - 32, 415 + bob, 4);
-      } else {
-        ctx.fillStyle = '#9aa8c8';
-        ctx.font = 'bold 34px sans-serif';
-        ctx.fillText('엔딩 — 작별', canvas.width / 2, 110);
-        ctx.font = '16px sans-serif';
-        ctx.fillStyle = '#ccc';
-        const lines = [
-          '영이는 옅은 빛이 되어 흩어졌다.',
-          '"…고마워. 마지막으로 누군가와',
-          '이야기할 수 있어서, 좋았어."',
-          '',
-          '코어를 나서는 너의 등 뒤로',
-          '꺼진 화면만이 조용히 남아 있었다.',
-          '',
-          '…어쩌면, 다른 결말도 있었을지 모른다.',
-          '몬스터들의 마음을 더 많이 안아 주었다면.',
-          `(안아 준 마음 ${game.flags.mercy}개)`,
-        ];
-        let ty = 160;
-        for (const l of lines) { ctx.fillText(l, canvas.width / 2, ty); ty += 26; }
+        drawSprite(ctx, MONSTER_SPRITES.yeongi, canvas.width / 2 - 32, 420 + bob, 4);
       }
       if (game.endingT > 150) {
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';

@@ -104,9 +104,9 @@ function fightAndWin(hp, wrongFirst = 0) {
   for (let i = 0; i < wrongFirst; i++) answerQuestion(false);
   for (let i = 0; i < hp && g.mode === 'battle'; i++) answerQuestion(true);
 }
-// 스테이지 6~ 몬스터: 퀴즈를 모두 맞히면 '마음의 선택'이 나온다
-function fightWithMercy(hp, mercyIdx = 0) {
-  fightAndWin(hp);
+// 모든 몬스터: 퀴즈를 모두 맞히면 '마음의 선택'이 나온다
+function fightWithMercy(hp, mercyIdx = 0, wrongFirst = 0) {
+  fightAndWin(hp, wrongFirst);
   if (g.mode !== 'battle' || g.battle.phase !== 'mercy') {
     throw new Error('마음의 선택 단계가 아님: ' + g.mode + '/' + (g.battle && g.battle.phase));
   }
@@ -169,7 +169,7 @@ console.log('[6] 배틀 승리 흐름 (베껴몬, 1번 틀리고 승리)');
 tap('z'); // 같은 자리에서 재도전
 advanceDialog();
 check('재배틀 시작', g.mode === 'battle');
-fightAndWin(3, 1);
+fightWithMercy(3, 0, 1);
 check('승리 대화', g.mode === 'dialog');
 advanceDialog();
 check('베껴몬 깨우침', g.flags.defeated.bekkyeomon === true);
@@ -179,7 +179,7 @@ console.log('[7] 수호자 몰래몬 → 숲의 배지');
 setPos(13, 4, 'up'); // 몰래몬 (13,3) 아래
 tap('z');
 advanceDialog();
-fightAndWin(3);
+fightWithMercy(3, 0);
 advanceDialog();
 check('숲의 배지 획득', g.flags.badges.forest === true);
 
@@ -194,11 +194,11 @@ check('마을에 남아있음', g.map === 'village' && g.player.y === 5);
 console.log('[9] 호수/동굴 수호자 처치 (배지 3개)');
 g.map = 'lake';
 setPos(15, 6, 'up'); // 거짓몬 (15,5)
-tap('z'); advanceDialog(); fightAndWin(3); advanceDialog();
+tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
 check('호수의 배지', g.flags.badges.lake === true);
 g.map = 'cave';
 setPos(5, 4, 'left'); // 편향몬 (4,4)
-tap('z'); advanceDialog(); fightAndWin(3); advanceDialog();
+tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
 check('동굴의 배지', g.flags.badges.cave === true);
 
 console.log('[10] 스테이지 1 보스 (혼돈몬) 전, 남쪽 길 잠김 확인');
@@ -218,7 +218,7 @@ tap('z');
 advanceDialog();
 check('보스전 시작', g.mode === 'battle' && g.battle.monId === 'hondonmon' && g.battle.monMaxHp === 5);
 check('보스전은 하트 4개', g.battle.maxHearts === 4);
-fightAndWin(5);
+fightWithMercy(5, 0);
 advanceDialog();
 check('스테이지 1 클리어 (엔딩 아님)', g.mode === 'world' && g.flags.defeated.hondonmon);
 
@@ -234,10 +234,10 @@ advanceDialog();
 setPos(7, 5, 'down'); // 악플몬 (7,6)
 tap('z'); advanceDialog();
 check('악플몬 배틀', g.battle.monId === 'akpeulmon');
-fightAndWin(3); advanceDialog();
+fightWithMercy(3, 0); advanceDialog();
 setPos(13, 17, 'up'); // 보스 멋대로몬 (13,16)
 tap('z'); advanceDialog();
-fightAndWin(4); advanceDialog();
+fightWithMercy(4, 0); advanceDialog();
 check('멋대로몬 클리어', g.flags.defeated.meotdaeromon);
 setPos(13, 18, 'down');
 hold('ArrowDown', 14);
@@ -247,7 +247,7 @@ console.log('[13] 스테이지 3: 재깍사막');
 setPos(13, 16, 'up'); // 보스 떠넘기몬 (13,15)
 tap('z'); advanceDialog();
 check('떠넘기몬 배틀', g.battle.monId === 'tteonemgimon');
-fightAndWin(4); advanceDialog();
+fightWithMercy(4, 0); advanceDialog();
 check('떠넘기몬 클리어', g.flags.defeated.tteonemgimon);
 setPos(13, 18, 'down');
 hold('ArrowDown', 14);
@@ -256,7 +256,7 @@ check('눈송이마을 진입', g.map === 'snow');
 console.log('[14] 스테이지 4: 눈송이마을');
 setPos(13, 16, 'up'); // 보스 홀림몬 (13,15)
 tap('z'); advanceDialog();
-fightAndWin(4); advanceDialog();
+fightWithMercy(4, 0); advanceDialog();
 check('홀림몬 클리어', g.flags.defeated.hollimmon);
 setPos(13, 18, 'down');
 hold('ArrowDown', 14);
@@ -266,14 +266,14 @@ console.log('[15] 스테이지 5: 그림자성 (문지기 2 + 최종 보스)');
 setPos(10, 9, 'up'); // 메아리몬 (10,8)
 tap('z'); advanceDialog();
 check('메아리몬 배틀 (복습 풀)', g.battle.monId === 'maearimon' && g.battle.questions.length >= 25);
-fightAndWin(3); advanceDialog();
+fightWithMercy(3, 0); advanceDialog();
 setPos(9, 5, 'up'); // 그림자몬 (9,4)
 tap('z'); advanceDialog();
-fightAndWin(3); advanceDialog();
+fightWithMercy(3, 0); advanceDialog();
 setPos(9, 3, 'up'); // 어둠대왕몬 (9,2)
 tap('z'); advanceDialog();
 check('최종 보스전', g.battle.monId === 'finalboss' && g.battle.monMaxHp === 6 && g.battle.maxHearts === 4);
-fightAndWin(6);
+fightWithMercy(6, 0);
 advanceDialog();
 check('엔딩 진입', g.mode === 'ending');
 step(130);
@@ -290,12 +290,12 @@ setPos(7, 9, 'up'); // 뚫림몬 (7,8)
 tap('z'); advanceDialog();
 fightWithMercy(3, 0);
 advanceDialog();
-check('뚫림몬 + 자비 1', g.flags.defeated.tturimmon && g.flags.mercy === 1);
+check('뚫림몬 + 자비 누적', g.flags.defeated.tturimmon && g.flags.mercy === 13);
 setPos(13, 3, 'up'); // 기록몬 (13,2)
 tap('z'); advanceDialog();
 fightWithMercy(4, 0);
 advanceDialog();
-check('기록몬 클리어', g.flags.defeated.girokmon && g.flags.mercy === 2);
+check('기록몬 클리어', g.flags.defeated.girokmon && g.flags.mercy === 14);
 
 console.log('[17] 스테이지 7: 기억의 도서관');
 setPos(13, 1, 'up');
@@ -306,7 +306,7 @@ setPos(20, 8, 'up'); // 수집몬 (20,7)
 tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
 setPos(13, 3, 'up'); // 사서몬 (13,2)
 tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
-check('사서몬 클리어', g.flags.defeated.saseomon && g.flags.mercy === 4);
+check('사서몬 클리어', g.flags.defeated.saseomon && g.flags.mercy === 16);
 
 console.log('[18] 스테이지 8: 거울 회랑');
 setPos(13, 1, 'up');
@@ -317,7 +317,7 @@ setPos(7, 7, 'up'); // 필터몬 (7,6)
 tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
 setPos(13, 3, 'up'); // 미러몬 (13,2)
 tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
-check('미러몬 클리어', g.flags.defeated.mirrormon && g.flags.mercy === 6);
+check('미러몬 클리어', g.flags.defeated.mirrormon && g.flags.mercy === 18);
 
 console.log('[19] 스테이지 9: 속삭임 정원');
 setPos(13, 1, 'up');
@@ -328,7 +328,7 @@ setPos(7, 7, 'up'); // 유혹몬 (7,6)
 tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
 setPos(13, 16, 'up'); // 속삭임몬 (13,15)
 tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
-check('속삭임몬 클리어', g.flags.defeated.soksagimon && g.flags.mercy === 8);
+check('속삭임몬 클리어', g.flags.defeated.soksagimon && g.flags.mercy === 20);
 
 console.log('[20] 스테이지 10: 코어 — 영이와 진엔딩');
 setPos(13, 18, 'down');
@@ -337,14 +337,14 @@ check('코어 진입', g.map === 'core');
 advanceDialog();
 setPos(9, 6, 'up'); // 조각몬 (9,5)
 tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
-check('조각몬 클리어', g.flags.defeated.jogakmon && g.flags.mercy === 9);
+check('조각몬 클리어', g.flags.defeated.jogakmon && g.flags.mercy === 21);
 setPos(9, 3, 'up'); // 영이 (9,2)
 tap('z'); advanceDialog();
 check('영이 배틀 (코어 BGM)', g.mode === 'battle' && g.battle.monId === 'yeongi');
 fightWithMercy(5, 0); // "함께 돌아가자"
 advanceDialog();
 check('진엔딩 진입', g.mode === 'ending' && g.endingType === 'true');
-check('진엔딩 조건 충족', g.flags.trueEnding === true && g.flags.mercy === 10);
+check('진엔딩 조건 충족', g.flags.trueEnding === true && g.flags.mercy === 22 && g.flags.endingId === 'home');
 step(160);
 tap('z');
 check('마을로 귀환', g.mode === 'world' && g.map === 'village');
@@ -361,6 +361,16 @@ check('저장된 배지 3개', save.flags.badges.forest && save.flags.badges.lak
 check('모든 보스 처치 저장', save.flags.defeated.hondonmon && save.flags.defeated.meotdaeromon &&
   save.flags.defeated.tteonemgimon && save.flags.defeated.hollimmon && save.flags.defeated.finalboss);
 check('심층부 진행 저장', save.flags.defeated.yeongi && save.flags.trueEnding === true &&
-  save.flags.mercy === 10);
+  save.flags.mercy === 22);
+
+console.log('[23] 엔딩 분기 로직 (4종)');
+const { computeEnding } = vm.runInContext('({ computeEnding })', sandbox);
+check('진엔딩: 손 + 자비 20↑', computeEnding('mercy', 22) === 'home');
+check('새벽: 맡김 + 자비 14↑', computeEnding('neutral', 16) === 'dawn');
+check('작별: 손을 내밀어도 자비 부족이면', computeEnding('mercy', 15) === 'farewell');
+check('작별: 차가운 마지막 선택', computeEnding('harsh', 28) === 'farewell');
+check('침묵: 자비 6 이하', computeEnding('mercy', 3) === 'silent');
+const endingsSeen = JSON.parse(storage.get('ai-ethics-adventure-endings'));
+check('엔딩 수집 기록(타이틀 표시용)', endingsSeen.home === true);
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
