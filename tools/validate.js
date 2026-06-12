@@ -30,7 +30,7 @@ for (const [id, m] of Object.entries(MAPS)) {
   m.tiles.forEach((row, y) => {
     if (row.length !== w) err(`${id} y=${y}: 길이 ${row.length} != ${w}`);
     for (const ch of row) {
-      if (!'GPFSBCM1TWOHDRK*NY'.includes(ch)) err(`${id} y=${y}: 알 수 없는 타일 '${ch}'`);
+      if (!'GPFSBCM1TWOHDRK*NYZJX'.includes(ch)) err(`${id} y=${y}: 알 수 없는 타일 '${ch}'`);
     }
   });
 }
@@ -67,10 +67,10 @@ for (const [id, m] of Object.entries(MAPS)) {
 
 // 4. 도달 가능성 (BFS, 배지 게이트 무시)
 {
+  // 몬스터는 쓰러뜨리면 사라지므로 도달 가능성 검사에서는 통과 가능으로 취급
   const solidEntity = (mapId, x, y) => {
     const m = MAPS[mapId];
-    return m.npcs.some((n) => n.x === x && n.y === y) ||
-           m.monsters.some((mo) => mo.x === x && mo.y === y);
+    return m.npcs.some((n) => n.x === x && n.y === y);
   };
   const key = (mapId, x, y) => `${mapId}:${x},${y}`;
   const visited = new Set();
@@ -133,8 +133,13 @@ for (const [topic, list] of Object.entries(QUIZZES)) {
   });
 }
 for (const [id, mon] of Object.entries(MONSTERS)) {
-  if (!QUIZZES[mon.topic]) err(`몬스터 ${id}: 퀴즈 주제 '${mon.topic}' 없음`);
-  else if (QUIZZES[mon.topic].length < mon.hp) err(`몬스터 ${id}: 퀴즈 수(${QUIZZES[mon.topic].length}) < HP(${mon.hp})`);
+  const topics = Array.isArray(mon.topic) ? mon.topic : [mon.topic];
+  let pool = 0;
+  for (const t of topics) {
+    if (!QUIZZES[t]) err(`몬스터 ${id}: 퀴즈 주제 '${t}' 없음`);
+    else pool += QUIZZES[t].length;
+  }
+  if (pool < mon.hp) err(`몬스터 ${id}: 퀴즈 수(${pool}) < HP(${mon.hp})`);
 }
 
 // 맵 출력 (눈으로 확인용)

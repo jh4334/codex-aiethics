@@ -39,6 +39,10 @@
       defeated: {
         bekkyeomon: false, mollaemon: false, jungdokmon: false,
         geojitmon: false, pyeonhyangmon: false, hondonmon: false,
+        akpeulmon: false, gatimmon: false, meotdaeromon: false,
+        pungpungmon: false, kkamkkammon: false, tteonemgimon: false,
+        sideulmon: false, ppaeatmon: false, hollimmon: false,
+        maearimon: false, geurimjamon: false, finalboss: false,
       },
       correctCount: 0,
       battleCount: 0,
@@ -298,6 +302,35 @@
         for (let x = 0; x < 16; x += 8) px(x, 0, 1, 16, '#3a3458');
         break;
       }
+      case 'Z': { // 눈밭
+        px(0, 0, 16, 16, '#eef2fa');
+        for (let i = 0; i < 6; i++) {
+          px(Math.floor(rnd(i + 31) * 15), Math.floor(rnd(i + 131) * 15), 1, 1, '#d8e0f0');
+        }
+        if (frame) px(Math.floor(rnd(99) * 14), Math.floor(rnd(98) * 14), 2, 2, '#ffffff');
+        break;
+      }
+      case 'J': { // 눈 덮인 나무
+        px(0, 0, 16, 16, '#eef2fa');
+        px(2, 1, 12, 9, '#2e7d32');
+        px(1, 3, 14, 6, '#2e7d32');
+        px(2, 1, 12, 2, '#ffffff');
+        px(1, 3, 4, 1, '#ffffff');
+        px(10, 4, 5, 1, '#ffffff');
+        px(6, 10, 4, 5, '#6d4c2f');
+        px(6, 15, 4, 1, '#54381f');
+        break;
+      }
+      case 'X': { // 선인장
+        px(0, 0, 16, 16, '#e8d8a8');
+        px(6, 3, 4, 11, '#3a8f3a');
+        px(2, 5, 3, 2, '#3a8f3a');
+        px(3, 5, 2, 4, '#3a8f3a');
+        px(11, 6, 3, 2, '#3a8f3a');
+        px(11, 4, 2, 4, '#3a8f3a');
+        px(7, 4, 1, 9, '#5cb85c');
+        break;
+      }
       default:
         px(0, 0, 16, 16, '#f0f');
     }
@@ -384,16 +417,29 @@
     }
   }
 
+  function pushBack() {
+    // 들어온 방향의 반대로 한 칸 밀려남
+    const p = game.player;
+    p.x += p.dir === 'left' ? 1 : p.dir === 'right' ? -1 : 0;
+    p.y += p.dir === 'up' ? 1 : p.dir === 'down' ? -1 : 0;
+    p.px = p.x * TS;
+    p.py = p.y * TS;
+  }
+
   function checkWarp() {
     const p = game.player;
     const w = warpAt(game.map, p.x, p.y);
     if (!w) return;
     if (w.needBadges && countBadges(game.flags) < w.needBadges) {
-      // 문 앞에서 밀려남
-      p.y += 1;
-      p.py = p.y * TS;
+      pushBack();
       Sound.bump();
       startDialog([`탑의 문이 굳게 닫혀 있다.\n배지 ${w.needBadges}개가 필요하다.\n(지금 ${countBadges(game.flags)}개)`]);
+      return;
+    }
+    if (w.needBoss && !game.flags.defeated[w.needBoss]) {
+      pushBack();
+      Sound.bump();
+      startDialog([w.lockText || '길이 막혀 있다.']);
       return;
     }
     game.map = w.to;
@@ -449,17 +495,24 @@
     startDialog([mon.intro], mon.name, () => startBattle(monId));
   }
 
+  function questionPool(mon) {
+    const topics = Array.isArray(mon.topic) ? mon.topic : [mon.topic];
+    return topics.flatMap((t) => QUIZZES[t]);
+  }
+
   function startBattle(monId) {
     const mon = MONSTERS[monId];
     game.mode = 'battle';
     Sound.playSong('battle');
+    const maxHearts = mon.hp >= 5 ? 4 : 3;
     game.battle = {
       monId,
       mon,
       monHp: mon.hp,
       monMaxHp: mon.hp,
-      playerHp: 3,
-      questions: shuffled(QUIZZES[mon.topic]),
+      playerHp: maxHearts,
+      maxHearts,
+      questions: shuffled(questionPool(mon)),
       qIdx: 0,
       phase: 'question', // question | feedback | win | lose
       cursor: 0,
@@ -473,7 +526,7 @@
   function currentQuestion() {
     const b = game.battle;
     if (b.qIdx >= b.questions.length) {
-      b.questions = shuffled(QUIZZES[b.mon.topic]);
+      b.questions = shuffled(questionPool(b.mon));
       b.qIdx = 0;
     }
     return b.questions[b.qIdx];
@@ -540,7 +593,8 @@
         lines.push('배지를 모두 모았다!\n마을의 AI 타워 문이 열렸다…!');
       }
     }
-    if (b.monId === 'hondonmon') {
+    if (mon.clear) lines.push(mon.clear);
+    if (b.monId === 'finalboss') {
       startDialog(lines, mon.name, () => {
         game.mode = 'ending';
         game.endingT = 0;
@@ -625,16 +679,17 @@
   }
 
   function drawHud() {
-    // 지역 이름 + 목표
+    // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
     ctx.font = 'bold 14px sans-serif';
+    const title = `STAGE ${getStage(game.flags)}/5 · ${m.name}`;
     const obj = `목표: ${getObjective(game.flags)}`;
-    const w = Math.max(ctx.measureText(obj).width, ctx.measureText(m.name).width) + 20;
+    const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
     ctx.fillStyle = 'rgba(20,22,40,.75)';
     roundRect(8, 8, w, 52, 8);
     ctx.fill();
     ctx.fillStyle = '#ffd644';
-    ctx.fillText(m.name, 18, 28);
+    ctx.fillText(title, 18, 28);
     ctx.fillStyle = '#fff';
     ctx.fillText(obj, 18, 50);
 
@@ -747,10 +802,10 @@
 
     // 플레이어 하트
     ctx.fillStyle = 'rgba(16,18,38,.9)';
-    roundRect(24, 100, 150, 44, 8);
+    roundRect(24, 100, 30 + b.maxHearts * 32, 44, 8);
     ctx.fill();
     ctx.font = '22px sans-serif';
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < b.maxHearts; i++) {
       ctx.fillStyle = i < b.playerHp ? '#e0453a' : '#444';
       ctx.fillText('♥', 40 + i * 32, 132);
     }
@@ -833,14 +888,15 @@
     ctx.fillStyle = '#fff';
     ctx.font = '17px sans-serif';
     ctx.fillText('몬스터들에게 올바른 답을 알려주고', canvas.width / 2, 200);
-    ctx.fillText('AI 세상의 평화를 지켜라!', canvas.width / 2, 226);
+    ctx.fillText('5개 스테이지를 넘어 AI 세상의 평화를 지켜라!', canvas.width / 2, 226);
 
-    // 몬스터들 둥실둥실
-    const ids = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'jungdokmon', 'bekkyeomon'];
-    for (let i = 0; i < ids.length; i++) {
-      const bx = canvas.width / 2 - 200 + i * 90;
-      const by = 260 + Math.sin(game.time / 20 + i * 1.3) * 6;
-      drawSprite(ctx, MONSTER_SPRITES[ids[i]], bx, by, 4);
+    // 몬스터들 둥실둥실 (두 줄)
+    const row1 = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'jungdokmon', 'bekkyeomon', 'hondonmon'];
+    const row2 = ['akpeulmon', 'meotdaeromon', 'pungpungmon', 'sideulmon', 'hollimmon', 'finalboss'];
+    for (let i = 0; i < row1.length; i++) {
+      const bx = canvas.width / 2 - 190 + i * 64;
+      drawSprite(ctx, MONSTER_SPRITES[row1[i]], bx, 250 + Math.sin(game.time / 20 + i * 1.3) * 5, 3);
+      drawSprite(ctx, MONSTER_SPRITES[row2[i]], bx, 308 + Math.sin(game.time / 20 + i * 1.3 + 2) * 5, 3);
     }
 
     // 메뉴
@@ -918,27 +974,29 @@
     ctx.font = '16px sans-serif';
     ctx.fillStyle = '#ccc';
     const lines = [
-      '위 어린이는 개인정보 보호, 저작권 존중,',
-      '거짓 정보 분별, 공정함, 절제의 마음을 갖춘',
+      '위 어린이는 다섯 스테이지를 모두 넘으며',
+      '개인정보 보호, 저작권, 진실 분별, 공정함, 절제,',
+      '바른 말, 안전, 환경, 투명함, 책임, 창의성,',
+      '협력, 그리고 사람을 아끼는 마음을 보여준',
       '훌륭한 AI 윤리 수호자임을 인증합니다.',
       '',
       `맞힌 문제: ${game.flags.correctCount}개`,
-      '',
-      '이제 현실에서도 AI를 바르고',
-      '지혜롭게 사용해 주세요!',
+      '이제 현실에서도 AI를 바르고 지혜롭게!',
     ];
-    let ty = 220;
+    let ty = 210;
     for (const l of lines) {
       ctx.fillText(l, canvas.width / 2, ty);
-      ty += 28;
+      ty += 26;
     }
 
-    // 친구가 된 몬스터들
-    const ids = ['mollaemon', 'bekkyeomon', 'geojitmon', 'pyeonhyangmon', 'jungdokmon', 'hondonmon'];
+    // 친구가 된 몬스터들 (두 줄 퍼레이드)
+    const ids = Object.keys(MONSTER_SPRITES);
     for (let i = 0; i < ids.length; i++) {
-      const bx = canvas.width / 2 - 180 + i * 60;
-      const by = 440 + Math.sin(game.time / 15 + i) * 8;
-      drawSprite(ctx, MONSTER_SPRITES[ids[i]], bx, by, 3);
+      const row = i < 9 ? 0 : 1;
+      const col = i % 9;
+      const bx = canvas.width / 2 - 9 * 24 + col * 48;
+      const by = 425 + row * 40 + Math.sin(game.time / 15 + i) * 5;
+      drawSprite(ctx, MONSTER_SPRITES[ids[i]], bx, by, 2);
     }
 
     if (game.endingT > 120) {

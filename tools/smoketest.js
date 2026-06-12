@@ -190,8 +190,15 @@ setPos(5, 4, 'left'); // 편향몬 (4,4)
 tap('z'); advanceDialog(); fightAndWin(3); advanceDialog();
 check('동굴의 배지', g.flags.badges.cave === true);
 
-console.log('[10] 타워 입장 → 보스전 → 엔딩');
+console.log('[10] 스테이지 1 보스 (혼돈몬) 전, 남쪽 길 잠김 확인');
 g.map = 'village';
+setPos(13, 18, 'down');
+hold('ArrowDown', 14);
+check('남쪽 길 잠김 대화', g.mode === 'dialog');
+advanceDialog();
+check('마을에 남아있음', g.map === 'village');
+
+console.log('[11] 타워 입장 → 혼돈몬 → 스테이지 2 개방');
 setPos(18, 5, 'up');
 hold('ArrowUp', 14);
 check('타워 입장', g.map === 'tower' && g.player.x === 8 && g.player.y >= 10);
@@ -199,16 +206,73 @@ setPos(8, 4, 'up'); // 혼돈몬 (8,3)
 tap('z');
 advanceDialog();
 check('보스전 시작', g.mode === 'battle' && g.battle.monId === 'hondonmon' && g.battle.monMaxHp === 5);
+check('보스전은 하트 4개', g.battle.maxHearts === 4);
 fightAndWin(5);
+advanceDialog();
+check('스테이지 1 클리어 (엔딩 아님)', g.mode === 'world' && g.flags.defeated.hondonmon);
+
+console.log('[12] 스테이지 2: 햇살초원');
+g.map = 'village';
+setPos(13, 18, 'down');
+hold('ArrowDown', 14);
+check('햇살초원 진입', g.map === 'meadow');
+setPos(13, 18, 'down'); // 보스 전 남쪽 길 잠김
+hold('ArrowDown', 14);
+check('사막 길 잠김', g.mode === 'dialog');
+advanceDialog();
+setPos(7, 5, 'down'); // 악플몬 (7,6)
+tap('z'); advanceDialog();
+check('악플몬 배틀', g.battle.monId === 'akpeulmon');
+fightAndWin(3); advanceDialog();
+setPos(13, 17, 'up'); // 보스 멋대로몬 (13,16)
+tap('z'); advanceDialog();
+fightAndWin(4); advanceDialog();
+check('멋대로몬 클리어', g.flags.defeated.meotdaeromon);
+setPos(13, 18, 'down');
+hold('ArrowDown', 14);
+check('재깍사막 진입', g.map === 'desert');
+
+console.log('[13] 스테이지 3: 재깍사막');
+setPos(13, 16, 'up'); // 보스 떠넘기몬 (13,15)
+tap('z'); advanceDialog();
+check('떠넘기몬 배틀', g.battle.monId === 'tteonemgimon');
+fightAndWin(4); advanceDialog();
+check('떠넘기몬 클리어', g.flags.defeated.tteonemgimon);
+setPos(13, 18, 'down');
+hold('ArrowDown', 14);
+check('눈송이마을 진입', g.map === 'snow');
+
+console.log('[14] 스테이지 4: 눈송이마을');
+setPos(13, 16, 'up'); // 보스 홀림몬 (13,15)
+tap('z'); advanceDialog();
+fightAndWin(4); advanceDialog();
+check('홀림몬 클리어', g.flags.defeated.hollimmon);
+setPos(13, 18, 'down');
+hold('ArrowDown', 14);
+check('그림자성 진입', g.map === 'castle');
+
+console.log('[15] 스테이지 5: 그림자성 (문지기 2 + 최종 보스)');
+setPos(10, 9, 'up'); // 메아리몬 (10,8)
+tap('z'); advanceDialog();
+check('메아리몬 배틀 (복습 풀)', g.battle.monId === 'maearimon' && g.battle.questions.length >= 25);
+fightAndWin(3); advanceDialog();
+setPos(9, 5, 'up'); // 그림자몬 (9,4)
+tap('z'); advanceDialog();
+fightAndWin(3); advanceDialog();
+setPos(9, 3, 'up'); // 어둠대왕몬 (9,2)
+tap('z'); advanceDialog();
+check('최종 보스전', g.battle.monId === 'finalboss' && g.battle.monMaxHp === 6 && g.battle.maxHearts === 4);
+fightAndWin(6);
 advanceDialog();
 check('엔딩 진입', g.mode === 'ending');
 step(130);
 tap('z');
 check('엔딩 후 월드 복귀', g.mode === 'world');
 
-console.log('[11] 저장 데이터 무결성');
+console.log('[16] 저장 데이터 무결성');
 const save = JSON.parse(storage.get('ai-ethics-adventure-v1'));
 check('저장된 배지 3개', save.flags.badges.forest && save.flags.badges.lake && save.flags.badges.cave);
-check('보스 처치 저장', save.flags.defeated.hondonmon === true);
+check('모든 보스 처치 저장', save.flags.defeated.hondonmon && save.flags.defeated.meotdaeromon &&
+  save.flags.defeated.tteonemgimon && save.flags.defeated.hollimmon && save.flags.defeated.finalboss);
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
