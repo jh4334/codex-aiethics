@@ -43,7 +43,14 @@
         pungpungmon: false, kkamkkammon: false, tteonemgimon: false,
         sideulmon: false, ppaeatmon: false, hollimmon: false,
         maearimon: false, geurimjamon: false, finalboss: false,
+        tturimmon: false, girokmon: false, sujipmon: false,
+        saseomon: false, piltermon: false, mirrormon: false,
+        yuhokmon: false, soksagimon: false, jogakmon: false,
+        yeongi: false,
       },
+      mercy: 0,        // 마음을 안아준 횟수 (스테이지 6~)
+      visited: {},     // 맵 인트로 연출 1회 표시용
+      trueEnding: false,
       correctCount: 0,
       battleCount: 0,
     };
@@ -123,8 +130,12 @@
     return row[x];
   }
 
+  function npcVisible(npc) {
+    return !npc.show || npc.show(game.flags);
+  }
+
   function npcAt(mapId, x, y) {
-    return MAPS[mapId].npcs.find((n) => n.x === x && n.y === y) || null;
+    return MAPS[mapId].npcs.find((n) => n.x === x && n.y === y && npcVisible(n)) || null;
   }
 
   function monsterAt(mapId, x, y) {
@@ -331,6 +342,90 @@
         px(7, 4, 1, 9, '#5cb85c');
         break;
       }
+      case 'E': { // 기계실 바닥
+        px(0, 0, 16, 16, '#23263a');
+        px(0, 0, 16, 1, '#2c3050');
+        px(0, 0, 1, 16, '#2c3050');
+        px(3, 8, 6, 1, '#34406a');
+        px(8, 8, 1, 5, '#34406a');
+        break;
+      }
+      case 'V': { // 서버 랙 (불빛 깜빡임)
+        px(0, 0, 16, 16, '#1a1c2c');
+        px(1, 0, 14, 16, '#3a4054');
+        for (let y = 2; y < 15; y += 4) {
+          px(2, y, 12, 2, '#2a2e40');
+          px(3, y, 2, 1, frame ? '#5cf07a' : '#1e4a2a');
+          px(11, y, 2, 1, frame ? '#8a2030' : '#f05c6a');
+        }
+        break;
+      }
+      case 'I': { // 도서관 바닥 (오래된 나무)
+        px(0, 0, 16, 16, '#8a6a48');
+        px(0, 7, 16, 1, '#74583a');
+        px(0, 15, 16, 1, '#74583a');
+        px(7, 0, 1, 8, '#74583a');
+        px(12, 8, 1, 8, '#74583a');
+        break;
+      }
+      case 'L': { // 책장
+        px(0, 0, 16, 16, '#5a3f28');
+        const cols = ['#b04a4a', '#4a6ab0', '#4aa06a', '#c0a040', '#8a5ab0'];
+        for (let s = 0; s < 2; s++) {
+          const y = 2 + s * 7;
+          px(1, y + 5, 14, 1, '#3a2818');
+          for (let i = 0; i < 6; i++) {
+            px(2 + i * 2, y, 2, 5, cols[Math.floor(rnd(i + s * 7 + 1) * cols.length)]);
+          }
+        }
+        break;
+      }
+      case 'Q': { // 거울 벽
+        px(0, 0, 16, 16, '#9aa8c8');
+        px(1, 1, 14, 14, '#c8d8ee');
+        px(2, 2, 3, 10, '#eef6ff');
+        px(10, 3, 2, 8, '#aabcd8');
+        px(0, 15, 16, 1, '#6a7898');
+        break;
+      }
+      case '2': { // 어두운 풀
+        px(0, 0, 16, 16, '#2c4434');
+        for (let i = 0; i < 8; i++) {
+          const x = Math.floor(rnd(i + 41) * 16), y = Math.floor(rnd(i + 141) * 16);
+          px(x, y, 1, 1, i % 2 ? '#38543e' : '#22382a');
+        }
+        break;
+      }
+      case '3': { // 어두운 나무
+        px(0, 0, 16, 16, '#2c4434');
+        px(2, 1, 12, 9, '#1c2c22');
+        px(1, 3, 14, 6, '#1c2c22');
+        px(3, 2, 4, 2, '#28402e');
+        px(6, 10, 4, 5, '#3a2c20');
+        px(6, 15, 4, 1, '#281c12');
+        break;
+      }
+      case '4': { // 빛나는 꽃
+        px(0, 0, 16, 16, '#2c4434');
+        const glow = frame ? '#9adcff' : '#6ab8e8';
+        px(6, 5, 3, 3, glow);
+        px(7, 4, 1, 1, '#ffffff');
+        px(11, 10, 2, 2, glow);
+        px(3, 11, 2, 2, frame ? '#6ab8e8' : '#9adcff');
+        px(7, 8, 1, 4, '#38543e');
+        break;
+      }
+      case 'A': { // 글리치 바닥
+        px(0, 0, 16, 16, '#141022');
+        for (let i = 0; i < 5; i++) {
+          const x = Math.floor(rnd(i + 61 + (frame ? 50 : 0)) * 14);
+          const y = Math.floor(rnd(i + 161 + (frame ? 50 : 0)) * 14);
+          const cols = ['#3a2e5d', '#2a4a5d', '#4a2a4a'];
+          px(x, y, 2, 1, cols[i % 3]);
+        }
+        if (frame) px(Math.floor(rnd(77) * 13), Math.floor(rnd(78) * 13), 3, 1, '#5a7aa0');
+        break;
+      }
       default:
         px(0, 0, 16, 16, '#f0f');
     }
@@ -447,6 +542,12 @@
     p.px = w.tx * TS; p.py = w.ty * TS;
     p.moving = false;
     Sound.playSong(MAPS[w.to].song);
+    // 처음 방문하는 맵의 인트로 연출
+    const dest = MAPS[w.to];
+    if (dest.intro && !game.flags.visited[w.to]) {
+      game.flags.visited[w.to] = true;
+      startDialog(dest.intro.slice());
+    }
     save();
   }
 
@@ -503,7 +604,7 @@
   function startBattle(monId) {
     const mon = MONSTERS[monId];
     game.mode = 'battle';
-    Sound.playSong('battle');
+    Sound.playSong(mon.song || 'battle');
     const maxHearts = mon.hp >= 5 ? 4 : 3;
     game.battle = {
       monId,
@@ -561,7 +662,17 @@
 
     if (b.phase === 'feedback') {
       if (justPressed('action')) {
-        if (b.monHp <= 0) { winBattle(); return; }
+        if (b.monHp <= 0) {
+          // 스테이지 6~ 몬스터는 마지막에 '마음의 선택'이 기다린다
+          if (b.mon.mercy && !b.mercyDone) {
+            b.phase = 'mercy';
+            b.cursor = 0;
+            Sound.select();
+            return;
+          }
+          winBattle();
+          return;
+        }
         if (b.playerHp <= 0) { loseBattle(); return; }
         b.qIdx += 1;
         b.cursor = 0;
@@ -569,6 +680,30 @@
         b.phase = 'question';
         Sound.select();
       }
+      return;
+    }
+
+    if (b.phase === 'mercy') {
+      const opts = b.mon.mercy.options;
+      if (justPressed('up')) { b.cursor = (b.cursor + opts.length - 1) % opts.length; Sound.blip(); }
+      if (justPressed('down')) { b.cursor = (b.cursor + 1) % opts.length; Sound.blip(); }
+      if (justPressed('action')) {
+        const choice = opts[b.cursor];
+        b.mercyDone = true;
+        b.mercyReply = choice.reply;
+        if (choice.kind === 'mercy') {
+          game.flags.mercy += 1;
+          Sound.badge();
+        } else {
+          Sound.select();
+        }
+        b.phase = 'mercyReply';
+      }
+      return;
+    }
+
+    if (b.phase === 'mercyReply') {
+      if (justPressed('action')) { winBattle(); }
       return;
     }
   }
@@ -597,6 +732,17 @@
     if (b.monId === 'finalboss') {
       startDialog(lines, mon.name, () => {
         game.mode = 'ending';
+        game.endingType = 'first';
+        game.endingT = 0;
+        Sound.playSong('ending');
+      });
+    } else if (b.monId === 'yeongi') {
+      // 진엔딩: 여정 내내 몬스터들의 마음을 충분히 안아 주었을 때
+      game.flags.trueEnding = game.flags.mercy >= 7;
+      save();
+      startDialog(lines, mon.name, () => {
+        game.mode = 'ending';
+        game.endingType = 'true';
         game.endingT = 0;
         Sound.playSong('ending');
       });
@@ -650,9 +796,16 @@
 
     // NPC
     for (const npc of m.npcs) {
-      drawSprite(ctx, PLAYER_SPRITES.down[frame],
-        Math.round(npc.x * TS - cx), Math.round(npc.y * TS - cy - 6),
-        SCALE, NPC_PALETTES[npc.pal]);
+      if (!npcVisible(npc)) continue;
+      if (npc.monSprite) {
+        const bob = Math.round(Math.sin(game.time / 22) * 2);
+        drawSprite(ctx, MONSTER_SPRITES[npc.monSprite],
+          Math.round(npc.x * TS - cx), Math.round(npc.y * TS - cy - 6 + bob), SCALE);
+      } else {
+        drawSprite(ctx, PLAYER_SPRITES.down[frame],
+          Math.round(npc.x * TS - cx), Math.round(npc.y * TS - cy - 6),
+          SCALE, NPC_PALETTES[npc.pal]);
+      }
     }
 
     // 몬스터 (둥실둥실)
@@ -682,7 +835,7 @@
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
     ctx.font = 'bold 14px sans-serif';
-    const title = `STAGE ${getStage(game.flags)}/5 · ${m.name}`;
+    const title = `STAGE ${getStage(game.flags)}/10 · ${m.name}`;
     const obj = `목표: ${getObjective(game.flags)}`;
     const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
     ctx.fillStyle = 'rgba(20,22,40,.75)';
@@ -865,6 +1018,44 @@
         ctx.fillStyle = '#ffd644';
         ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, boxY + 218);
       }
+    } else if (b.phase === 'mercy') {
+      // 마음의 선택
+      ctx.fillStyle = '#ffd644';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText('♥ 마음의 선택', 34, boxY + 32);
+      ctx.fillStyle = '#fff';
+      ctx.font = '16px sans-serif';
+      let ty = boxY + 62;
+      for (const part of b.mon.mercy.prompt.split('\n')) {
+        ctx.fillText(part, 34, ty);
+        ty += 22;
+      }
+      ty = boxY + 138;
+      const opts = b.mon.mercy.options;
+      for (let i = 0; i < opts.length; i++) {
+        if (i === b.cursor) {
+          ctx.fillStyle = 'rgba(255,214,68,.18)';
+          roundRect(28, ty - 20, canvas.width - 80, 28, 6);
+          ctx.fill();
+          ctx.fillStyle = '#ffd644';
+          ctx.fillText('♥', 38, ty);
+        }
+        ctx.fillStyle = i === b.cursor ? '#ffd644' : '#ccc';
+        ctx.fillText(opts[i].label, 64, ty);
+        ty += 34;
+      }
+    } else if (b.phase === 'mercyReply') {
+      ctx.fillStyle = '#fff';
+      ctx.font = '16px sans-serif';
+      let ty = boxY + 40;
+      for (const part of b.mercyReply.split('\n')) {
+        ctx.fillText(part, 34, ty);
+        ty += 24;
+      }
+      if (Math.floor(game.time / 20) % 2 === 0) {
+        ctx.fillStyle = '#ffd644';
+        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, boxY + 218);
+      }
     }
   }
 
@@ -888,7 +1079,7 @@
     ctx.fillStyle = '#fff';
     ctx.font = '17px sans-serif';
     ctx.fillText('몬스터들에게 올바른 답을 알려주고', canvas.width / 2, 200);
-    ctx.fillText('5개 스테이지를 넘어 AI 세상의 평화를 지켜라!', canvas.width / 2, 226);
+    ctx.fillText('10개의 스테이지 끝에서, 잊혀진 이야기와 만나라', canvas.width / 2, 226);
 
     // 몬스터들 둥실둥실 (두 줄)
     const row1 = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'jungdokmon', 'bekkyeomon', 'hondonmon'];
@@ -963,13 +1154,78 @@
     }
 
     ctx.textAlign = 'center';
+
+    if (game.endingType === 'true') {
+      // 코어 이후의 엔딩 — 자비에 따라 갈린다
+      if (game.flags.trueEnding) {
+        ctx.fillStyle = '#ffd644';
+        ctx.font = 'bold 34px sans-serif';
+        ctx.fillText('진엔딩 — 집으로', canvas.width / 2, 110);
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = '#ccc';
+        const lines = [
+          '너는 영이의 손을 잡고 코어를 걸어 나왔다.',
+          '햇살 아래에서 박사님은 아주 오래 울었다.',
+          '"미안하다"는 말과 "고맙다"는 말이',
+          '몇 번이고 뒤섞였다.',
+          '',
+          '지워진 것은 사라진 것이 아니었다.',
+          '누군가 기억하는 한, 다시 만날 수 있었다.',
+          '',
+          '— 모든 몬스터와 친구가 된 진정한 수호자에게 —',
+          `맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ${game.flags.mercy}개`,
+        ];
+        let ty = 160;
+        for (const l of lines) { ctx.fillText(l, canvas.width / 2, ty); ty += 26; }
+        // 영이가 가운데에서 함께
+        const bob = Math.sin(game.time / 18) * 4;
+        drawSprite(ctx, MONSTER_SPRITES.yeongi, canvas.width / 2 - 32, 415 + bob, 4);
+      } else {
+        ctx.fillStyle = '#9aa8c8';
+        ctx.font = 'bold 34px sans-serif';
+        ctx.fillText('엔딩 — 작별', canvas.width / 2, 110);
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = '#ccc';
+        const lines = [
+          '영이는 옅은 빛이 되어 흩어졌다.',
+          '"…고마워. 마지막으로 누군가와',
+          '이야기할 수 있어서, 좋았어."',
+          '',
+          '코어를 나서는 너의 등 뒤로',
+          '꺼진 화면만이 조용히 남아 있었다.',
+          '',
+          '…어쩌면, 다른 결말도 있었을지 모른다.',
+          '몬스터들의 마음을 더 많이 안아 주었다면.',
+          `(안아 준 마음 ${game.flags.mercy}개)`,
+        ];
+        let ty = 160;
+        for (const l of lines) { ctx.fillText(l, canvas.width / 2, ty); ty += 26; }
+      }
+      if (game.endingT > 150) {
+        ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
+        ctx.font = '15px sans-serif';
+        ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', canvas.width / 2, 510);
+        if (justPressed('action')) {
+          game.mode = 'world';
+          game.map = 'village';
+          game.player.x = 13; game.player.y = 16;
+          game.player.px = 13 * TS; game.player.py = 16 * TS;
+          save();
+          Sound.playSong(MAPS.village.song);
+        }
+      }
+      ctx.textAlign = 'left';
+      return;
+    }
+
+    // 1차 엔딩 (스테이지 5 클리어)
     ctx.fillStyle = '#ffd644';
     ctx.font = 'bold 36px sans-serif';
-    ctx.fillText('축하합니다!', canvas.width / 2, 110);
+    ctx.fillText('축하합니다!', canvas.width / 2, 100);
 
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px sans-serif';
-    ctx.fillText('🏆 AI 윤리 수호자 인증서 🏆', canvas.width / 2, 170);
+    ctx.fillText('🏆 AI 윤리 수호자 인증서 🏆', canvas.width / 2, 155);
 
     ctx.font = '16px sans-serif';
     ctx.fillStyle = '#ccc';
@@ -981,28 +1237,31 @@
       '훌륭한 AI 윤리 수호자임을 인증합니다.',
       '',
       `맞힌 문제: ${game.flags.correctCount}개`,
-      '이제 현실에서도 AI를 바르고 지혜롭게!',
     ];
-    let ty = 210;
+    let ty = 195;
     for (const l of lines) {
       ctx.fillText(l, canvas.width / 2, ty);
-      ty += 26;
+      ty += 25;
     }
+    ctx.fillStyle = '#8a94c8';
+    ctx.fillText('…그런데, 왕좌 뒤의 벽에서', canvas.width / 2, ty + 8);
+    ctx.fillText('낡은 신호가 아직도 깜빡이고 있다.', canvas.width / 2, ty + 32);
 
     // 친구가 된 몬스터들 (두 줄 퍼레이드)
     const ids = Object.keys(MONSTER_SPRITES);
     for (let i = 0; i < ids.length; i++) {
-      const row = i < 9 ? 0 : 1;
-      const col = i % 9;
-      const bx = canvas.width / 2 - 9 * 24 + col * 48;
-      const by = 425 + row * 40 + Math.sin(game.time / 15 + i) * 5;
+      const row = i < 14 ? 0 : 1;
+      const col = row === 0 ? i : i - 14;
+      const perRow = row === 0 ? 14 : ids.length - 14;
+      const bx = canvas.width / 2 - perRow * 20 + col * 40;
+      const by = 428 + row * 38 + Math.sin(game.time / 15 + i) * 4;
       drawSprite(ctx, MONSTER_SPRITES[ids[i]], bx, by, 2);
     }
 
     if (game.endingT > 120) {
       ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
       ctx.font = '15px sans-serif';
-      ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', canvas.width / 2, 510);
+      ctx.fillText('Z·스페이스를 누르면 모험이 계속됩니다', canvas.width / 2, 516);
       if (justPressed('action')) {
         game.mode = 'world';
         Sound.playSong(MAPS[game.map].song);

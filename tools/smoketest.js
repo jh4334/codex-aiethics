@@ -104,6 +104,17 @@ function fightAndWin(hp, wrongFirst = 0) {
   for (let i = 0; i < wrongFirst; i++) answerQuestion(false);
   for (let i = 0; i < hp && g.mode === 'battle'; i++) answerQuestion(true);
 }
+// 스테이지 6~ 몬스터: 퀴즈를 모두 맞히면 '마음의 선택'이 나온다
+function fightWithMercy(hp, mercyIdx = 0) {
+  fightAndWin(hp);
+  if (g.mode !== 'battle' || g.battle.phase !== 'mercy') {
+    throw new Error('마음의 선택 단계가 아님: ' + g.mode + '/' + (g.battle && g.battle.phase));
+  }
+  while (g.battle.cursor !== mercyIdx) tap('ArrowDown');
+  tap('z'); // 선택 → 응답
+  if (g.battle.phase !== 'mercyReply') throw new Error('응답 단계가 아님');
+  tap('z'); // 응답 닫기 → 승리 대화
+}
 
 let passed = 0;
 function check(name, cond) {
@@ -269,10 +280,87 @@ step(130);
 tap('z');
 check('엔딩 후 월드 복귀', g.mode === 'world');
 
-console.log('[16] 저장 데이터 무결성');
+console.log('[16] 스테이지 6: 잊혀진 서버실 (숨겨진 통로 + 자비 시스템)');
+g.map = 'castle';
+setPos(9, 2, 'up'); // 왕좌 자리 → (9,1) 숨겨진 워프
+hold('ArrowUp', 14);
+check('서버실 진입 + 인트로 연출', g.map === 'serverroom' && g.mode === 'dialog');
+advanceDialog();
+setPos(7, 9, 'up'); // 뚫림몬 (7,8)
+tap('z'); advanceDialog();
+fightWithMercy(3, 0);
+advanceDialog();
+check('뚫림몬 + 자비 1', g.flags.defeated.tturimmon && g.flags.mercy === 1);
+setPos(13, 3, 'up'); // 기록몬 (13,2)
+tap('z'); advanceDialog();
+fightWithMercy(4, 0);
+advanceDialog();
+check('기록몬 클리어', g.flags.defeated.girokmon && g.flags.mercy === 2);
+
+console.log('[17] 스테이지 7: 기억의 도서관');
+setPos(13, 1, 'up');
+hold('ArrowUp', 14);
+check('도서관 진입', g.map === 'library');
+advanceDialog();
+setPos(20, 8, 'up'); // 수집몬 (20,7)
+tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
+setPos(13, 3, 'up'); // 사서몬 (13,2)
+tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
+check('사서몬 클리어', g.flags.defeated.saseomon && g.flags.mercy === 4);
+
+console.log('[18] 스테이지 8: 거울 회랑');
+setPos(13, 1, 'up');
+hold('ArrowUp', 14);
+check('거울 회랑 진입', g.map === 'mirrors');
+advanceDialog();
+setPos(7, 7, 'up'); // 필터몬 (7,6)
+tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
+setPos(13, 3, 'up'); // 미러몬 (13,2)
+tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
+check('미러몬 클리어', g.flags.defeated.mirrormon && g.flags.mercy === 6);
+
+console.log('[19] 스테이지 9: 속삭임 정원');
+setPos(13, 1, 'up');
+hold('ArrowUp', 14);
+check('정원 진입', g.map === 'garden');
+advanceDialog();
+setPos(7, 7, 'up'); // 유혹몬 (7,6)
+tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
+setPos(13, 16, 'up'); // 속삭임몬 (13,15)
+tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
+check('속삭임몬 클리어', g.flags.defeated.soksagimon && g.flags.mercy === 8);
+
+console.log('[20] 스테이지 10: 코어 — 영이와 진엔딩');
+setPos(13, 18, 'down');
+hold('ArrowDown', 14);
+check('코어 진입', g.map === 'core');
+advanceDialog();
+setPos(9, 6, 'up'); // 조각몬 (9,5)
+tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
+check('조각몬 클리어', g.flags.defeated.jogakmon && g.flags.mercy === 9);
+setPos(9, 3, 'up'); // 영이 (9,2)
+tap('z'); advanceDialog();
+check('영이 배틀 (코어 BGM)', g.mode === 'battle' && g.battle.monId === 'yeongi');
+fightWithMercy(5, 0); // "함께 돌아가자"
+advanceDialog();
+check('진엔딩 진입', g.mode === 'ending' && g.endingType === 'true');
+check('진엔딩 조건 충족', g.flags.trueEnding === true && g.flags.mercy === 10);
+step(160);
+tap('z');
+check('마을로 귀환', g.mode === 'world' && g.map === 'village');
+
+console.log('[21] 진엔딩 후 마을의 영이');
+setPos(6, 12, 'left'); // 영이 NPC (5,12)
+tap('z');
+check('영이와 대화', g.mode === 'dialog');
+advanceDialog();
+
+console.log('[22] 저장 데이터 무결성');
 const save = JSON.parse(storage.get('ai-ethics-adventure-v1'));
 check('저장된 배지 3개', save.flags.badges.forest && save.flags.badges.lake && save.flags.badges.cave);
 check('모든 보스 처치 저장', save.flags.defeated.hondonmon && save.flags.defeated.meotdaeromon &&
   save.flags.defeated.tteonemgimon && save.flags.defeated.hollimmon && save.flags.defeated.finalboss);
+check('심층부 진행 저장', save.flags.defeated.yeongi && save.flags.trueEnding === true &&
+  save.flags.mercy === 10);
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

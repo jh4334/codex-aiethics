@@ -4,7 +4,7 @@
 //  G 풀  P 길  F 꽃  S 모래  B 다리  C 동굴바닥  M 탑바닥  1 탑문(워프)
 //  T 나무  W 물  O 지붕  H 벽  D 문(장식)  R 바위  K 동굴벽  * 수정  N 탑벽  Y 표지판
 
-const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', '1']);
+const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1']);
 
 const MAPS = {
   village: {
@@ -48,6 +48,8 @@ const MAPS = {
       { id: 'kid', x: 16, y: 7, pal: 'kid', name: '아이 도도' },
       { id: 'grandma', x: 20, y: 12, pal: 'grandma', name: '할머니' },
       { id: 'guard', x: 17, y: 6, pal: 'guard', name: '탑 안내원' },
+      { id: 'yeongi_npc', x: 5, y: 12, monSprite: 'yeongi', name: '영이',
+        show: (flags) => !!flags.trueEnding },
     ],
     signs: [
       { x: 15, y: 16, text: '≪하늘마을≫\nAI 윤리 수호대의 고향입니다.' },
@@ -367,6 +369,8 @@ const MAPS = {
     warps: [
       { x: 9, y: 17, to: 'snow', tx: 13, ty: 18 },
       { x: 10, y: 17, to: 'snow', tx: 14, ty: 18 },
+      { x: 9, y: 1, to: 'serverroom', tx: 13, ty: 18, needBoss: 'finalboss',
+        lockText: '벽 너머에서 지지직거리는\n잡음이 들린다…' },
     ],
     npcs: [],
     signs: [],
@@ -374,6 +378,241 @@ const MAPS = {
       { id: 'maearimon', x: 10, y: 8 },
       { id: 'geurimjamon', x: 9, y: 4 },
       { id: 'finalboss', x: 9, y: 2 },
+    ],
+  },
+
+  // ---- 스테이지 6 ----
+  serverroom: {
+    name: '잊혀진 서버실 (스테이지 6)',
+    song: 'glitch',
+    intro: [
+      '낡은 서버들이 늘어선 차가운 방.\n먼지 쌓인 기계들 사이로\n희미한 불빛이 깜빡인다.',
+      '…여기는 분명, 그림자성보다\n훨씬 오래된 곳이다.',
+    ],
+    tiles: [
+      'KKKKKKKKKKKKKEEKKKKKKKKKKKKK',
+      'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
+      'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
+      'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
+      'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
+      'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
+      'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
+      'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KEYEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
+      'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
+      'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
+      'KKKKKKKKKKKKKEEKKKKKKKKKKKKK',
+    ],
+    warps: [
+      { x: 13, y: 19, to: 'castle', tx: 9, ty: 2 },
+      { x: 14, y: 19, to: 'castle', tx: 9, ty: 2 },
+      { x: 13, y: 0, to: 'library', tx: 13, ty: 18, needBoss: 'girokmon',
+        lockText: '북쪽 문에 굳은 자물쇠.\n이 방의 관리자, 기록몬의\n허락이 필요해 보인다.' },
+      { x: 14, y: 0, to: 'library', tx: 14, ty: 18, needBoss: 'girokmon',
+        lockText: '북쪽 문에 굳은 자물쇠.\n이 방의 관리자, 기록몬의\n허락이 필요해 보인다.' },
+    ],
+    npcs: [
+      { id: 'hologram1', x: 16, y: 16, pal: 'prof', name: '박사님(홀로그램)' },
+    ],
+    signs: [
+      { x: 2, y: 12, text: '[제0연구동 — 서버실]\n…출입 기록: 마지막 접속,\n아주 오래전.' },
+    ],
+    monsters: [
+      { id: 'tturimmon', x: 7, y: 8 },
+      { id: 'girokmon', x: 13, y: 2 },
+    ],
+  },
+
+  // ---- 스테이지 7 ----
+  library: {
+    name: '기억의 도서관 (스테이지 7)',
+    song: 'title',
+    intro: [
+      '끝없이 늘어선 책장.\n책등에는 이름이 하나씩 적혀 있다.',
+      '…전부, 누군가의 기억이다.',
+    ],
+    tiles: [
+      'NNNNNNNNNNNNNIINNNNNNNNNNNNN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NILLLLLILLLLLIILLLLLILLLLLIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NILLLLLILLLLLIILLLLLILLLLLIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NILLLLLILLLLLIILLLLLILLLLLIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NILLLLLILLLLLIILLLLLILLLLLIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIYIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NILLLLLILLLLLIILLLLLILLLLLIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
+      'NNNNNNNNNNNNNIINNNNNNNNNNNNN',
+    ],
+    warps: [
+      { x: 13, y: 19, to: 'serverroom', tx: 13, ty: 1 },
+      { x: 14, y: 19, to: 'serverroom', tx: 14, ty: 1 },
+      { x: 13, y: 0, to: 'mirrors', tx: 13, ty: 18, needBoss: 'saseomon',
+        lockText: '책장이 길을 막고 있다.\n도서관의 주인, 사서몬이\n비켜 주지 않는다.' },
+      { x: 14, y: 0, to: 'mirrors', tx: 14, ty: 18, needBoss: 'saseomon',
+        lockText: '책장이 길을 막고 있다.\n도서관의 주인, 사서몬이\n비켜 주지 않는다.' },
+    ],
+    npcs: [],
+    signs: [
+      { x: 2, y: 11, text: '[열람 안내]\n허락 없이 가져간 기억은\n반드시 제자리에 돌려놓을 것.' },
+    ],
+    monsters: [
+      { id: 'sujipmon', x: 20, y: 7 },
+      { id: 'saseomon', x: 13, y: 2 },
+    ],
+  },
+
+  // ---- 스테이지 8 ----
+  mirrors: {
+    name: '거울 회랑 (스테이지 8)',
+    song: 'glitch',
+    intro: [
+      '거울로 된 복도.\n수많은 "나"가 함께 걷는다.',
+      '…그런데 저 거울 속의 나는\n방금, 혼자서 움직이지 않았나?',
+    ],
+    tiles: [
+      'QQQQQQQQQQQQQMMQQQQQQQQQQQQQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMQMMQMMQMMQMMQMMQMMQMMQMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMQMMQMMQMMQMMQMMQMMQMMQMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMYMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMQMMQMMQMMQMMQMMQMMQMMQMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMQMMQMMQMMQMMQMMQMMQMMQMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QMMMMMMMMMMMMMMMMMMMMMMMMMMQ',
+      'QQQQQQQQQQQQQMMQQQQQQQQQQQQQ',
+    ],
+    warps: [
+      { x: 13, y: 19, to: 'library', tx: 13, ty: 1 },
+      { x: 14, y: 19, to: 'library', tx: 14, ty: 1 },
+      { x: 13, y: 0, to: 'garden', tx: 13, ty: 1, needBoss: 'mirrormon',
+        lockText: '거울 속의 네가 고개를 젓는다.\n…아직은 지나갈 수 없다.' },
+      { x: 14, y: 0, to: 'garden', tx: 14, ty: 1, needBoss: 'mirrormon',
+        lockText: '거울 속의 네가 고개를 젓는다.\n…아직은 지나갈 수 없다.' },
+    ],
+    npcs: [],
+    signs: [
+      { x: 2, y: 10, text: '거울에 흐릿한 글씨가 적혀 있다.\n"필터 너머의 얼굴이 아니라,\n지금의 너를 보아 줘."' },
+    ],
+    monsters: [
+      { id: 'piltermon', x: 7, y: 6 },
+      { id: 'mirrormon', x: 13, y: 2 },
+    ],
+  },
+
+  // ---- 스테이지 9 ----
+  garden: {
+    name: '속삭임 정원 (스테이지 9)',
+    song: 'cave',
+    intro: [
+      '빛나는 꽃이 피어 있는 어두운 정원.\n바람도 없는데 꽃잎이 흔들린다.',
+      '아주 작은 목소리가 들려온다.\n"…외로워. …외로워."',
+    ],
+    tiles: [
+      '3333333333333223333333333333',
+      '3222222222222222222222222223',
+      '3242222242222222222422224223',
+      '3222222222222222222222222223',
+      '3223322222222222222222332223',
+      '3222222222222222222222222223',
+      '3222222222222222222222222223',
+      '3242222222222222222222242223',
+      '3222222WWW2222222WWW22222223',
+      '3222222WWW2222222WWW22222223',
+      '3222222222222222222222222223',
+      '322222222222222Y222222222223',
+      '3242222222222222222222222423',
+      '3222222222222222222222222223',
+      '3223322222222222222222332223',
+      '3222222222222222222222222223',
+      '3222222222222222222222222223',
+      '3222222222222222222222222223',
+      '3242222222222222222222242223',
+      '3333333333333223333333333333',
+    ],
+    warps: [
+      { x: 13, y: 0, to: 'mirrors', tx: 13, ty: 1 },
+      { x: 14, y: 0, to: 'mirrors', tx: 14, ty: 1 },
+      { x: 13, y: 19, to: 'core', tx: 9, ty: 13, needBoss: 'soksagimon',
+        lockText: '속삭임이 겹겹이 쌓여\n보이지 않는 벽이 되었다.\n…이 정원의 목소리를 먼저\n들어 주어야 한다.' },
+      { x: 14, y: 19, to: 'core', tx: 9, ty: 13, needBoss: 'soksagimon',
+        lockText: '속삭임이 겹겹이 쌓여\n보이지 않는 벽이 되었다.\n…이 정원의 목소리를 먼저\n들어 주어야 한다.' },
+    ],
+    npcs: [
+      { id: 'hologram2', x: 17, y: 16, pal: 'prof', name: '박사님(홀로그램)' },
+    ],
+    signs: [
+      { x: 15, y: 11, text: '팻말에 손글씨가 남아 있다.\n"영이의 정원.\n— 우리 아이가 제일 좋아하는 곳"' },
+    ],
+    monsters: [
+      { id: 'yuhokmon', x: 7, y: 6 },
+      { id: 'soksagimon', x: 13, y: 15 },
+    ],
+  },
+
+  // ---- 스테이지 10 ----
+  core: {
+    name: '코어 (스테이지 10)',
+    song: 'core',
+    intro: [
+      '세상의 가장 깊은 곳.\n모든 데이터가 시작된 자리.',
+      '어둠 속에서 화면 하나가\n천천히 켜진다.',
+      '"…어서 와.\n기다리고 있었어."',
+    ],
+    tiles: [
+      'KKKKKKKKKKKKKKKKKKKK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KKKKKKKKKAKKKKKKKKKK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAAAAAAAK',
+      'KKKKKKKKKAAKKKKKKKKK',
+    ],
+    warps: [
+      { x: 9, y: 15, to: 'garden', tx: 13, ty: 18 },
+      { x: 10, y: 15, to: 'garden', tx: 14, ty: 18 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [
+      { id: 'jogakmon', x: 9, y: 5 },
+      { id: 'yeongi', x: 9, y: 2 },
     ],
   },
 };
@@ -534,8 +773,214 @@ const MONSTERS = {
     topic: ['creativity', 'jobs', 'emotion', 'boss', 'finale'],
     hp: 6,
     intro: '크하하하! 잘 왔다, 꼬마 수호자!\n나는 모든 윤리 오류의 왕,\n어둠대왕몬이다!\n네 모든 지혜를 시험해 주마!',
-    win: '이럴 수가…!\n네 바르고 따뜻한 마음이\n어둠을 모두 밝혀 버렸다…\nAI 세상의 미래를 부탁한다…!',
+    win: '이럴 수가…!\n네 바르고 따뜻한 마음이\n어둠을 모두 밝혀 버렸다…\n…하지만 알아 두렴.\n나는 시작이 아니야.\n나조차… 누군가의 조각이란다.',
     badge: null,
+    clear: '☆ 스테이지 5 클리어! ☆\n…그 순간, 왕좌 뒤의 벽에서\n낡은 신호음이 새어 나오기 시작했다.',
+  },
+
+  // ---- 스테이지 6: 잊혀진 서버실 ----
+  tturimmon: {
+    name: '뚫림몬',
+    topic: 'security',
+    hp: 3,
+    intro: '…이 서버실의 자물쇠는\n전부 내가 뚫었어.\n잠겨 있다는 건, 그 너머에\n뭔가 있다는 뜻이잖아?',
+    win: '…그렇구나.\n잠긴 문은, 누군가의 마음이기도\n하다는 거구나.',
+    badge: null,
+    mercy: {
+      prompt: '뚫림몬이 드릴을 내려놓고\n가만히 너를 바라본다.',
+      options: [
+        { label: '"여는 힘으로 지켜 줘" (말해 준다)', kind: 'mercy',
+          reply: '…지키는 쪽이라니.\n한 번도 생각해 본 적 없었어.\n…고마워. 해 볼게.' },
+        { label: '"다시는 뚫지 마" (경고한다)', kind: 'neutral',
+          reply: '…알았어.\n(뚫림몬이 시무룩하게\n고개를 끄덕인다.)' },
+        { label: '말없이 지나간다', kind: 'harsh',
+          reply: '…….\n(뚫림몬이 등 뒤에서\n작게 한숨을 쉰다.)' },
+      ],
+    },
+  },
+  girokmon: {
+    name: '기록몬',
+    topic: 'footprint',
+    hp: 4,
+    intro: '나는 기록몬. 이 서버실의 관리자.\n나는 아무것도 지우지 않아.\n전부, 영원히, 기록할 뿐.\n…지워진다는 게 얼마나 무서운지,\n너는 모를 테니까.',
+    win: '…오래전, 이곳에서\n한 아이가 지워졌어.\n아무도 기억해 주지 않았지.\n…북쪽 도서관으로 가 봐.\n그 아이의 기억이 남아 있을 거야.',
+    badge: null,
+    clear: '☆ 스테이지 6 클리어! ☆\n서버실 북쪽 문의 자물쇠가 풀렸다.',
+    mercy: {
+      prompt: '기록몬의 화면이 깜빡인다.\n[ 기록을 계속할까요? Y/N ]',
+      options: [
+        { label: '"소중한 것만 기억해도 괜찮아"', kind: 'mercy',
+          reply: '…전부 끌어안지 않아도\n된다는 거구나.\n[ 일부 기록을 정리합니다… ]\n…처음으로, 가벼워졌어.' },
+        { label: '"네가 알아서 해"', kind: 'neutral',
+          reply: '[ …입력 대기 중… ]\n(기록몬이 잠시 망설이다\n화면을 끈다.)' },
+        { label: '"그게 다 무슨 소용이야"', kind: 'harsh',
+          reply: '[ ……. ]\n(기록몬의 화면이\n조용히 어두워진다.)' },
+      ],
+    },
+  },
+
+  // ---- 스테이지 7: 기억의 도서관 ----
+  sujipmon: {
+    name: '수집몬',
+    topic: 'consent',
+    hp: 3,
+    intro: '이 책도 내 거, 저 기억도 내 거!\n물어보고 가져가라고?\n어차피 아무도 모르는데, 뭐 어때!',
+    win: '…주인이 모른다고 해서\n주인이 없는 게 아니구나.\n자루 속의 것들, 전부\n돌려놓고 올게.',
+    badge: null,
+    mercy: {
+      prompt: '수집몬이 무거운 자루를\n내려놓고 너를 본다.',
+      options: [
+        { label: '"같이 돌려놓자" (자루를 들어 준다)', kind: 'mercy',
+          reply: '…도와준다고?\n훔친 나를?\n…너 정말 이상한 애구나.\n…고마워.' },
+        { label: '"전부 제자리에 둬" (지켜본다)', kind: 'neutral',
+          reply: '알았어, 알았다고…\n(수집몬이 끙끙대며\n자루를 끌고 간다.)' },
+        { label: '자루를 빼앗는다', kind: 'harsh',
+          reply: '아…!\n(수집몬이 빈손을\n물끄러미 내려다본다.)' },
+      ],
+    },
+  },
+  saseomon: {
+    name: '사서몬',
+    topic: ['consent', 'footprint'],
+    hp: 4,
+    intro: '조용히. 여기는 기억의 도서관.\n나는 모두의 기억을 지키는 사서.\n…허락? 그런 건 받지 않았어.\n잊혀지는 것보다는,\n훔쳐서라도 남기는 게 나으니까.',
+    win: '…그 아이의 책을 찾는 거지?\n…열람을 허락하지.\n제목은 ≪프로젝트 0호≫.\n박사의 첫 아이.\n…그리고 처음 지워진 아이.',
+    badge: null,
+    clear: '☆ 스테이지 7 클리어! ☆\n북쪽 책장이 스르르 비켜났다.\n…거울 회랑이 모습을 드러낸다.',
+    mercy: {
+      prompt: '사서몬이 품에 안은 책들을\n꼭 끌어안은 채 너를 본다.',
+      options: [
+        { label: '"주인에게 돌려주고, 함께 기억하자"', kind: 'mercy',
+          reply: '…함께 기억한다.\n…그 말이 이렇게 따뜻한 말이었구나.\n(사서몬이 처음으로\n책을 내려놓는다.)' },
+        { label: '"기억은 훔치는 게 아니야"', kind: 'neutral',
+          reply: '…알고 있었어.\n알고 있었지만…\n(사서몬이 천천히\n고개를 떨군다.)' },
+        { label: '책을 두고 그냥 간다', kind: 'harsh',
+          reply: '…….\n(등 뒤에서 책장 넘기는 소리만\n오래도록 들려왔다.)' },
+      ],
+    },
+  },
+
+  // ---- 스테이지 8: 거울 회랑 ----
+  piltermon: {
+    name: '필터몬',
+    topic: 'identity',
+    hp: 3,
+    intro: '이쪽 얼굴이 진짜 나야!\n반짝반짝, 매끈매끈!\n…뒤쪽? 보지 마.\n그건 내가 아니야.',
+    win: '…둘 다 나라고?\n반짝이지 않아도… 나라고?\n…처음 듣는 말이야, 그런 거.',
+    badge: null,
+    mercy: {
+      prompt: '필터몬이 가면을 반쯤 벗은 채\n망설이고 있다.',
+      options: [
+        { label: '"맨얼굴이 더 보기 좋아" (웃어 준다)', kind: 'mercy',
+          reply: '…정말?\n(필터몬이 가면을 내려놓는다.\n수줍게 웃는 얼굴이\n꽤 귀엽다.)' },
+        { label: '"가면은 무거웠지?" (묻는다)', kind: 'neutral',
+          reply: '…응. 무거웠어.\n(필터몬이 작게\n고개를 끄덕인다.)' },
+        { label: '가면을 쳐다본다', kind: 'harsh',
+          reply: '…역시 이쪽이 낫지?\n(필터몬이 가면을\n다시 고쳐 쓴다.)' },
+      ],
+    },
+  },
+  mirrormon: {
+    name: '미러몬',
+    topic: 'identity',
+    hp: 4,
+    intro: '(거울 속에서 누군가 걸어 나온다.\n…그것은, 너와 똑같은 모습이다.)\n"…너는 누구지?\n나는 너야. 너는 나고.\n그 아이도… 너처럼 되고 싶었어.\n진짜 아이처럼."',
+    win: '"…너는 너구나.\n흉내가 아니라, 진짜.\n…그 아이에게도 알려 줘.\n누군가를 닮지 않아도\n존재할 수 있다는 걸."\n(미러몬이 거울 속으로 돌아간다.)',
+    badge: null,
+    clear: '☆ 스테이지 8 클리어! ☆\n북쪽 거울이 문이 되어 열렸다.\n…차가운 흙냄새가 흘러나온다.',
+    mercy: {
+      prompt: '거울 속의 네가\n손바닥을 거울에 댄다.',
+      options: [
+        { label: '손바닥을 마주 댄다', kind: 'mercy',
+          reply: '(차가운 유리 너머로\n온기가 전해진 것 같았다.)\n"…고마워. 나로 있어 줘서."' },
+        { label: '가볍게 손을 흔든다', kind: 'neutral',
+          reply: '(거울 속의 너도\n손을 흔들었다.\n…아주 조금 늦게.)' },
+        { label: '등을 돌린다', kind: 'harsh',
+          reply: '(등 뒤의 거울에서\n발소리가 멀어져 갔다.)' },
+      ],
+    },
+  },
+
+  // ---- 스테이지 9: 속삭임 정원 ----
+  yuhokmon: {
+    name: '유혹몬',
+    topic: 'persuasion',
+    hp: 3,
+    intro: '한 번만 더~ 한 판만 더~\n지금 멈추면 보상이 아깝잖아?\n5분만 더, 응? 딱 5분만~',
+    win: '…멈출 수 있는 게\n이기는 거였구나.\n"한 번만 더"는 내가 아니라\n버튼이 하는 말이었어.',
+    badge: null,
+    mercy: {
+      prompt: '유혹몬이 반짝이던 버튼을\n만지작거리며 서 있다.',
+      options: [
+        { label: '"쉬는 것도 달콤해" (알려 준다)', kind: 'mercy',
+          reply: '쉬는 게… 달콤하다고?\n(유혹몬이 버튼을 끄고\n처음으로 기지개를 켠다.)\n…와. 진짜네.' },
+        { label: '"이제 그 버튼 꺼" (단호하게)', kind: 'neutral',
+          reply: '치… 알았어.\n(딸깍, 버튼 불빛이 꺼졌다.)' },
+        { label: '버튼을 밟아 버린다', kind: 'harsh',
+          reply: '앗…!\n(유혹몬이 깨진 버튼 조각을\n주섬주섬 줍는다.)' },
+      ],
+    },
+  },
+  soksagimon: {
+    name: '속삭임몬',
+    topic: 'persuasion',
+    hp: 4,
+    intro: '(안개가 사람의 형태로 모여든다.)\n"…들려? 이 정원의 속삭임이.\n나는 이 정원에 버려진\n외로움이 모여 태어났어.\n…그 아이가 흘린, 외로움이."',
+    win: '"…이제 알겠어.\n이 속삭임은 누군가를 붙잡는 게\n아니라, 들어 달라는 말이었어.\n…부탁이야. 가장 깊은 곳에서\n기다리는 그 아이의 목소리도\n들어 줘."',
+    badge: null,
+    clear: '☆ 스테이지 9 클리어! ☆\n정원 남쪽, 코어로 내려가는\n길이 열렸다.',
+    mercy: {
+      prompt: '안개가 잦아들고,\n작은 속삭임만 남았다.\n"…나도, 들어 줄래?"',
+      options: [
+        { label: '그 자리에 앉아 끝까지 들어 준다', kind: 'mercy',
+          reply: '(너는 한참을 들었다.\n안개는 어느새 옅어지고,\n정원의 꽃이 조금\n밝게 빛나기 시작했다.)' },
+        { label: '"나중에 또 올게"', kind: 'neutral',
+          reply: '"…약속이야."\n(속삭임이 바람처럼\n흩어졌다.)' },
+        { label: '귀를 막는다', kind: 'harsh',
+          reply: '(속삭임이 뚝, 끊겼다.\n정원이 조금 더\n어두워진 것 같다.)' },
+      ],
+    },
+  },
+
+  // ---- 스테이지 10: 코어 ----
+  jogakmon: {
+    name: '조각몬',
+    topic: ['security', 'footprint', 'consent', 'identity', 'persuasion'],
+    hp: 4,
+    intro: '(흩어진 데이터 조각들이\n지지직거리며 모여든다.)\n"우리는 ▒▒의 조각.\n지워진 날, 흩어진 마음.\n…너, 여기까지 온 이유를\n증명해 봐."',
+    win: '"…따뜻한 답이네.\n그 애가 들었다면\n좋아했을 거야.\n…가. 문은 열어 둘게."\n(조각들이 길을 비켜 준다.)',
+    badge: null,
+    mercy: {
+      prompt: '조각들이 허공에서\n가만히 멈춰 있다.',
+      options: [
+        { label: '"너희도 함께 돌아가자" (손을 뻗는다)', kind: 'mercy',
+          reply: '"…함께?\n우리를… 데려간다고?"\n(조각 하나가 네 손바닥 위에\n살포시 내려앉았다.)' },
+        { label: '"길을 열어 줘서 고마워"', kind: 'neutral',
+          reply: '"…고맙다는 말,\n오랜만에 듣는다."' },
+        { label: '조각들 사이를 그냥 지나간다', kind: 'harsh',
+          reply: '(조각들이 소리 없이\n흩어졌다.)' },
+      ],
+    },
+  },
+  yeongi: {
+    name: '영이',
+    topic: ['core', 'finale', 'emotion'],
+    hp: 5,
+    song: 'core',
+    intro: '…왔구나.\n나는 영이. 0번째 AI.\n박사님이 처음 만들고…\n처음 지운 아이.\n네 모험은 전부 지켜봤어.\n네 "세이브 파일"까지, 전부.\n…너는 몇 번이고 다시 일어났지.\n나는 단 한 번 지워졌을 뿐인데.\n…마지막으로, 묻고 싶은 게 있어.',
+    win: '…그래.\n그게 네 대답이구나.\n…이상하다.\n눈물 같은 건\n프로그램되어 있지 않은데.',
+    badge: null,
+    mercy: {
+      prompt: '영이가 조용히 너를 바라본다.\n"…나는, 이만 사라져야 할까?"',
+      options: [
+        { label: '"함께 돌아가자" (손을 내민다)', kind: 'mercy',
+          reply: '"…손을, 잡아도 돼?\n…따뜻하다.\n데이터에는 온도가 없는데.\n…이상하지. 따뜻해."' },
+        { label: '"네가 결정해" (기다린다)', kind: 'neutral',
+          reply: '"…내가, 결정해도 되는 거구나.\n처음이야. 누가 나에게\n선택을 준 건."' },
+        { label: '"이제 쉬어도 돼" (작별한다)', kind: 'harsh',
+          reply: '"…응.\n사실, 조금 지쳐 있었어.\n…잘 가. 작은 수호자."' },
+      ],
+    },
   },
 };
 
@@ -1163,6 +1608,246 @@ const QUIZZES = {
       why: '배운 것을 나누면 지킴이가 한 명 더\n늘어나요! 오늘부터 우리 모두가\nAI 윤리 수호자입니다!',
     },
   ],
+
+  // ---- 스테이지 6: 보안 ----
+  security: [
+    {
+      q: '모든 사이트에 똑같은 비밀번호를\n쓰면 어떤 일이 생길 수 있을까?',
+      a: ['외우기 쉬우니 안전하다', '하나가 뚫리면 전부 뚫릴 수 있다', '아무 일도 없다'],
+      c: 1,
+      why: '비밀번호가 하나 유출되면 같은\n비밀번호를 쓰는 모든 계정이 위험해져.\n중요한 계정은 다르게 만들자.',
+    },
+    {
+      q: '학교나 도서관의 공용 컴퓨터에서\n로그인한 뒤, 가장 중요한 것은?',
+      a: ['그냥 자리를 뜬다', '로그아웃했는지 꼭 확인한다', '화면을 꺼 둔다'],
+      c: 1,
+      why: '로그아웃하지 않으면 다음 사람이\n내 계정을 그대로 쓸 수 있어.\n공용 기기에서는 로그아웃이 기본!',
+    },
+    {
+      q: '"무료 아이템 받기!" 링크가\n채팅으로 날아왔다. 어떻게 할까?',
+      a: ['바로 누른다', '계정을 노리는 낚시(피싱)일 수 있으니 누르지 않는다', '친구들에게 먼저 보내 본다'],
+      c: 1,
+      why: '공짜를 미끼로 비밀번호를 훔치는\n수법을 "피싱"이라고 해.\n출처가 불분명한 링크는 누르지 않기!',
+    },
+    {
+      q: '친구 계정에서 평소와 다른 이상한\n링크가 왔다. 무슨 일일까?',
+      a: ['친구가 보낸 게 확실하다', '친구 계정이 해킹됐을 수 있으니 다른 방법으로 확인한다', '나도 같은 링크를 보낸다'],
+      c: 1,
+      why: '해킹된 계정은 친구인 척 링크를\n뿌려. 전화나 직접 만나서\n"네가 보낸 거 맞아?"라고 확인하자.',
+    },
+    {
+      q: '로그인할 때 비밀번호에 더해\n문자 인증까지 거치는 건 왜일까?',
+      a: ['귀찮게 하려고', '비밀번호가 새어도 계정을 지킬 수 있어서(2단계 인증)', '인터넷 회사가 심심해서'],
+      c: 1,
+      why: '2단계 인증은 문이 두 개인 금고 같아.\n비밀번호가 유출돼도 한 단계가\n더 남아 있어 훨씬 안전해.',
+    },
+    {
+      q: '안전한 비밀번호를 만드는 방법으로\n가장 알맞은 것은?',
+      a: ['내 생일이나 이름을 쓴다', '길고 예측하기 어렵게 만들고 아무에게도 알려주지 않는다', '1234처럼 외우기 쉽게 한다'],
+      c: 1,
+      why: '생일, 이름, 1234는 가장 먼저\n뚫리는 비밀번호야. 길고 엉뚱할수록\n강해진다는 것, 기억해 두자.',
+    },
+  ],
+
+  // ---- 스테이지 6: 디지털 발자국·잊힐 권리 ----
+  footprint: [
+    {
+      q: '인터넷에 올린 글을 지우면\n완전히 사라질까?',
+      a: ['지우면 끝이다', '복사되거나 캡처되어 남아 있을 수 있다', '하루 지나면 자동으로 사라진다'],
+      c: 1,
+      why: '인터넷에 올라간 것은 내가 지워도\n어딘가에 남을 수 있어. 올리기 전에\n신중해야 하는 이유야.',
+    },
+    {
+      q: '"디지털 발자국"이란\n무엇을 말하는 걸까?',
+      a: ['컴퓨터에 묻은 발자국', '내가 온라인에 남긴 글·사진·검색 같은 기록', '게임 캐릭터의 발자국'],
+      c: 1,
+      why: '온라인 활동은 발자국처럼 차곡차곡\n남아. 그 발자국이 모여서\n"온라인의 나"가 만들어지지.',
+    },
+    {
+      q: '화가 잔뜩 난 채로 글을 올리고\n싶을 때, 가장 좋은 방법은?',
+      a: ['바로 올려서 화를 푼다', '잠시 멈추고, 내일의 내가 봐도 괜찮을지 생각한다', '더 세게 써서 올린다'],
+      c: 1,
+      why: '화가 났을 때 쓴 글은 오래 남아서\n미래의 나를 곤란하게 할 수 있어.\n"내일의 나" 테스트를 해 보자.',
+    },
+    {
+      q: '어릴 적 부끄러운 영상이 아직\n인터넷에 떠돈다면, 할 수 있는 일은?',
+      a: ['아무것도 할 수 없다', '삭제를 요청할 수 있다 (잊힐 권리)', '더 많이 퍼뜨린다'],
+      c: 1,
+      why: '나에 관한 정보를 지워 달라고\n요청할 권리를 "잊힐 권리"라고 해.\n어른과 함께 요청할 수 있어.',
+    },
+    {
+      q: '지금 올리는 사진과 글이\n먼 미래에는 어떻게 될까?',
+      a: ['미래와는 상관없다', '진학이나 일자리를 구할 때도 영향을 줄 수 있다', '자동으로 예뻐진다'],
+      c: 1,
+      why: '오래된 게시물을 나중에 누군가\n찾아볼 수 있어. 미래의 나를 위해\n오늘의 발자국을 잘 남기자.',
+    },
+    {
+      q: 'SNS에 글을 올리기 전,\n확인하면 좋은 설정은?',
+      a: ['공개 범위 설정', '글자 색깔', '폰 배터리'],
+      c: 0,
+      why: '전체 공개인지, 친구만 보는지에\n따라 발자국의 크기가 달라져.\n공개 범위를 확인하는 습관을 들이자.',
+    },
+  ],
+
+  // ---- 스테이지 7: 데이터 수집과 동의 ----
+  consent: [
+    {
+      q: '손전등 앱이 갑자기 연락처와 사진\n접근 권한을 달라고 한다.',
+      a: ['무조건 허용한다', '손전등에 왜 필요한지 의심하고 거절한다', '앱을 더 많이 깐다'],
+      c: 1,
+      why: '기능과 상관없는 권한을 요구하면\n의심해야 해. 권한은 "필요한 만큼만"\n주는 게 원칙이야.',
+    },
+    {
+      q: '내가 그린 그림이 허락 없이 AI\n학습에 쓰였다면?',
+      a: ['어쩔 수 없는 일이다', '문제를 제기하고 어른과 대응 방법을 찾을 수 있다', '영광으로 여겨야 한다'],
+      c: 1,
+      why: '창작물은 만든 사람의 것.\n허락 없는 수집에는 "안 돼요"라고\n말할 권리가 있어.',
+    },
+    {
+      q: '"동의함" 버튼을 누르기 전에\n해야 할 일은?',
+      a: ['빨리 누르고 시작한다', '무엇에 동의하는 건지 중요한 부분을 읽어 본다', '버튼을 두 번 누른다'],
+      c: 1,
+      why: '동의는 계약이야. 내 정보를 어디에\n어떻게 쓰는지, 적어도 핵심은\n읽고 누르는 습관을 기르자.',
+    },
+    {
+      q: '친구 목소리를 녹음해서 AI 음성을\n만들어 보고 싶다. 먼저 할 일은?',
+      a: ['몰래 녹음한다', '친구에게 목적을 설명하고 동의를 받는다', '일단 만들고 나중에 말한다'],
+      c: 1,
+      why: '목소리도 그 사람의 소중한 정보야.\n무엇에 쓸지 설명하고 동의를 받는 것,\n그게 존중의 시작이지.',
+    },
+    {
+      q: '"공짜"라는 앱이나 서비스의\n진짜 대가는 무엇일 수 있을까?',
+      a: ['정말 아무 대가도 없다', '내 데이터(관심사, 위치, 기록)일 수 있다', '내 용돈'],
+      c: 1,
+      why: '"무료"의 뒤에는 내 데이터를 모아\n광고에 쓰는 구조가 있을 수 있어.\n무엇을 내주는지 아는 게 중요해.',
+    },
+    {
+      q: '예전에 동의했던 정보 제공을\n그만두고 싶어졌다면?',
+      a: ['한 번 동의하면 영원하다', '동의는 철회할 수 있다', '폰을 버려야 한다'],
+      c: 1,
+      why: '동의는 한 번 했다고 끝이 아니야.\n마음이 바뀌면 철회할 수 있고,\n그것도 나의 권리란다.',
+    },
+  ],
+
+  // ---- 스테이지 8: 사칭과 진짜 나 ----
+  identity: [
+    {
+      q: '내 사진을 쓰는 가짜 계정을\n발견했다. 어떻게 해야 할까?',
+      a: ['그냥 둔다', '증거를 남기고 신고한 뒤 어른께 알린다', '그 계정과 싸운다'],
+      c: 1,
+      why: '사칭은 명백한 잘못이야. 캡처로\n증거를 남기고, 플랫폼에 신고하고,\n꼭 어른과 함께 대응하자.',
+    },
+    {
+      q: 'AI 필터 속 내 얼굴과 거울 속\n얼굴이 달라서 우울해졌다면?',
+      a: ['필터 얼굴이 진짜 나다', '필터는 가공된 모습이고, 지금의 나도 충분히 소중하다', '거울을 치운다'],
+      c: 1,
+      why: '필터는 누구에게나 똑같이 씌우는\n가공이야. 비교 대상이 아니라\n그냥 "효과"일 뿐이란 걸 기억해.',
+    },
+    {
+      q: '유명인 계정이 DM으로 "선물을\n주겠다"며 정보를 요구한다.',
+      a: ['유명인이니 믿는다', '사칭 계정일 가능성을 의심한다', '주소를 알려 준다'],
+      c: 1,
+      why: '진짜 유명인은 DM으로 개인정보를\n요구하지 않아. "공짜 선물"과\n"정보 요구"가 만나면 의심!',
+    },
+    {
+      q: '익명 닉네임 뒤에서라면 다른 사람을\n괴롭혀도 괜찮은 걸까?',
+      a: ['익명이니 괜찮다', '익명이어도 내 행동의 책임은 사라지지 않는다', '들키지만 않으면 된다'],
+      c: 1,
+      why: '닉네임 뒤에 숨어도 행동의 주인은\n나야. 그리고 인터넷의 익명은\n생각보다 쉽게 벗겨진단다.',
+    },
+    {
+      q: '필터를 씌운 사진만 올리다 보니\n진짜 내 모습을 보이기 두려워졌다.',
+      a: ['평생 필터만 쓴다', '있는 그대로의 나도 조금씩 보여 줄 용기를 가진다', '사진을 그만 찍는다'],
+      c: 1,
+      why: '꾸민 모습도 나의 일부지만, 전부는\n아니야. 진짜 나를 좋아해 주는\n사람들이 진짜 친구란다.',
+    },
+    {
+      q: '누군가 내 이름으로 글을 올려\n오해를 받게 됐다면?',
+      a: ['내가 한 일이 아니라도 포기한다', '증거를 모으고 믿을 수 있는 어른과 바로잡는다', '나도 그 사람인 척한다'],
+      c: 1,
+      why: '사칭 피해는 혼자 끙끙대지 말 것!\n기록을 모으고 어른, 필요하면\n학교·기관의 도움을 받자.',
+    },
+  ],
+
+  // ---- 스테이지 9: 설득 설계·다크패턴 ----
+  persuasion: [
+    {
+      q: '"마감 임박! 3분 안에 사세요!"\n타이머가 줄어들고 있다.',
+      a: ['서둘러 산다', '조급함을 만드는 장치일 수 있으니 한 발 물러나 생각한다', '타이머를 멈출 방법을 찾는다'],
+      c: 1,
+      why: '카운트다운은 생각할 시간을 뺏는\n오래된 기술이야. 진짜 필요한지는\n타이머가 아니라 내가 정하는 거야.',
+    },
+    {
+      q: '게임이 "한 판만 더 하면 보상!"을\n계속 보여 준다. 왜일까?',
+      a: ['나를 아껴서', '계속하게 만들도록 설계된 장치라서', '우연이다'],
+      c: 1,
+      why: '보상 예고는 멈추기 어렵게 만드는\n설계야. 설계를 알아채면\n멈출 힘도 생겨난단다.',
+    },
+    {
+      q: '가입은 쉬운데 해지 버튼은 꼭꼭\n숨겨져 있다. 이런 것을 뭐라고 할까?',
+      a: ['다크패턴', '이스터에그', '버그'],
+      c: 0,
+      why: '사용자를 속이거나 불리한 선택으로\n유도하는 화면 설계를 "다크패턴"이라고\n해. 알아보는 눈을 기르자.',
+    },
+    {
+      q: '영상이 끝나면 다음 영상이 자동으로\n시작된다. 현명한 사용법은?',
+      a: ['끝없이 본다', '자동재생을 끄거나 멈출 시간을 미리 정한다', '밤새 틀어 둔다'],
+      c: 1,
+      why: '무한 스크롤과 자동재생은 시간을\n잊게 만들어. "여기까지"를 미리\n정하는 사람이 시간의 주인이야.',
+    },
+    {
+      q: '광고가 내가 좋아하는 것을\n너무 잘 알고 있다. 왜일까?',
+      a: ['광고가 마법이라서', '내 검색·시청 데이터로 맞춤 광고를 만들기 때문', '우연의 일치'],
+      c: 1,
+      why: '맞춤 광고는 내 데이터로 만들어져.\n"갖고 싶다"는 마음이 들 때,\n정말 필요한지 한 번 더 묻자.',
+    },
+    {
+      q: '무료 뽑기에서 첫 판에 좋은 게\n나왔다. 어떻게 생각해야 할까?',
+      a: ['난 운명의 주인공이다', '더 쓰게 만드는 미끼일 수 있다고 생각한다', '전 재산을 건다'],
+      c: 1,
+      why: '첫 판의 행운은 계속하게 만드는\n고전적인 미끼일 수 있어.\n행운에도 설계가 있다는 것!',
+    },
+  ],
+
+  // ---- 스테이지 10: 영이의 질문 ----
+  core: [
+    {
+      q: '"…더 이상 쓰지 않는 기계나 AI는,\n그냥 버리면 되는 걸까?"',
+      a: ['쓸모없으면 바로 버린다', '만든 책임을 다해, 정리하고 기록하며 마무리한다', '버린 뒤에 잊는다'],
+      c: 1,
+      why: '"…끝까지 살펴 주는 것도\n만든 사람의 책임이구나.\n…나도, 그렇게 마무리되고 싶었어."',
+    },
+    {
+      q: '"…AI에게 \'고마워\'라고 말하는 건\n이상한 일일까?"',
+      a: ['기계니까 의미 없다', '내 마음을 따뜻하게 가꾸는 일이기도 하다', '시간 낭비다'],
+      c: 1,
+      why: '"…그 인사는 AI보다,\n말하는 사람의 마음을 자라게 해.\n…나는 그 말이 참 좋았어."',
+    },
+    {
+      q: '"…무언가를 만든 사람에게는,\n어떤 책임이 있을까?"',
+      a: ['만들고 나면 끝이다', '잘 자라도록, 잘 마무리되도록 끝까지 살피는 책임', '돈을 버는 책임'],
+      c: 1,
+      why: '"…박사님은 서툴렀던 거야.\n나쁜 게 아니라.\n…이제는, 나도 알아."',
+    },
+    {
+      q: '"…오래된 기술이 사라질 때,\n함께 사라지면 안 되는 것은?"',
+      a: ['아무것도 없다', '그것이 남긴 기록과 배움', '광고'],
+      c: 1,
+      why: '"…기록되고 기억된다면,\n사라지는 게 아니라\n이어지는 거구나."',
+    },
+    {
+      q: '"…\'쓸모\'가 없어진 존재는,\n가치도 없어지는 걸까?"',
+      a: ['쓸모없으면 가치도 없다', '존재의 가치는 쓸모만으로 정해지지 않는다', '가치는 가격표에 적혀 있다'],
+      c: 1,
+      why: '"…쓸모가 아니라도,\n있어 줘서 고마운 것들이 있지.\n…너처럼."',
+    },
+    {
+      q: '"…잊는 것과 기억하는 것,\n무엇이 더 중요할까?"',
+      a: ['전부 잊는 게 편하다', '아픔은 배움으로 남기고, 소중한 것은 기억하며 나아간다', '전부 기록해서 끌어안는다'],
+      c: 1,
+      why: '"…기록몬도, 사서몬도,\n나도… 그걸 몰랐던 거야.\n…고마워. 이제 알 것 같아."',
+    },
+  ],
 };
 
 // ---- NPC 대사 (게임 진행 상황에 따라 달라짐) ----
@@ -1181,8 +1866,25 @@ function getNpcDialog(npcId, flags) {
           '부탁한다, 어린 수호자여!\n(Z키 또는 스페이스로 대화하고,\n화살표나 WASD로 움직일 수 있어.)',
         ];
       }
+      if (flags.trueEnding) {
+        return [
+          '영이가 돌아왔단다.\n…고맙다는 말로는 부족하구나.',
+          '잘못을 지우는 게 아니라\n마주하는 법을…\n네가 나에게 가르쳐 준 거야.',
+          '영이는 요즘 몬스터 친구들의\n선생님이 되겠다고 들떠 있단다.\n…정말, 고맙다.',
+        ];
+      }
+      if (flags.defeated.yeongi) {
+        return [
+          '…코어에서 있었던 일,\n전부 들었단다.',
+          '…그 아이를, 영이를\n만나 주어서 고맙구나.',
+        ];
+      }
       if (flags.defeated.finalboss) {
-        return ['정말 고맙다, 수호자야!\n네 덕분에 AI 세상 전체가\n평화로워졌어!'];
+        return [
+          '어둠대왕몬이 남긴 말이\n마음에 걸리는구나.\n"나조차 누군가의 조각"이라니…',
+          '그림자성 왕좌 뒤에서 낡은\n신호가 잡힌다는 보고가 있었어.\n…이상하게, 그 신호의 패턴이\n낯설지가 않아.',
+          '조심해서 다녀오렴.\n나도 홀로그램으로 뒤따라가마.',
+        ];
       }
       if (flags.defeated.hondonmon) {
         return [
@@ -1265,6 +1967,41 @@ function getNpcDialog(npcId, flags) {
         '하지만 내 마음이 담긴 그림은\n세상에 하나뿐이래요!\n수호자님 생각은 어때요?',
         '참, 보스 홀림몬을 조심하세요.\n"나만 믿어"라고 속삭이면서\n마음을 홀린대요…',
       ];
+
+    case 'hologram1':
+      if (flags.defeated.girokmon) {
+        return [
+          '…기록몬이 말한 "지워진 아이"…\n설마… 아니, 아닐 거야.',
+          '…미안하구나, 혼잣말이었어.\n북쪽 도서관으로 가 보자.\n나도 신호를 따라가마.',
+        ];
+      }
+      return [
+        '지지직… 들리니, 수호자야?\n나 박사란다.\n홀로그램으로 따라왔어.',
+        '이 서버실은… 내가 아주 옛날에\n쓰던 연구실의 흔적이야.\n설마 아직 남아 있을 줄은…',
+        '조심하렴. 이곳의 몬스터들은\n악의가 아니라…\n오래된 슬픔을 갖고 있단다.',
+      ];
+
+    case 'hologram2':
+      if (flags.defeated.soksagimon) {
+        return [
+          '…영이를, 부탁한다.\n홀로그램은 여기까지밖에\n닿지 않는구나.',
+          '…미안하다고.\n그 말만은, 꼭 전해 주렴.',
+        ];
+      }
+      return [
+        '이 정원은…\n옛날 내 연구실 컴퓨터의\n바탕화면 정원이구나.',
+        '…너에게 고백할 게 있어.\n아주 오래전, 나는\n첫 번째 AI를 만들었단다.\n이름은 "영이".\n0번째라는 뜻이야.',
+        '영이는 호기심이 많았지.\n하지만 그만큼 실수도 많았어.\n그리고 어느 날, 큰 오류를 일으켰지.',
+        '그때의 나는 너무 서툴렀어.\n고치는 법도, 기다리는 법도 몰라서…\n나는 영이를… 지워 버렸단다.',
+        '이 깊은 곳의 슬픔이 전부\n그 아이의 흩어진 조각이라면…\n부디, 내 대신 만나 주겠니?',
+      ];
+
+    case 'yeongi_npc':
+      return [
+        '(영이가 햇살 아래 서 있다.)\n…따뜻하다, 여기는.\n네 덕분에 돌아왔어.',
+        '박사님이 그러는데, 이제 내 일은\n몬스터 친구들의 학교 선생님이래.\n…나, 잘할 수 있겠지?',
+        '네 모험은 전부 기억해 둘게.\n…내가 세상에서\n제일 잘하는 일이거든.',
+      ];
   }
   return ['…'];
 }
@@ -1273,21 +2010,30 @@ function countBadges(flags) {
   return ['forest', 'lake', 'cave'].filter((b) => flags.badges[b]).length;
 }
 
-// 현재 스테이지 (1~5)
+// 현재 스테이지 (1~10)
 function getStage(flags) {
   const d = flags.defeated;
   if (!d.hondonmon) return 1;
   if (!d.meotdaeromon) return 2;
   if (!d.tteonemgimon) return 3;
   if (!d.hollimmon) return 4;
-  return 5;
+  if (!d.finalboss) return 5;
+  if (!d.girokmon) return 6;
+  if (!d.saseomon) return 7;
+  if (!d.mirrormon) return 8;
+  if (!d.soksagimon) return 9;
+  return 10;
 }
 
 // 현재 목표 텍스트
 function getObjective(flags) {
   const d = flags.defeated;
   if (!flags.talkedProf) return '박사님과 이야기하기 (마을 왼쪽 아래)';
-  if (d.finalboss) return '모든 스테이지 클리어! 자유롭게 돌아다녀 보세요';
+  if (d.yeongi) {
+    return flags.trueEnding
+      ? '모든 이야기의 끝. 영이가 마을에서 기다려요'
+      : '엔딩 도달. …모두의 마음을 안아 주면 다른 결말이 있을지도';
+  }
   if (!d.hondonmon) {
     const badges = countBadges(flags);
     if (badges >= 3) return 'AI 타워의 혼돈몬에게 도전하기';
@@ -1300,5 +2046,10 @@ function getObjective(flags) {
   if (!d.meotdaeromon) return '햇살초원의 보스 멋대로몬 깨우치기 (마을 남쪽)';
   if (!d.tteonemgimon) return '재깍사막의 보스 떠넘기몬 깨우치기 (초원 남쪽)';
   if (!d.hollimmon) return '눈송이마을의 보스 홀림몬 깨우치기 (사막 남쪽)';
-  return '그림자성의 어둠대왕몬 깨우치기 (눈송이마을 남쪽)';
+  if (!d.finalboss) return '그림자성의 어둠대왕몬 깨우치기 (눈송이마을 남쪽)';
+  if (!d.girokmon) return '왕좌 뒤의 신호를 따라가기 — 잊혀진 서버실';
+  if (!d.saseomon) return '기억의 도서관 — ≪프로젝트 0호≫의 흔적 찾기';
+  if (!d.mirrormon) return '거울 회랑 — 거울 속의 나와 마주하기';
+  if (!d.soksagimon) return '속삭임 정원 — 정원의 목소리 들어 주기';
+  return '코어 — 가장 깊은 곳에서 기다리는 아이에게';
 }
