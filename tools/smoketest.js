@@ -100,9 +100,19 @@ function answerQuestion(correct) {
   if (b.feedback.correct !== correct) throw new Error('정답 판정 오류');
   tap('z'); // 피드백 닫기
 }
+// 보스 회피 구간이 뜨면 (입력 없이) 끝날 때까지 빠르게 넘긴다.
+let dodgeSeen = false;
+function skipDodgeIfAny() {
+  if (g.mode === 'battle' && g.battle && g.battle.phase === 'dodge') {
+    dodgeSeen = true;
+    let guard = 0;
+    while (g.battle && g.battle.phase === 'dodge' && guard++ < 4000) step(1);
+    if (g.battle && g.battle.phase === 'dodge') throw new Error('회피 구간이 끝나지 않음');
+  }
+}
 function fightAndWin(hp, wrongFirst = 0) {
-  for (let i = 0; i < wrongFirst; i++) answerQuestion(false);
-  for (let i = 0; i < hp && g.mode === 'battle'; i++) answerQuestion(true);
+  for (let i = 0; i < wrongFirst; i++) { answerQuestion(false); skipDodgeIfAny(); }
+  for (let i = 0; i < hp && g.mode === 'battle'; i++) { answerQuestion(true); skipDodgeIfAny(); }
 }
 // 모든 몬스터: 퀴즈를 모두 맞히면 '마음의 선택'이 나온다
 function fightWithMercy(hp, mercyIdx = 0, wrongFirst = 0) {
@@ -218,7 +228,10 @@ tap('z');
 advanceDialog();
 check('보스전 시작', g.mode === 'battle' && g.battle.monId === 'hondonmon' && g.battle.monMaxHp === 5);
 check('보스전은 하트 4개', g.battle.maxHearts === 4);
+check('보스는 회피 공격을 가짐', !!g.battle.attack);
 fightWithMercy(5, 0);
+check('보스전에서 회피 구간이 발동됨', dodgeSeen === true);
+check('회피 중에도 하트는 0이 되지 않음', g.flags.defeated.hondonmon === true);
 advanceDialog();
 check('스테이지 1 클리어 (엔딩 아님)', g.mode === 'world' && g.flags.defeated.hondonmon);
 
@@ -372,5 +385,23 @@ check('작별: 차가운 마지막 선택', computeEnding('harsh', 28) === 'fare
 check('침묵: 자비 6 이하', computeEnding('mercy', 3) === 'silent');
 const endingsSeen = JSON.parse(storage.get('ai-ethics-adventure-endings'));
 check('엔딩 수집 기록(타이틀 표시용)', endingsSeen.home === true);
+
+console.log('[24] 도감 — 수집 기록 + 열고 닫기');
+const dexSeen = JSON.parse(storage.get('ai-ethics-adventure-dex'));
+const { DEX_ORDER, MONSTER_DEX } = vm.runInContext('({ DEX_ORDER, MONSTER_DEX })', sandbox);
+// 깨운 몬스터는 빠짐없이 도감에 기록되어 있어야 한다
+const defeatedIds = Object.keys(g.flags.defeated).filter((id) => g.flags.defeated[id]);
+check('깨운 몬스터 전부 도감에 기록', defeatedIds.every((id) => dexSeen[id] && dexSeen[id].seen));
+check('미발견 몬스터는 도감에 없음', DEX_ORDER.some((id) => !dexSeen[id]));
+check('작별 선택도 기록(영이=mercy)', dexSeen.yeongi.mercy === 'mercy');
+check('모든 몬스터 도감 정보 존재', DEX_ORDER.every((id) => MONSTER_DEX[id] && MONSTER_DEX[id].learn));
+// 월드에서 C로 도감 열기
+check('월드 상태', g.mode === 'world');
+tap('c');
+check('도감 열림', g.mode === 'dex');
+tap('ArrowDown'); tap('ArrowRight');
+check('도감에서 커서 이동', g.dex.cursor > 0);
+tap('x');
+check('도감 닫고 월드 복귀', g.mode === 'world');
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

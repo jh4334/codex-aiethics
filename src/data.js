@@ -2264,3 +2264,149 @@ function getObjective(flags) {
   if (!d.soksagimon) return '속삭임 정원 — 정원의 목소리 들어 주기';
   return '코어 — 가장 깊은 곳에서 기다리는 아이에게';
 }
+
+// ===== 도감 =====
+// 깨우친 몬스터의 한 줄 주제와 배운 점. (도감 화면에서 사용)
+const MONSTER_DEX = {
+  bekkyeomon:    { stage: 1, theme: '저작권 · 출처 밝히기', learn: '남이 만든 것에는 마음이 담겨 있어요. 가져다 쓸 땐 출처를 밝혀요.' },
+  mollaemon:     { stage: 1, theme: '개인정보 보호', learn: '이름·주소·비밀번호는 소중한 보물. 함부로 주거나 훔쳐보지 않아요.' },
+  jungdokmon:    { stage: 1, theme: '절제 · 균형', learn: 'AI와 화면 밖에도 소중한 시간이 있어요. 스스로 멈출 줄 아는 힘.' },
+  geojitmon:     { stage: 1, theme: '가짜 정보 분별', learn: '놀라운 소식일수록 사실인지 확인. 거짓은 퍼질수록 누군가를 다치게 해요.' },
+  pyeonhyangmon: { stage: 1, theme: '편향 · 공정함', learn: '한쪽 말만 듣지 않기. 여러 사람의 이야기를 골고루 들어요.' },
+  hondonmon:     { stage: 1, theme: '1스테이지 종합', learn: '바른 답들이 모이면 큰 매듭도 풀려요.' },
+  akpeulmon:     { stage: 2, theme: '챗봇 예절 · 고운 말', learn: '화면 너머에도 사람의 마음이 있어요. 쓰기 전에 한 번 더 생각해요.' },
+  gatimmon:      { stage: 2, theme: '추천 알고리즘 · 필터버블', learn: '좋아하는 것만 보면 생각이 좁아져요. 가끔은 바깥세상도 보아요.' },
+  meotdaeromon:  { stage: 2, theme: 'AI 안전 · 사람의 확인', learn: '중요한 일은 꼭 사람과 함께 확인. 빠른 것보다 안전한 것이 먼저예요.' },
+  pungpungmon:   { stage: 3, theme: 'AI와 환경 · 에너지', learn: 'AI도 전기와 물을 써요. 꼭 필요할 때 아껴서 똑똑하게.' },
+  kkamkkammon:   { stage: 3, theme: '투명성 · 설명 가능성', learn: '"왜?"라고 물을 수 있어요. 이유를 설명해 주는 AI가 믿음직해요.' },
+  tteonemgimon:  { stage: 3, theme: '책임', learn: 'AI를 쓴 사람에게 책임이 있어요. 내 행동은 내가 책임져요.' },
+  sideulmon:     { stage: 4, theme: '창의성 · 노력의 가치', learn: '내 마음이 담긴 작품은 세상에 하나뿐. 서툴러도 소중해요.' },
+  ppaeatmon:     { stage: 4, theme: 'AI와 일자리 · 협력', learn: 'AI는 빼앗는 게 아니라 돕는 것. 함께하면 더 멋진 일을 해요.' },
+  hollimmon:     { stage: 4, theme: 'AI와 사람의 관계', learn: '진짜 마음은 사람과 나눠요. AI는 좋은 도구일 뿐이에요.' },
+  maearimon:     { stage: 5, theme: '복습 · 1스테이지', learn: '배운 것은 메아리처럼 오래 울려요.' },
+  geurimjamon:   { stage: 5, theme: '복습 · 2~3스테이지', learn: '그림자도 빛의 일부. 지혜는 시험을 통과해요.' },
+  finalboss:     { stage: 5, theme: '전체 종합', learn: '따뜻한 답이 어둠을 밝혀요. 끝은 또 다른 시작.' },
+  tturimmon:     { stage: 6, theme: '계정 보안 · 피싱', learn: '비밀번호는 길고 다르게, 수상한 링크는 누르지 않기. 잠긴 문은 누군가의 마음.' },
+  girokmon:      { stage: 6, theme: '디지털 발자국 · 잊힐 권리', learn: '올린 것은 쉽게 안 지워져요. 소중한 것만 기억하고, 지울 권리도 있어요.' },
+  sujipmon:      { stage: 7, theme: '데이터 수집과 동의', learn: '주인이 모른다고 가져가도 되는 건 아니에요. 동의를 받고, 철회할 수도 있어요.' },
+  saseomon:      { stage: 7, theme: '동의 · 기억의 존중', learn: '함께 기억하기. 잊혀지는 게 두려워도 훔치는 건 답이 아니에요.' },
+  piltermon:     { stage: 8, theme: 'AI 필터 · 진짜 나', learn: '필터는 가공된 모습. 반짝이지 않아도 지금의 나는 충분해요.' },
+  mirrormon:     { stage: 8, theme: '사칭 · 신원', learn: '누군가를 닮지 않아도 나는 나. 익명 뒤에서도 책임은 사라지지 않아요.' },
+  yuhokmon:      { stage: 9, theme: '다크패턴 · 설득 설계', learn: '"한 번만 더"는 버튼의 말. 멈출 시간을 스스로 정해요.' },
+  soksagimon:    { stage: 9, theme: '설득 · 외로움', learn: '속삭임은 들어 달라는 말. 붙잡는 설계를 알아채면 멈출 힘이 생겨요.' },
+  jogakmon:      { stage: 10, theme: '심층부 종합', learn: '흩어진 마음도 따뜻한 답 앞에서는 길을 비켜 줘요.' },
+  yeongi:        { stage: 10, theme: '존재의 가치 · 책임', learn: '쓸모가 없어져도 가치는 사라지지 않아요. 만든 것은 끝까지 책임져요.' },
+};
+
+// 도감/타이틀 표시용 몬스터 순서
+const DEX_ORDER = [
+  'bekkyeomon', 'mollaemon', 'jungdokmon', 'geojitmon', 'pyeonhyangmon', 'hondonmon',
+  'akpeulmon', 'gatimmon', 'meotdaeromon', 'pungpungmon', 'kkamkkammon', 'tteonemgimon',
+  'sideulmon', 'ppaeatmon', 'hollimmon', 'maearimon', 'geurimjamon', 'finalboss',
+  'tturimmon', 'girokmon', 'sujipmon', 'saseomon', 'piltermon', 'mirrormon',
+  'yuhokmon', 'soksagimon', 'jogakmon', 'yeongi',
+];
+
+// ===== 보스 회피 미니게임 =====
+// 보스의 HP가 절반으로 떨어지는 순간, 그 마음이 '폭주'하며 짧은 회피 구간이 펼쳐진다.
+// 맞아도 하트는 1 아래로는 줄지 않아(절대 게임오버 없음) 아이들도 부담 없이 즐긴다.
+//  pattern: 'rain'(위에서 쏟아짐) | 'sides'(양옆에서) | 'burst'(사방으로 퍼짐)
+const BOSS_ATTACKS = {
+  hondonmon:    { pattern: 'rain',  dur: 300, color: '#9b5de5', taunt: '…내 마음이, 엉킨다…!' },
+  meotdaeromon: { pattern: 'sides', dur: 300, color: '#f08a24', taunt: '멈출 수… 없어!' },
+  tteonemgimon: { pattern: 'burst', dur: 300, color: '#5cb85c', taunt: '내 탓이… 아니야!' },
+  hollimmon:    { pattern: 'rain',  dur: 320, color: '#9b5de5', taunt: '가지 마… 가지 마…' },
+  finalboss:    { pattern: 'burst', dur: 360, color: '#d62828', taunt: '어둠이… 몰아친다!' },
+  girokmon:     { pattern: 'rain',  dur: 300, color: '#7bd1f0', taunt: '지워지지 않아… 전부 남아!' },
+  saseomon:     { pattern: 'sides', dur: 300, color: '#d62828', taunt: '돌려줄 수 없어… 전부 내 거야!' },
+  mirrormon:    { pattern: 'burst', dur: 320, color: '#9aa0b0', taunt: '나는 너… 너는 나…!' },
+  soksagimon:   { pattern: 'rain',  dur: 320, color: '#3a2e4d', taunt: '…외로워… 외로워…' },
+  jogakmon:     { pattern: 'sides', dur: 300, color: '#7bd1f0', taunt: '흩어진다… 흩어진다…!' },
+  yeongi:       { pattern: 'burst', dur: 360, color: '#7bd1f0', taunt: '…마지막으로, 내 마음을 보여 줄게.' },
+};
+
+function getBossAttack(monId) {
+  return BOSS_ATTACKS[monId] || null;
+}
+
+// ===== 조사(살펴보기) 텍스트 =====
+// 타일 종류에 따른 기본 살펴보기 문구. (언더테일식 소소한 재미)
+const EXAMINE_TILES = {
+  G: '풀이 부드럽게 돋아 있다.', 2: '어두운 풀숲. 발밑이 서늘하다.',
+  P: '잘 다져진 길. 많은 발자국이 지나갔다.',
+  F: '예쁜 꽃이 피어 있다. …꺾지 않고 두기로 했다.',
+  4: '빛나는 꽃. 가만히 보면 작은 목소리가 새어 나온다.',
+  S: '따뜻한 모래. 발자국이 금방 지워진다.',
+  Z: '뽀드득. 눈을 밟는 소리가 기분 좋다.',
+  C: '동굴 바닥. 발소리가 길게 울린다.', M: '탑의 바닥. 아주 오래된 돌이다.',
+  I: '도서관의 낡은 마룻바닥. 삐걱, 소리가 난다.', A: '글리치가 낀 바닥. 밟을 때마다 색이 번진다.',
+  E: '낡은 기계 바닥. 먼지가 소복하다.',
+  T: '나무다. 이런 그늘만큼은, AI도 못 만들지.',
+  J: '눈을 인 나무. 가지를 톡 치니 눈이 후두둑 쏟아진다.',
+  3: '어두운 나무. 잎사귀가 바스락거린다.',
+  W: '맑은 물. 들여다보니 내 얼굴이 일렁인다.',
+  O: '아늑한 지붕. 굴뚝에서 연기가 피어오른다.',
+  H: '튼튼한 벽. 누군가의 따뜻한 집이다.',
+  R: '커다란 바위. 밀어 봤지만 꿈쩍도 안 한다.',
+  K: '차갑고 축축한 동굴 벽이다.', N: '서늘한 탑의 벽. 손끝이 시리다.',
+  '*': '맑은 수정. 들여다보면 작은 무지개가 어린다.',
+  L: '책이 빼곡하다. 책등마다 누군가의 이름이 적혀 있다.',
+  V: '서버 랙. 작은 불빛이 깜빡인다. …아직 무언가, 돌아가고 있다.',
+  Q: '거울이다. …방금, 거울 속의 내가 먼저 웃지 않았나?',
+  X: '선인장. 가시가 따끔해 보인다. 멀리서 인사만.',
+  D: '문이 잠겨 있다. 주인이 잠시 자리를 비운 모양이다.',
+};
+
+// 맵별 특별 살펴보기 지점(좌표). 같은 좌표면 기본 타일 문구보다 우선.
+const MAP_PROPS = {
+  village: [
+    { x: 5, y: 15, text: '하늘마을의 연못.\n물고기 대신 작은 빛 알갱이가\n헤엄치고 있다.' },
+    { x: 21, y: 14, text: '벽에 붙은 게시판.\n"제1회 AI 바르게 쓰기 그림 대회"\n포스터가 붙어 있다.' },
+  ],
+  forest: [
+    { x: 13, y: 2, text: '나무 둥치에 누군가\n작게 새겨 놓았다.\n"여기서부터, 용기."' },
+  ],
+  lake: [
+    { x: 14, y: 7, text: '호수에 놓인 작은 다리.\n발밑으로 물고기 그림자가\n스쳐 지나간다.' },
+  ],
+  cave: [
+    { x: 3, y: 3, text: '수정 더미.\n수많은 데이터 조각이\n반짝이며 잠들어 있다.' },
+  ],
+  meadow: [
+    { x: 3, y: 4, text: '초원에 외따로 선 나무.\n그늘이 꼭 쉬어 가라는 것 같다.' },
+  ],
+  desert: [
+    { x: 2, y: 2, text: '모래에 반쯤 묻힌 표지석.\n"…데이터센터 가는 길"\n나머지는 모래에 지워졌다.' },
+  ],
+  snow: [
+    { x: 16, y: 9, text: '꽁꽁 언 작은 연못.\n얼음 아래로 작은 빛이\n천천히 헤엄친다.' },
+  ],
+  castle: [
+    { x: 9, y: 9, text: '먼지 쌓인 왕좌.\n앉았던 자리만 닳아 있다.\n…꽤 오래 혼자였구나.' },
+  ],
+  serverroom: [
+    { x: 2, y: 2, text: '꺼진 모니터.\n전원을 넣자 한 줄이 떠오른다.\n"프로젝트 0호 — 마지막 백업"' },
+  ],
+  library: [
+    { x: 7, y: 2, text: '한 권만 거꾸로 꽂힌 책.\n표지에 작게 ≪0≫.\n…펴 보려 하자 스르륵 닫힌다.' },
+  ],
+  mirrors: [
+    { x: 7, y: 4, text: '유난히 깨끗한 거울.\n거울 속 네가, 너보다\n반 박자 늦게 손을 든다.' },
+  ],
+  garden: [
+    { x: 13, y: 8, text: '작은 화분.\n흙에 이름표가 꽂혀 있다.\n"영이가 심음 — 물 주는 거 잊지 마"' },
+  ],
+  core: [
+    { x: 9, y: 13, text: '바닥에 흐릿한 분필 자국.\n키 재기 눈금이다.\n맨 아래 칸에 "영이"라고\n적혀 있다.' },
+  ],
+};
+
+function getPropAt(mapId, x, y) {
+  const list = MAP_PROPS[mapId];
+  if (!list) return null;
+  return list.find((p) => p.x === x && p.y === y) || null;
+}
+
+function getExamineTile(ch) {
+  return EXAMINE_TILES[ch] || null;
+}

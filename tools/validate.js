@@ -18,8 +18,9 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js']) {
   vm.runInContext(code, ctx, { filename: f });
 }
 
-const { MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL } =
-  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL })', ctx);
+const { MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL,
+  MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS } =
+  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS })', ctx);
 
 let errors = 0;
 const err = (msg) => { console.error('ERROR: ' + msg); errors++; };
@@ -154,6 +155,45 @@ for (const [id, mon] of Object.entries(MONSTERS)) {
       if (o.kind === 'mercy') mercyCount++;
     }
     if (mercyCount !== 1) err(`몬스터 ${id}: 'mercy' 선택지는 정확히 1개여야 함 (현재 ${mercyCount})`);
+  }
+}
+
+// 8. 도감: 모든 몬스터가 도감 정보를 가지며, DEX_ORDER가 정확히 일치
+for (const id of Object.keys(MONSTERS)) {
+  if (!MONSTER_DEX[id]) err(`도감: 몬스터 ${id} 정보 없음`);
+  else {
+    if (!MONSTER_DEX[id].theme) err(`도감 ${id}: theme 없음`);
+    if (!MONSTER_DEX[id].learn) err(`도감 ${id}: learn 없음`);
+  }
+  if (!DEX_ORDER.includes(id)) err(`도감 순서(DEX_ORDER)에 ${id} 빠짐`);
+}
+for (const id of DEX_ORDER) {
+  if (!MONSTERS[id]) err(`DEX_ORDER의 ${id}는 존재하지 않는 몬스터`);
+}
+if (DEX_ORDER.length !== new Set(DEX_ORDER).size) err('DEX_ORDER에 중복 있음');
+
+// 9. 보스 공격: 패턴/지속시간이 올바른지
+for (const [id, atk] of Object.entries(BOSS_ATTACKS)) {
+  if (!MONSTERS[id]) err(`보스 공격: ${id}는 존재하지 않는 몬스터`);
+  if (!['rain', 'sides', 'burst'].includes(atk.pattern)) err(`보스 공격 ${id}: 패턴 '${atk.pattern}' 잘못됨`);
+  if (!(atk.dur > 0)) err(`보스 공격 ${id}: dur 잘못됨`);
+}
+
+// 10. 조사 지점: 맵 범위 안 + 인접 칸이 이동 가능(살펴볼 수 있어야 함)
+for (const [mapId, props] of Object.entries(MAP_PROPS)) {
+  const m = MAPS[mapId];
+  if (!m) { err(`조사: 맵 '${mapId}' 없음`); continue; }
+  for (const p of props) {
+    if (p.y < 0 || p.y >= m.tiles.length || p.x < 0 || p.x >= m.tiles[0].length) {
+      err(`조사 ${mapId} (${p.x},${p.y}): 맵 범위 밖`); continue;
+    }
+    if (!p.text) err(`조사 ${mapId} (${p.x},${p.y}): 텍스트 없음`);
+    const faceable = [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => {
+      const nx = p.x + dx, ny = p.y + dy;
+      if (ny < 0 || ny >= m.tiles.length || nx < 0 || nx >= m.tiles[0].length) return false;
+      return WALKABLE.has(m.tiles[ny][nx]);
+    });
+    if (!faceable) err(`조사 ${mapId} (${p.x},${p.y}): 마주 볼 수 있는 칸이 없음`);
   }
 }
 

@@ -30,6 +30,7 @@
     time: 0,
     titleCursor: 0,
     endingT: 0,
+    dex: { cursor: 0, ret: 'title' },
   };
 
   function newFlags() {
@@ -90,6 +91,24 @@
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
 
+  // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
+  const DEX_KEY = 'ai-ethics-adventure-dex';
+  function getDexSeen() {
+    try { return JSON.parse(localStorage.getItem(DEX_KEY)) || {}; }
+    catch (e) { return {}; }
+  }
+  function recordDexSeen(monId, mercyKind) {
+    try {
+      const seen = getDexSeen();
+      seen[monId] = { seen: true, mercy: mercyKind || (seen[monId] && seen[monId].mercy) || null };
+      localStorage.setItem(DEX_KEY, JSON.stringify(seen));
+    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+  function dexSeenCount() {
+    const seen = getDexSeen();
+    return DEX_ORDER.filter((id) => seen[id] && seen[id].seen).length;
+  }
+
   // ---------- 입력 ----------
   const held = new Set();
   const pressed = new Set();
@@ -98,7 +117,8 @@
     w: 'up', s: 'down', a: 'left', d: 'right',
     W: 'up', S: 'down', A: 'left', D: 'right',
     z: 'action', Z: 'action', ' ': 'action', Enter: 'action',
-    x: 'cancel', X: 'cancel',
+    x: 'cancel', X: 'cancel', Escape: 'cancel',
+    c: 'menu', C: 'menu',
   };
 
   window.addEventListener('keydown', (e) => {
@@ -520,9 +540,16 @@
       startDialog([sign.text], '표지판');
       return;
     }
+    // 조사(살펴보기): 특별 지점 → 타일 기본 문구
+    const prop = getPropAt(game.map, f.x, f.y);
+    if (prop) {
+      startDialog([prop.text]);
+      return;
+    }
     const ch = tileAt(game.map, f.x, f.y);
-    if (ch === 'D') {
-      startDialog(['문이 잠겨 있다.\n주인이 외출한 모양이다.']);
+    const examine = getExamineTile(ch);
+    if (examine) {
+      startDialog([examine]);
     }
   }
 
@@ -583,6 +610,11 @@
       return;
     }
 
+    if (justPressed('menu')) {
+      openDex('world');
+      return;
+    }
+
     if (justPressed('action')) {
       interact();
       return;
@@ -629,11 +661,14 @@
       maxHearts,
       questions: shuffled(questionPool(mon)),
       qIdx: 0,
-      phase: 'question', // question | feedback | win | lose
+      phase: 'question', // question | feedback | mercy | mercyReply | dodge
       cursor: 0,
       feedback: null, // { correct, why }
       shake: 0,
       flash: 0,
+      attack: getBossAttack(monId), // 보스 회피 구간 (없으면 null)
+      dodgeDone: false,
+      dodge: null,
     };
     game.flags.battleCount += 1;
   }
@@ -647,8 +682,115 @@
     return b.questions[b.qIdx];
   }
 
+  function nextQuestion() {
+    const b = game.battle;
+    b.qIdx += 1;
+    b.cursor = 0;
+    b.feedback = null;
+    b.phase = 'question';
+  }
+
+  // 정답으로 보스 HP가 절반이 되면, 마음이 폭주하는 회피 구간이 한 번 펼쳐진다.
+  function continueAfterFeedback() {
+    const b = game.battle;
+    if (!b.dodgeDone && b.attack && b.monHp > 0 && b.monHp <= Math.floor(b.monMaxHp / 2)) {
+      enterDodge();
+    } else {
+      nextQuestion();
+      Sound.select();
+    }
+  }
+
+  function enterDodge() {
+    const b = game.battle;
+    const atk = b.attack;
+    b.dodgeDone = true;
+    b.phase = 'dodge';
+    const boxW = 300, boxH = 170;
+    b.dodge = {
+      t: 0, dur: atk.dur,
+      box: { x: Math.round(canvas.width / 2 - boxW / 2), y: 150, w: boxW, h: boxH },
+      soul: { x: canvas.width / 2, y: 235 },
+      bullets: [],
+      spawnTimer: 30,
+      inv: 0,
+    };
+    Sound.encounter();
+  }
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  function spawnBullets(d, pattern) {
+    const box = d.box;
+    if (pattern === 'rain') {
+      const x = box.x + 12 + Math.random() * (box.w - 24);
+      d.bullets.push({ x, y: box.y - 6, vx: 0, vy: 2.0 + Math.random() * 1.4, r: 6 });
+    } else if (pattern === 'sides') {
+      const fromLeft = Math.random() < 0.5;
+      const y = box.y + 12 + Math.random() * (box.h - 24);
+      d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
+        vx: (fromLeft ? 1 : -1) * (2.2 + Math.random() * 1.2), vy: 0, r: 6 });
+    } else { // burst — 중앙에서 방사형
+      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      const n = 6, base = Math.random() * Math.PI * 2;
+      for (let i = 0; i < n; i++) {
+        const a = base + i * Math.PI * 2 / n;
+        d.bullets.push({ x: cx, y: cy, vx: Math.cos(a) * 2.0, vy: Math.sin(a) * 2.0, r: 5 });
+      }
+    }
+  }
+
+  function updateDodge() {
+    const b = game.battle, d = b.dodge, atk = b.attack;
+    if (b.shake > 0) b.shake -= 1;
+    if (b.flash > 0) b.flash -= 1;
+    if (d.inv > 0) d.inv -= 1;
+    d.t += 1;
+
+    // 하트(소울) 이동
+    const sp = 3.4, r = 7;
+    if (held.has('left')) d.soul.x -= sp;
+    if (held.has('right')) d.soul.x += sp;
+    if (held.has('up')) d.soul.y -= sp;
+    if (held.has('down')) d.soul.y += sp;
+    d.soul.x = clamp(d.soul.x, d.box.x + r, d.box.x + d.box.w - r);
+    d.soul.y = clamp(d.soul.y, d.box.y + r, d.box.y + d.box.h - r);
+
+    // 탄막 생성 (끝나기 직전엔 멈춰서 정리 시간을 준다)
+    d.spawnTimer -= 1;
+    if (d.spawnTimer <= 0 && d.t < d.dur - 50) {
+      spawnBullets(d, atk.pattern);
+      d.spawnTimer = atk.pattern === 'burst' ? 24 : 15;
+    }
+
+    // 탄막 이동 + 화면 밖 제거
+    for (const bu of d.bullets) { bu.x += bu.vx; bu.y += bu.vy; }
+    d.bullets = d.bullets.filter((bu) =>
+      bu.x > d.box.x - 24 && bu.x < d.box.x + d.box.w + 24 &&
+      bu.y > d.box.y - 24 && bu.y < d.box.y + d.box.h + 24);
+
+    // 충돌 (하트는 1 아래로 줄지 않아 게임오버 없음)
+    if (d.inv <= 0) {
+      for (const bu of d.bullets) {
+        const dx = bu.x - d.soul.x, dy = bu.y - d.soul.y;
+        if (dx * dx + dy * dy < (r + bu.r) * (r + bu.r)) {
+          b.playerHp = Math.max(1, b.playerHp - 1);
+          d.inv = 42; b.flash = 12; Sound.bump();
+          break;
+        }
+      }
+    }
+
+    if (d.t >= d.dur) {
+      b.dodge = null;
+      nextQuestion();
+      Sound.select();
+    }
+  }
+
   function updateBattle() {
     const b = game.battle;
+    if (b.phase === 'dodge') { updateDodge(); return; }
     if (b.shake > 0) b.shake -= 1;
     if (b.flash > 0) b.flash -= 1;
 
@@ -688,11 +830,7 @@
           return;
         }
         if (b.playerHp <= 0) { loseBattle(); return; }
-        b.qIdx += 1;
-        b.cursor = 0;
-        b.feedback = null;
-        b.phase = 'question';
-        Sound.select();
+        continueAfterFeedback();
       }
       return;
     }
@@ -727,6 +865,9 @@
     const b = game.battle;
     const mon = b.mon;
     game.flags.defeated[b.monId] = true;
+    recordDexSeen(b.monId, b.mercyChoiceKind);
+    if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
+    game.flags.mercyChoice[b.monId] = b.mercyChoiceKind || null;
     const gotBadge = mon.badge && !game.flags.badges[mon.badge];
     if (mon.badge) game.flags.badges[mon.badge] = true;
     save();
@@ -779,6 +920,152 @@
       '으윽, 머리가 어지럽다…!',
       '괜찮아, 틀려도 배우면 되는 거야.\n기운을 차리고 다시 도전하자!',
     ]);
+  }
+
+  // ---------- 도감 ----------
+  function openDex(ret) {
+    game.dex.ret = ret;
+    game.dex.cursor = 0;
+    game.mode = 'dex';
+    Sound.select();
+  }
+
+  function closeDex() {
+    game.mode = game.dex.ret;
+    Sound.select();
+  }
+
+  function updateDex() {
+    const n = DEX_ORDER.length;
+    if (justPressed('up')) { game.dex.cursor = (game.dex.cursor + n - 1) % n; Sound.blip(); }
+    if (justPressed('down')) { game.dex.cursor = (game.dex.cursor + 1) % n; Sound.blip(); }
+    if (justPressed('left')) { game.dex.cursor = (game.dex.cursor + n - 5) % n; Sound.blip(); }
+    if (justPressed('right')) { game.dex.cursor = (game.dex.cursor + 5) % n; Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeDex();
+  }
+
+  const MERCY_LABEL = {
+    mercy: '마음을 안아 줌 ♥', neutral: '바르게 타이름', harsh: '차갑게 작별',
+  };
+
+  function drawDex() {
+    const seen = getDexSeen();
+    ctx.fillStyle = '#15172a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 헤더
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd644';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText('♥ 몬스터 도감', 24, 38);
+    ctx.fillStyle = '#9aa0c0';
+    ctx.font = '15px sans-serif';
+    ctx.fillText(`수집 ${dexSeenCount()} / ${DEX_ORDER.length}`, 24, 62);
+
+    // 왼쪽: 목록 (커서 주변으로 스크롤)
+    const listX = 24, listY = 84, rowH = 30, visible = 13;
+    const cur = game.dex.cursor;
+    let start = Math.max(0, Math.min(cur - 6, DEX_ORDER.length - visible));
+    if (DEX_ORDER.length <= visible) start = 0;
+    for (let i = 0; i < visible && start + i < DEX_ORDER.length; i++) {
+      const idx = start + i;
+      const id = DEX_ORDER[idx];
+      const isSeen = seen[id] && seen[id].seen;
+      const y = listY + i * rowH;
+      if (idx === cur) {
+        ctx.fillStyle = 'rgba(255,214,68,.16)';
+        roundRect(listX - 6, y - 18, 280, rowH - 4, 6);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#6a7090';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(`S${MONSTER_DEX[id].stage}`, listX, y);
+      ctx.fillStyle = isSeen ? (idx === cur ? '#ffd644' : '#d8dcf0') : '#555a72';
+      ctx.font = (idx === cur ? 'bold ' : '') + '15px sans-serif';
+      ctx.fillText(isSeen ? MONSTERS[id].name : '??? (미발견)', listX + 34, y);
+    }
+    // 스크롤 표시
+    if (start > 0) { ctx.fillStyle = '#9aa0c0'; ctx.fillText('▲', listX + 130, listY - 24); }
+    if (start + visible < DEX_ORDER.length) { ctx.fillStyle = '#9aa0c0'; ctx.fillText('▼', listX + 130, listY + visible * rowH); }
+
+    // 오른쪽: 상세 패널
+    const id = DEX_ORDER[cur];
+    const info = MONSTER_DEX[id];
+    const isSeen = seen[id] && seen[id].seen;
+    const panelX = 330, panelW = canvas.width - panelX - 24;
+    ctx.fillStyle = 'rgba(16,18,38,.7)';
+    roundRect(panelX, 84, panelW, 400, 10);
+    ctx.fill();
+
+    const cx = panelX + panelW / 2;
+    // 스프라이트 (가운데, 6배)
+    if (isSeen) {
+      const ss = 6;
+      const bob = Math.sin(game.time / 22) * 4;
+      drawSprite(ctx, MONSTER_SPRITES[id], Math.round(cx - 16 * ss / 2), Math.round(110 + bob), ss);
+    } else {
+      // 실루엣
+      ctx.fillStyle = '#2a2e48';
+      roundRect(cx - 44, 116, 88, 88, 10);
+      ctx.fill();
+      ctx.fillStyle = '#555a72';
+      ctx.font = 'bold 48px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('?', cx, 178);
+      ctx.textAlign = 'left';
+    }
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isSeen ? '#ffd644' : '#6a7090';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(isSeen ? MONSTERS[id].name : '???', cx, 238);
+    ctx.fillStyle = '#9aa0c0';
+    ctx.font = '13px sans-serif';
+    ctx.fillText(`스테이지 ${info.stage}`, cx, 260);
+    ctx.textAlign = 'left';
+
+    if (isSeen) {
+      ctx.fillStyle = '#7bd1f0';
+      ctx.font = 'bold 15px sans-serif';
+      wrapText(`주제 · ${info.theme}`, panelX + 24, 296, panelW - 48, 22);
+      ctx.fillStyle = '#e8ecff';
+      ctx.font = '15px sans-serif';
+      const usedLines = wrapText(info.learn, panelX + 24, 330, panelW - 48, 24);
+      const my = 330 + usedLines * 24 + 16;
+      const mk = seen[id].mercy;
+      ctx.fillStyle = '#f48fb1';
+      ctx.font = '14px sans-serif';
+      ctx.fillText(`작별 · ${mk ? MERCY_LABEL[mk] : '—'}`, panelX + 24, my);
+    } else {
+      ctx.fillStyle = '#6a7090';
+      ctx.font = '15px sans-serif';
+      ctx.fillText('아직 만나지 못한 마음입니다.', panelX + 24, 300);
+      ctx.fillText('모험에서 깨우치면 기록됩니다.', panelX + 24, 326);
+    }
+
+    // 푸터
+    ctx.fillStyle = '#777c98';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('↑↓←→ 넘기기 · X 또는 A로 닫기', canvas.width / 2, 510);
+    ctx.textAlign = 'left';
+  }
+
+  // 텍스트 줄바꿈 그리기. 그린 줄 수를 반환.
+  function wrapText(text, x, y, maxW, lineH) {
+    const words = text.split(' ');
+    let line = '', ly = y, lines = 0;
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (ctx.measureText(test).width > maxW && line) {
+        ctx.fillText(line, x, ly); ly += lineH; lines++;
+        line = w;
+      } else {
+        line = test;
+      }
+    }
+    if (line) { ctx.fillText(line, x, ly); lines++; }
+    return lines;
   }
 
   // ---------- 그리기 ----------
@@ -991,11 +1278,14 @@
       ctx.fillText('♥', 40 + i * 32, 132);
     }
 
-    // 빨간 플래시 (틀렸을 때)
+    // 빨간 플래시 (틀렸을 때/맞았을 때)
     if (b.flash > 0) {
       ctx.fillStyle = `rgba(224,69,58,${b.flash / 40})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
+
+    // 회피 미니게임
+    if (b.phase === 'dodge') { drawDodge(b); return; }
 
     // 질문/피드백 박스
     const boxY = canvas.height - 250;
@@ -1087,6 +1377,48 @@
     }
   }
 
+  function drawDodge(b) {
+    const d = b.dodge;
+    ctx.textAlign = 'center';
+    // 보스의 외침
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(b.attack.taunt, canvas.width / 2, d.box.y - 26);
+    ctx.fillStyle = '#9aa0c0';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)', canvas.width / 2, d.box.y - 6);
+    ctx.textAlign = 'left';
+
+    // 박스
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(d.box.x + 0.5, d.box.y + 0.5, d.box.w, d.box.h);
+
+    // 탄막
+    ctx.fillStyle = b.attack.color;
+    for (const bu of d.bullets) {
+      ctx.beginPath();
+      ctx.arc(bu.x, bu.y, bu.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 하트(소울) — 무적 시간 동안 깜빡임
+    if (!(d.inv > 0 && Math.floor(game.time / 4) % 2 === 0)) {
+      ctx.fillStyle = '#e0453a';
+      ctx.font = '17px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('♥', d.soul.x, d.soul.y + 6);
+      ctx.textAlign = 'left';
+    }
+
+    // 남은 시간 게이지
+    const frac = Math.max(0, 1 - d.t / d.dur);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(d.box.x, d.box.y + d.box.h + 12, d.box.w, 6);
+    ctx.fillStyle = '#7bd1f0';
+    ctx.fillRect(d.box.x, d.box.y + d.box.h + 12, d.box.w * frac, 6);
+  }
+
   function drawTitle() {
     ctx.fillStyle = '#1a1c2c';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1129,7 +1461,7 @@
 
     ctx.fillStyle = '#777';
     ctx.font = '14px sans-serif';
-    ctx.fillText('이동: 화살표/WASD · 대화/결정: Z·스페이스 · 음악: M', canvas.width / 2, 482);
+    ctx.fillText('이동: 화살표/WASD · 결정: Z·스페이스 · 도감: C · 음악: M', canvas.width / 2, 482);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -1145,6 +1477,7 @@
   }
 
   function updateTitle() {
+    if (justPressed('menu')) { openDex('title'); return; }
     const items = hasSave() ? 2 : 1;
     if (justPressed('up')) { game.titleCursor = (game.titleCursor + items - 1) % items; Sound.blip(); }
     if (justPressed('down')) { game.titleCursor = (game.titleCursor + 1) % items; Sound.blip(); }
@@ -1375,6 +1708,10 @@
         break;
       case 'ending':
         drawEnding();
+        break;
+      case 'dex':
+        updateDex();
+        drawDex();
         break;
     }
 
