@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AI 윤리 어드벤처">
+<title>AI 윤리 어드벤처</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000000;
+    overflow: hidden;
+    font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  #wrap {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  /* ---- 터치 컨트롤 (모바일/태블릿) ---- */
+  #touch-ui { display: none; }
+  body.touch #touch-ui { display: block; }
+  .tbtn {
+    position: fixed;
+    --b: clamp(50px, 12vmin, 76px);
+    width: var(--b); height: var(--b);
+    background: rgba(255,255,255,.14);
+    border: 2px solid rgba(255,255,255,.38);
+    border-radius: 14px;
+    color: #fff;
+    font-size: clamp(20px, 5vmin, 28px);
+    display: flex; align-items: center; justify-content: center;
+    user-select: none; -webkit-user-select: none;
+    z-index: 10;
+    backdrop-filter: blur(2px);
+  }
+  .tbtn:active { background: rgba(255,255,255,.34); }
+
+  /* 방향키 — 왼쪽 아래 십자 배치 */
+  #t-up    { left: calc(16px + var(--b) + env(safe-area-inset-left)); bottom: calc(28px + var(--b) * 2); }
+  #t-down  { left: calc(16px + var(--b) + env(safe-area-inset-left)); bottom: calc(20px + env(safe-area-inset-bottom)); }
+  #t-left  { left: calc(12px + env(safe-area-inset-left));            bottom: calc(24px + var(--b)); }
+  #t-right { left: calc(20px + var(--b) * 2 + env(safe-area-inset-left)); bottom: calc(24px + var(--b)); }
+
+  /* A(결정/피하기) — 오른쪽 아래, 크고 둥글게 */
+  #t-a {
+    right: calc(24px + env(safe-area-inset-right));
+    bottom: calc(40px + var(--b) * 0.4 + env(safe-area-inset-bottom));
+    --b: clamp(64px, 16vmin, 96px);
+    border-radius: 50%;
+    background: rgba(255,120,120,.24);
+    border-color: rgba(255,150,150,.5);
+  }
+  /* 도감(C) — 오른쪽 위 작은 버튼 */
+  #t-menu {
+    right: calc(16px + env(safe-area-inset-right));
+    top: calc(16px + env(safe-area-inset-top));
+    --b: clamp(40px, 9vmin, 54px);
+    font-size: clamp(13px, 3vmin, 16px);
+    border-radius: 12px;
+  }
+
+  /* ---- 세로 모드일 때 가로로 돌리라는 안내 ---- */
+  #rotate-hint {
+    display: none;
+    position: fixed; inset: 0;
+    background: #000000;
+    color: #fff;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 18px; text-align: center;
+    z-index: 100;
+    font-size: 20px;
+  }
+  #rotate-hint .ico { font-size: 64px; animation: rot 1.8s ease-in-out infinite; }
+  #rotate-hint small { color: #888; font-size: 15px; }
+  @keyframes rot { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(78deg); } }
+  @media (orientation: portrait) and (pointer: coarse) {
+    #rotate-hint { display: flex; }
+  }
+
+  /* ---- 이름 입력 오버레이 ---- */
+  #name-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.78);
+    align-items: center; justify-content: center;
+    z-index: 50;
+  }
+  #name-overlay .np-card {
+    background: #000;
+    border: 3px solid #fff;
+    border-radius: 8px;
+    padding: 28px 32px;
+    text-align: center;
+    width: min(86vw, 360px);
+  }
+  #name-overlay .np-title { color: #fff; font-size: 19px; font-weight: bold; margin-bottom: 6px; }
+  #name-overlay .np-sub { color: #888; font-size: 13px; margin-bottom: 16px; }
+  #name-input {
+    width: 100%;
+    font-size: 22px; text-align: center;
+    padding: 10px 12px;
+    border: 2px solid #444; border-radius: 6px;
+    background: #000; color: #fff;
+    outline: none;
+  }
+  #name-input:focus { border-color: #e0453a; }
+  #name-overlay .np-hint { color: #777; font-size: 13px; margin-top: 14px; }
+  #name-overlay .np-go {
+    margin-top: 16px;
+    background: #fff; color: #000;
+    font-size: 16px; font-weight: bold;
+    border: none; border-radius: 6px;
+    padding: 12px 28px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="720" height="528"></canvas>
+</div>
+<div id="touch-ui">
+  <div class="tbtn" id="t-up">▲</div>
+  <div class="tbtn" id="t-down">▼</div>
+  <div class="tbtn" id="t-left">◀</div>
+  <div class="tbtn" id="t-right">▶</div>
+  <div class="tbtn" id="t-a">A</div>
+  <div class="tbtn" id="t-menu">도감</div>
+</div>
+<div id="rotate-hint">
+  <div class="ico">📱</div>
+  <div>화면을 가로로 돌려 주세요</div>
+  <small>AI 윤리 어드벤처는 가로 화면에 맞춰져 있어요</small>
+</div>
+<div id="name-overlay">
+  <div class="np-card">
+    <div class="np-title">수호자의 이름은?</div>
+    <div class="np-sub">최대 6글자 · 비워 두면 "수호자"</div>
+    <input id="name-input" maxlength="6" placeholder="수호자" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div><button class="np-go" id="name-go">모험 시작 ▶</button></div>
+    <div class="np-hint">Enter 또는 A 버튼으로 시작 · Esc로 취소</div>
+  </div>
+</div>
+<script src="src/sprites.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/data.js"></script>
+<script src="src/game.js"></script>
+</body>
+</html>

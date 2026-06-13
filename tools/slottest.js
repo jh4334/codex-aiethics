@@ -1,0 +1,119 @@
+// 세이브 슬롯 시스템 테스트 (Node.js)
+// - 기존 단일 세이브의 슬롯 0 이전(마이그레이션)
+// - 슬롯 선택/이름 입력/이어하기/삭제 흐름
+// 사용법: node tools/slottest.js
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+function makeCtx() {
+  return new Proxy({}, {
+    get(t, p) {
+      if (p === 'measureText') return () => ({ width: 50 });
+      if (p in t) return t[p];
+      return () => {};
+    },
+    set(t, p, v) { t[p] = v; return true; },
+  });
+}
+function makeCanvas(w, h) {
+  return { width: w || 0, height: h || 0, getContext: () => makeCtx(), addEventListener() {} };
+}
+
+// 미리 옛 단일 세이브를 심어 둔다 (스테이지 6 진행 중인 저장본)
+const storage = new Map();
+const oldSave = {
+  map: 'serverroom', x: 7, y: 9,
+  flags: {
+    talkedProf: true,
+    badges: { forest: true, lake: true, cave: true },
+    defeated: { hondonmon: true, meotdaeromon: true, tteonemgimon: true, hollimmon: true, finalboss: true },
+    mercy: 11, visited: {}, trueEnding: false, correctCount: 40, battleCount: 18,
+  },
+};
+storage.set('ai-ethics-adventure-v1', JSON.stringify(oldSave));
+
+const listeners = {};
+let rafCb = null;
+const windowObj = {
+  addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
+  removeEventListener: (ev, fn) => {
+    const a = listeners[ev]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); }
+  },
+  requestAnimationFrame: (cb) => { rafCb = cb; },
+};
+const sandbox = {
+  window: windowObj,
+  document: {
+    getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : makeCanvas()),
+    createElement: () => makeCanvas(),
+    body: { classList: { add() {} } },
+  },
+  localStorage: {
+    getItem: (k) => (storage.has(k) ? storage.get(k) : null),
+    setItem: (k, v) => storage.set(k, String(v)),
+    removeItem: (k) => storage.delete(k),
+  },
+  requestAnimationFrame: windowObj.requestAnimationFrame,
+  console, Math, Set, Map, JSON, Object, setTimeout, clearTimeout,
+};
+vm.createContext(sandbox);
+for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), sandbox, { filename: f });
+}
+const g = windowObj.__game;
+
+function step(n = 1) { for (let i = 0; i < n; i++) { const cb = rafCb; rafCb = null; cb(); } }
+function dispatch(ev, obj) { for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj)); }
+function tap(key) { dispatch('keydown', { key }); step(2); dispatch('keyup', { key }); }
+function slot(i) { const r = storage.get('ai-ethics-adventure-slot-' + i); return r ? JSON.parse(r) : null; }
+
+let passed = 0;
+function check(name, cond) {
+  if (cond) { console.log('  ✔ ' + name); passed++; }
+  else { console.error('  ✘ ' + name); process.exit(1); }
+}
+
+console.log('[1] 기존 단일 세이브 → 슬롯 0 이전(마이그레이션)');
+step(5);
+check('옛 세이브 키는 제거됨', !storage.get('ai-ethics-adventure-v1'));
+check('슬롯 0으로 이전됨', !!slot(0));
+check('이전된 진행도 보존 (스테이지 6)', slot(0).flags.defeated.finalboss === true);
+check('이전된 이름 기본값', slot(0).name === '수호자');
+check('타이틀에서 슬롯 0이 채워져 보임', g.mode === 'title' && g.titleScreen === 'slots');
+
+console.log('[2] 슬롯 0 이어하기');
+tap('z'); // 슬롯 0(채워짐) → 이어하기
+check('이어하기로 월드 진입', g.mode === 'world');
+check('저장된 위치로 복귀', g.map === 'serverroom');
+check('현재 슬롯 0', g.currentSlot === 0);
+check('이어하기 시 진행도 유지', g.flags.defeated.finalboss === true && g.flags.mercy === 11);
+
+console.log('[3] 진행 시 슬롯 0에만 저장, 다른 슬롯은 비어 있음');
+check('슬롯 1 비어 있음', !slot(1));
+check('슬롯 2 비어 있음', !slot(2));
+
+console.log('[4] 빈 슬롯에 새 모험 만들기 (슬롯 1)');
+// 강제로 타이틀로 되돌려 슬롯 흐름 재현
+g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 0;
+tap('ArrowDown'); // 슬롯 1로 이동
+check('커서 슬롯 1', g.slotCursor === 1);
+tap('z'); // 빈 슬롯 → 이름 입력
+check('이름 입력 화면', g.titleScreen === 'name');
+g.nameConfirm = true; step(2); // 기본 이름으로 시작 → 인트로 대화
+check('새 모험 시작 (슬롯 1)', (g.mode === 'dialog' || g.mode === 'world') && g.currentSlot === 1);
+check('슬롯 1 새로 저장됨', !!slot(1) && slot(1).flags.defeated.finalboss !== true);
+check('슬롯 0은 그대로 보존', slot(0).flags.defeated.finalboss === true);
+
+console.log('[5] 슬롯 삭제 흐름');
+g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 1;
+tap('x'); // 삭제 확인
+check('삭제 확인 화면', g.titleScreen === 'delete');
+tap('x'); // 취소
+check('취소하면 슬롯 유지', g.titleScreen === 'slots' && !!slot(1));
+tap('x'); // 다시 삭제 확인
+tap('z'); // 삭제 실행
+check('슬롯 1 삭제됨', !slot(1));
+check('슬롯 0은 영향 없음', !!slot(0));
+
+console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);
