@@ -20,25 +20,28 @@ const BASE_PAL = {
   x: '#9aa0b0', // 회색
   q: '#d62828', // 빨강
   v: '#7bd1f0', // 하늘
+  i: '#3a64b4', // 줄무늬 강조 (파랑)
+  u: '#39354f', // 바지·신발 (어두운 남보라)
 };
 
 // ---- 플레이어 (방향별 2프레임) ----
+// 언더테일풍 — 또렷한 눈(흰자 w + 동공 e)과 가로 줄무늬 스웨터(r/i)
 const PLAYER_DOWN_0 = [
   '................',
   '....hhhhhhhh....',
   '...hhhhhhhhhh...',
   '..hhhhhhhhhhhh..',
   '..hhffffffffhh..',
+  '..hffwffffwffh..',
   '..hffeffffeffh..',
   '...ffffffffff...',
-  '....ffffffff....',
-  '....rrrrrrrr....',
   '...rrrrrrrrrr...',
-  '..ffrrrrrrrrff..',
+  '..rriiiiiiiirr..',
+  '..rrrrrrrrrrrr..',
+  '..ffiiiiiiiiff..',
   '...rrrrrrrrrr...',
-  '....bbbbbbbb....',
-  '....bbb..bbb....',
-  '....ff....ff....',
+  '....uuu..uuu....',
+  '....uu....uu....',
   '................',
 ];
 const PLAYER_DOWN_1 = [
@@ -47,16 +50,16 @@ const PLAYER_DOWN_1 = [
   '...hhhhhhhhhh...',
   '..hhhhhhhhhhhh..',
   '..hhffffffffhh..',
+  '..hffwffffwffh..',
   '..hffeffffeffh..',
   '...ffffffffff...',
-  '....ffffffff....',
-  '....rrrrrrrr....',
   '...rrrrrrrrrr...',
-  '..ffrrrrrrrrff..',
+  '..rriiiiiiiirr..',
+  '..rrrrrrrrrrrr..',
+  '..ffiiiiiiiiff..',
   '...rrrrrrrrrr...',
-  '....bbbbbbbb....',
-  '....bb....bbb...',
-  '....ff.....ff...',
+  '....uu...uuu....',
+  '...uu......uu...',
   '................',
 ];
 const PLAYER_UP_0 = [
@@ -67,14 +70,14 @@ const PLAYER_UP_0 = [
   '..hhhhhhhhhhhh..',
   '..hhhhhhhhhhhh..',
   '...hhhhhhhhhh...',
-  '....ffffffff....',
-  '....rrrrrrrr....',
+  '...ffffffffff...',
   '...rrrrrrrrrr...',
-  '..ffrrrrrrrrff..',
+  '..rriiiiiiiirr..',
+  '..rrrrrrrrrrrr..',
+  '..ffiiiiiiiiff..',
   '...rrrrrrrrrr...',
-  '....bbbbbbbb....',
-  '....bbb..bbb....',
-  '....ff....ff....',
+  '....uuu..uuu....',
+  '....uu....uu....',
   '................',
 ];
 const PLAYER_UP_1 = [
@@ -85,14 +88,14 @@ const PLAYER_UP_1 = [
   '..hhhhhhhhhhhh..',
   '..hhhhhhhhhhhh..',
   '...hhhhhhhhhh...',
-  '....ffffffff....',
-  '....rrrrrrrr....',
+  '...ffffffffff...',
   '...rrrrrrrrrr...',
-  '..ffrrrrrrrrff..',
+  '..rriiiiiiiirr..',
+  '..rrrrrrrrrrrr..',
+  '..ffiiiiiiiiff..',
   '...rrrrrrrrrr...',
-  '....bbbbbbbb....',
-  '...bbb....bb....',
-  '...ff.....ff....',
+  '....uu...uuu....',
+  '...uu......uu...',
   '................',
 ];
 const PLAYER_LEFT_0 = [
@@ -101,16 +104,16 @@ const PLAYER_LEFT_0 = [
   '...hhhhhhhhhh...',
   '..hhhhhhhhhhhh..',
   '..hffffffhhhhh..',
-  '..hfeffffhhhhh..',
-  '...ffffffhhhh...',
-  '....ffffffff....',
-  '....rrrrrrrr....',
+  '..hfwffffhhhhh..',
+  '..hfeffffhhhh...',
+  '...ffffffhhh....',
   '...rrrrrrrrrr...',
-  '...ffrrrrrrrr...',
+  '..rriiiiiiiirr..',
+  '..rrrrrrrrrrrr..',
+  '...iiiiiiiiff...',
   '...rrrrrrrrrr...',
-  '....bbbbbbbb....',
-  '....bbb..bbb....',
-  '....ff....ff....',
+  '....uuu..uuu....',
+  '....uu....uu....',
   '................',
 ];
 const PLAYER_LEFT_1 = [
@@ -119,16 +122,16 @@ const PLAYER_LEFT_1 = [
   '...hhhhhhhhhh...',
   '..hhhhhhhhhhhh..',
   '..hffffffhhhhh..',
-  '..hfeffffhhhhh..',
-  '...ffffffhhhh...',
-  '....ffffffff....',
-  '....rrrrrrrr....',
+  '..hfwffffhhhhh..',
+  '..hfeffffhhhh...',
+  '...ffffffhhh....',
   '...rrrrrrrrrr...',
-  '...ffrrrrrrrr...',
+  '..rriiiiiiiirr..',
+  '..rrrrrrrrrrrr..',
+  '...iiiiiiiiff...',
   '...rrrrrrrrrr...',
-  '....bbbbbbbb....',
-  '...bbb...bbb....',
-  '...ff.....ff....',
+  '....uu...uuu....',
+  '...uu......uu...',
   '................',
 ];
 
@@ -139,7 +142,46 @@ const PLAYER_SPRITES = {
   // right는 left를 좌우 반전해서 그림
 };
 
-// ---- NPC (플레이어 스프라이트 + 팔레트 교체) ----
+// ---- NPC 공용 몸체 (팔레트 교체용) — 또렷한 눈, 단색 옷(h/r/b 교체) ----
+const NPC_DOWN_0 = [
+  '................',
+  '....hhhhhhhh....',
+  '...hhhhhhhhhh...',
+  '..hhhhhhhhhhhh..',
+  '..hhffffffffhh..',
+  '..hffwffffwffh..',
+  '..hffeffffeffh..',
+  '...ffffffffff...',
+  '....rrrrrrrr....',
+  '...rrrrrrrrrr...',
+  '..ffrrrrrrrrff..',
+  '...rrrrrrrrrr...',
+  '....bbbbbbbb....',
+  '....bbb..bbb....',
+  '....bb....bb....',
+  '................',
+];
+const NPC_DOWN_1 = [
+  '................',
+  '....hhhhhhhh....',
+  '...hhhhhhhhhh...',
+  '..hhhhhhhhhhhh..',
+  '..hhffffffffhh..',
+  '..hffwffffwffh..',
+  '..hffeffffeffh..',
+  '...ffffffffff...',
+  '....rrrrrrrr....',
+  '...rrrrrrrrrr...',
+  '..ffrrrrrrrrff..',
+  '...rrrrrrrrrr...',
+  '....bbbbbbbb....',
+  '....bb...bbb....',
+  '...bb......bb...',
+  '................',
+];
+const NPC_SPRITES = { down: [NPC_DOWN_0, NPC_DOWN_1] };
+
+// ---- NPC (NPC 공용 몸체 + 팔레트 교체) ----
 const NPC_PALETTES = {
   prof:     { h: '#cfcfcf', r: '#f5f5f5', b: '#54585f' }, // 흰 가운 박사님
   kid:      { h: '#222222', r: '#ffd644', b: '#3a8f3a' }, // 노란 옷 아이
@@ -674,11 +716,30 @@ const MONSTER_SPRITES = {
     '................',
     '................',
   ],
+  // 돌보미(고트): 마음을 가르치는 흰 염소 어른 — 언더테일 토리엘풍
+  caretaker: [
+    '.....ww..ww.....',
+    '....wwww.wwww...',
+    '....wnnw.wnnw...',
+    '....wwwwwwww....',
+    '...wwwwwwwwww...',
+    '..wwwwwwwwwwww..',
+    '..wwwewwwwewww..',
+    '..wwwwwwwwwwww..',
+    '...wwwwwwwwww...',
+    '....wwwnnwww....',
+    '.....wwwwww.....',
+    '...pppppppppp...',
+    '..pppppppppppp..',
+    '..pppwppppwppp..',
+    '..pp.pppppp.pp..',
+    '................',
+  ],
 };
 
 // 미러몬: 플레이어를 그대로 비추는 그림자 (스테이지 8 보스)
 MONSTER_SPRITES.mirrormon = PLAYER_DOWN_0.map((row) =>
-  row.replace(/[hrb]/g, 'd').replace(/f/g, 'x').replace(/e/g, 'w')
+  row.replace(/[hrbiu]/g, 'd').replace(/f/g, 'x').replace(/e/g, 'w')
 );
 
 // 스프라이트 렌더 캐시

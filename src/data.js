@@ -46,7 +46,7 @@ const MAPS = {
     npcs: [
       { id: 'prof', x: 4, y: 12, pal: 'prof', name: '박사님' },
       { id: 'kid', x: 16, y: 7, pal: 'kid', name: '아이 도도' },
-      { id: 'grandma', x: 20, y: 12, pal: 'grandma', name: '할머니' },
+      { id: 'grandma', x: 20, y: 12, pal: 'grandma', monSprite: 'caretaker', name: '할머니' },
       { id: 'guard', x: 17, y: 6, pal: 'guard', name: '탑 안내원' },
       { id: 'yeongi_npc', x: 5, y: 12, monSprite: 'yeongi', name: '영이',
         show: (flags) => !!flags.trueEnding },

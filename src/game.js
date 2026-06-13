@@ -1209,7 +1209,7 @@
         drawSprite(ctx, MONSTER_SPRITES[npc.monSprite],
           Math.round(npc.x * TS - cx), Math.round(npc.y * TS - cy - 6 + bob), SCALE);
       } else {
-        drawSprite(ctx, PLAYER_SPRITES.down[frame],
+        drawSprite(ctx, NPC_SPRITES.down[frame],
           Math.round(npc.x * TS - cx), Math.round(npc.y * TS - cy - 6),
           SCALE, NPC_PALETTES[npc.pal]);
       }

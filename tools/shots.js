@@ -156,4 +156,11 @@ g.flags.correctCount = 84; g.flags.mercy = 24;
 g.endingT = 220; g.time = 60;
 shot('08-ending.png');
 
-console.log('완료. shots/ 폴더에 8장 생성.');
+// 9) 어두운 지역 — 회로의 동굴 (탐험가 NPC + 편향몬 + 수정)
+g.mode = 'world'; g.map = 'cave';
+g.flags.defeated = {}; // 편향몬이 보이도록
+setPlayer(8, 4, 'right');
+g.time = 18;
+shot('09-cave.png');
+
+console.log('완료. shots/ 폴더에 9장 생성.');
