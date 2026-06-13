@@ -189,17 +189,17 @@ fightWithMercy(3, 0, 1);
 check('승리 대화', g.mode === 'dialog');
 advanceDialog();
 check('베껴몬 깨우침', g.flags.defeated.bekkyeomon === true);
-check('배지는 아직 0개 (부하 몬스터)', !g.flags.badges.forest);
+check('증표는 아직 0개 (부하 몬스터)', !g.flags.badges.forest);
 
-console.log('[7] 수호자 몰래몬 → 숲의 배지');
+console.log('[7] 수호자 몰래몬 → 숲의 증표');
 setPos(13, 4, 'up'); // 몰래몬 (13,3) 아래
 tap('z');
 advanceDialog();
 fightWithMercy(3, 0);
 advanceDialog();
-check('숲의 배지 획득', g.flags.badges.forest === true);
+check('숲의 증표 획득', g.flags.badges.forest === true);
 
-console.log('[8] 배지 부족 시 타워 입장 거부');
+console.log('[8] 증표 부족 시 타워 입장 거부');
 g.map = 'village';
 setPos(18, 5, 'up');
 hold('ArrowUp', 14);
@@ -207,15 +207,15 @@ check('입장 거부 대화', g.mode === 'dialog');
 advanceDialog();
 check('마을에 남아있음', g.map === 'village' && g.player.y === 5);
 
-console.log('[9] 호수/동굴 수호자 처치 (배지 3개)');
+console.log('[9] 호수/동굴 수호자 처치 (증표 3개)');
 g.map = 'lake';
 setPos(15, 6, 'up'); // 거짓몬 (15,5)
 tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
-check('호수의 배지', g.flags.badges.lake === true);
+check('호수의 증표', g.flags.badges.lake === true);
 g.map = 'cave';
 setPos(5, 4, 'left'); // 편향몬 (4,4)
 tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
-check('동굴의 배지', g.flags.badges.cave === true);
+check('동굴의 증표', g.flags.badges.cave === true);
 
 console.log('[10] 스테이지 1 보스 (혼돈몬) 전, 남쪽 길 잠김 확인');
 g.map = 'village';
@@ -270,9 +270,9 @@ fightWithMercy(4, 0); advanceDialog();
 check('떠넘기몬 클리어', g.flags.defeated.tteonemgimon);
 setPos(13, 18, 'down');
 hold('ArrowDown', 14);
-check('눈송이마을 진입', g.map === 'snow');
+check('정지된 설원 진입', g.map === 'snow');
 
-console.log('[14] 스테이지 4: 눈송이마을');
+console.log('[14] 스테이지 4: 정지된 설원');
 setPos(13, 16, 'up'); // 보스 홀림몬 (13,15)
 tap('z'); advanceDialog();
 fightWithMercy(4, 0); advanceDialog();
@@ -376,7 +376,7 @@ advanceDialog();
 
 console.log('[22] 저장 데이터 무결성');
 const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('저장된 배지 3개', save.flags.badges.forest && save.flags.badges.lake && save.flags.badges.cave);
+check('저장된 증표 3개', save.flags.badges.forest && save.flags.badges.lake && save.flags.badges.cave);
 check('모든 보스 처치 저장', save.flags.defeated.hondonmon && save.flags.defeated.meotdaeromon &&
   save.flags.defeated.tteonemgimon && save.flags.defeated.hollimmon && save.flags.defeated.finalboss);
 check('심층부 진행 저장', save.flags.defeated.yeongi && save.flags.trueEnding === true &&

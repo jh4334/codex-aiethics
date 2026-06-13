@@ -102,7 +102,7 @@ console.log('스크린샷 생성:');
 g.time = 40;
 shot('01-title.png');
 
-// 2) 마을 탐험 (HUD: 스테이지/배지/♥)
+// 2) 마을 탐험 (HUD: 스테이지/증표/♥)
 g.mode = 'world'; g.map = 'village';
 g.flags.talkedProf = true;
 g.flags.badges = { forest: true, lake: true, cave: true };

@@ -8,7 +8,7 @@ const BASE_PAL = {
   r: '#e0453a', // 옷
   b: '#2a4fa0', // 바지
   w: '#ffffff',
-  k: '#1a1a24',
+  k: '#0c0c0c',
   p: '#9b5de5', // 보라
   g: '#5cb85c', // 초록
   l: '#4ea8de', // 파랑

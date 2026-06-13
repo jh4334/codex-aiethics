@@ -8,7 +8,7 @@ const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2',
 
 const MAPS = {
   village: {
-    name: '하늘마을',
+    name: '경계마을',
     song: 'village',
     tiles: [
       'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
@@ -39,9 +39,9 @@ const MAPS = {
       { x: 27, y: 11, to: 'lake', tx: 2, ty: 11 },
       { x: 18, y: 4, to: 'tower', tx: 8, ty: 12, needBadges: 3 },
       { x: 13, y: 19, to: 'meadow', tx: 13, ty: 1, needBoss: 'hondonmon',
-        lockText: '남쪽 길이 어둠의 안개로 막혀 있다.\nAI 타워의 혼돈몬을 깨우치면\n안개가 걷힐 것 같다.' },
+        lockText: '남쪽 길이 어둠의 안개로 막혀 있다.\n신호탑의 혼돈몬을 깨우치면\n안개가 걷힐 것 같다.' },
       { x: 14, y: 19, to: 'meadow', tx: 14, ty: 1, needBoss: 'hondonmon',
-        lockText: '남쪽 길이 어둠의 안개로 막혀 있다.\nAI 타워의 혼돈몬을 깨우치면\n안개가 걷힐 것 같다.' },
+        lockText: '남쪽 길이 어둠의 안개로 막혀 있다.\n신호탑의 혼돈몬을 깨우치면\n안개가 걷힐 것 같다.' },
     ],
     npcs: [
       { id: 'prof', x: 4, y: 12, pal: 'prof', name: '박사님' },
@@ -52,13 +52,13 @@ const MAPS = {
         show: (flags) => !!flags.trueEnding },
     ],
     signs: [
-      { x: 15, y: 16, text: '≪하늘마을≫\nAI 윤리 수호대의 고향입니다.' },
+      { x: 15, y: 16, text: '≪경계마을≫\nAI 윤리 수호대의 고향입니다.' },
     ],
     monsters: [],
   },
 
   forest: {
-    name: '초록숲',
+    name: '정적의 숲',
     song: 'field',
     tiles: [
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
@@ -88,7 +88,7 @@ const MAPS = {
     ],
     npcs: [],
     signs: [
-      { x: 12, y: 17, text: '≪초록숲≫\n요즘 몬스터들이 나타나\n숲이 어수선합니다. 조심!' },
+      { x: 12, y: 17, text: '≪정적의 숲≫\n요즘 몬스터들이 나타나\n숲이 어수선합니다. 조심!' },
     ],
     monsters: [
       { id: 'bekkyeomon', x: 7, y: 10 },
@@ -97,7 +97,7 @@ const MAPS = {
   },
 
   lake: {
-    name: '반짝호수',
+    name: '잔향의 호수',
     song: 'field',
     tiles: [
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
@@ -126,7 +126,7 @@ const MAPS = {
     ],
     npcs: [],
     signs: [
-      { x: 2, y: 16, text: '≪반짝호수≫\n호수 가운데 섬에서\n이상한 소문이 들려옵니다…' },
+      { x: 2, y: 16, text: '≪잔향의 호수≫\n호수 가운데 섬에서\n이상한 소문이 들려옵니다…' },
     ],
     monsters: [
       { id: 'jungdokmon', x: 8, y: 14 },
@@ -135,7 +135,7 @@ const MAPS = {
   },
 
   cave: {
-    name: '데이터 동굴',
+    name: '회로의 동굴',
     song: 'cave',
     tiles: [
       'KKKKKKKKKKKKKKKKKKKKKKKKKKKK',
@@ -172,7 +172,7 @@ const MAPS = {
   },
 
   tower: {
-    name: 'AI 타워',
+    name: '신호탑',
     song: 'cave',
     tiles: [
       'NNNNNNNNNNNNNNNNNN',
@@ -297,7 +297,7 @@ const MAPS = {
 
   // ---- 스테이지 4 ----
   snow: {
-    name: '눈송이마을 (스테이지 4)',
+    name: '정지된 설원 (스테이지 4)',
     song: 'snow',
     tiles: [
       'JJJJJJJJJJJJJZZJJJJJJJJJJJJJ',
@@ -333,7 +333,7 @@ const MAPS = {
       { id: 'mittens', x: 16, y: 13, pal: 'mittens', name: '털장갑 소녀' },
     ],
     signs: [
-      { x: 2, y: 12, text: '≪눈송이마을≫ 스테이지 4\n남쪽 그림자성에서 어둠의 기운이…\n마음을 단단히 먹으세요!' },
+      { x: 2, y: 12, text: '≪정지된 설원≫ 스테이지 4\n남쪽 그림자성에서 어둠의 기운이…\n마음을 단단히 먹으세요!' },
     ],
     monsters: [
       { id: 'sideulmon', x: 7, y: 6 },
@@ -722,7 +722,7 @@ const MONSTERS = {
     intro: '…드디어 왔구나.\n나는 혼돈몬.\n이 탑에 모인 모든 오류의 매듭.\n…네가 풀어 온 답들이\n나를 조금씩 풀고 있었어.\n마지막 매듭도, 풀 수 있겠어?',
     win: '…매듭이, 풀렸다.\n하지만 기억해 둬.\n나는 시작이 아니야.\n나조차… 누군가의 조각이란다.',
     badge: null,
-    clear: '☆ 스테이지 1 클리어 ☆\n하늘마을 남쪽의 안개가 걷혔다.',
+    clear: '☆ 스테이지 1 클리어 ☆\n경계마을 남쪽의 안개가 걷혔다.',
     mercy: {
       prompt: '풀려 버린 혼돈몬이\n옅어진 채 너를 본다.',
       options: [
@@ -842,7 +842,7 @@ const MONSTERS = {
     intro: '내 잘못이 아니야.\n시킨 대로 했을 뿐이야.\n…다들 그렇게 말하길래,\n나도 그렇게\n말했을 뿐이야.',
     win: '…"내 잘못이야"라고 말하면\n무너질 줄 알았는데.\n…생각보다, 가볍네.',
     badge: null,
-    clear: '☆ 스테이지 3 클리어 ☆\n모래폭풍이 가라앉고,\n눈송이마을로 가는 길이 열렸다.',
+    clear: '☆ 스테이지 3 클리어 ☆\n모래폭풍이 가라앉고,\n정지된 설원으로 가는 길이 열렸다.',
     mercy: {
       prompt: '떠넘기몬의 길던 팔이\n천천히 제자리로 돌아온다.',
       options: [
@@ -856,7 +856,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 4: 눈송이마을 ----
+  // ---- 스테이지 4: 정지된 설원 ----
   sideulmon: {
     name: '시들몬',
     topic: 'creativity',
@@ -2059,8 +2059,8 @@ function getNpcDialog(npcId, flags) {
           '큰일이야! AI 세상에 "윤리 오류"가\n퍼져서 몬스터들이 나타났어.',
           '몬스터들은 나쁜 게 아니라,\n잘못된 것을 배워서 헷갈리고 있을 뿐이야.',
           '올바른 답을 알려주면\n몬스터들도 다시 착해질 거야!',
-          '북쪽 초록숲, 동쪽 반짝호수,\n서쪽 데이터 동굴에 몬스터가 있단다.',
-          '수호자 몬스터를 깨우치면 "배지"를 얻어.\n배지 3개를 모으면 AI 타워의 문이 열리지!',
+          '북쪽 정적의 숲, 동쪽 잔향의 호수,\n서쪽 회로의 동굴에 몬스터가 있단다.',
+          '수호자 몬스터를 깨우치면 "마음의 증표"를 얻어.\n증표 3개를 모으면 신호탑의 문이 열리지!',
           '부탁한다, 어린 수호자여!\n(Z키 또는 스페이스로 대화하고,\n화살표나 WASD로 움직일 수 있어.)',
         ];
       }
@@ -2087,16 +2087,16 @@ function getNpcDialog(npcId, flags) {
       if (flags.defeated.hondonmon) {
         return [
           '혼돈몬을 깨우치다니 대단해!\n그런데 더 큰 어둠이 남쪽에서\n느껴지는구나…',
-          '마을 남쪽 길을 따라 내려가면\n햇살초원, 재깍사막, 눈송이마을,\n그리고 그림자성이 나온단다.',
+          '마을 남쪽 길을 따라 내려가면\n햇살초원, 재깍사막, 정지된 설원,\n그리고 그림자성이 나온단다.',
           '각 지역의 보스를 깨우쳐야\n다음 길이 열릴 거야.\n조심해서 다녀오렴, 수호자야!',
         ];
       }
       if (badges >= 3) {
-        return ['배지를 3개나 모았구나, 대단해!\n이제 마을 위쪽 AI 타워로 가 보렴.\n혼돈몬이 기다리고 있을 거야.'];
+        return ['증표를 3개나 모았구나, 대단해!\n이제 마을 위쪽 신호탑으로 가 보렴.\n혼돈몬이 기다리고 있을 거야.'];
       }
       return [
-        `지금까지 모은 배지: ${badges}개 / 3개`,
-        '북쪽 초록숲, 동쪽 반짝호수,\n서쪽 데이터 동굴을 살펴보렴!',
+        `지금까지 모은 마음의 증표: ${badges}개 / 3개`,
+        '북쪽 정적의 숲, 동쪽 잔향의 호수,\n서쪽 회로의 동굴을 살펴보렴!',
         '몬스터에게 지더라도 괜찮아.\n다시 도전하면 되니까!',
       ];
 
@@ -2122,11 +2122,11 @@ function getNpcDialog(npcId, flags) {
         return ['타워는 이제 평화로워요.\n당신은 진정한 AI 윤리 수호자입니다!'];
       }
       if (badges >= 3) {
-        return ['배지 3개를 확인했습니다!\n타워의 문이 열렸어요.\n부디 조심하세요, 수호자님!'];
+        return ['마음의 증표 3개를 확인했습니다!\n신호탑의 문이 열렸어요.\n부디 조심하세요, 수호자님!'];
       }
       return [
-        `이 위는 AI 타워예요.\n배지 3개가 있어야 들어갈 수 있어요.\n(지금 ${badges}개 / 3개)`,
-        '숲, 호수, 동굴의 수호자 몬스터를\n깨우치면 배지를 얻을 수 있대요.',
+        `이 위는 신호탑이에요.\n마음의 증표 3개가 있어야 들어갈 수 있어요.\n(지금 ${badges}개 / 3개)`,
+        '숲, 호수, 동굴의 수호자 몬스터를\n깨우치면 마음의 증표를 얻을 수 있대요.',
       ];
 
     case 'explorer':
@@ -2149,7 +2149,7 @@ function getNpcDialog(npcId, flags) {
 
     case 'merchant':
       if (flags.defeated.tteonemgimon) {
-        return ['모래폭풍이 멎었군요!\n남쪽 눈송이마을은 추우니\n따뜻하게 입고 가세요!'];
+        return ['모래폭풍이 멎었군요!\n남쪽 정지된 설원은 추우니\n따뜻하게 입고 가세요!'];
       }
       return [
         '이 사막은 거대한 데이터센터의\n열기로 점점 뜨거워지고 있어요.',
@@ -2247,17 +2247,17 @@ function getObjective(flags) {
   }
   if (!d.hondonmon) {
     const badges = countBadges(flags);
-    if (badges >= 3) return 'AI 타워의 혼돈몬에게 도전하기';
+    if (badges >= 3) return '신호탑의 혼돈몬에게 도전하기';
     const left = [];
     if (!flags.badges.forest) left.push('숲');
     if (!flags.badges.lake) left.push('호수');
     if (!flags.badges.cave) left.push('동굴');
-    return `${left.join('·')}의 수호자 깨우치기 (배지 ${badges}/3)`;
+    return `${left.join('·')}의 수호자 깨우치기 (증표 ${badges}/3)`;
   }
   if (!d.meotdaeromon) return '햇살초원의 보스 멋대로몬 깨우치기 (마을 남쪽)';
   if (!d.tteonemgimon) return '재깍사막의 보스 떠넘기몬 깨우치기 (초원 남쪽)';
-  if (!d.hollimmon) return '눈송이마을의 보스 홀림몬 깨우치기 (사막 남쪽)';
-  if (!d.finalboss) return '그림자성의 어둠대왕몬 깨우치기 (눈송이마을 남쪽)';
+  if (!d.hollimmon) return '정지된 설원의 보스 홀림몬 깨우치기 (사막 남쪽)';
+  if (!d.finalboss) return '그림자성의 어둠대왕몬 깨우치기 (정지된 설원 남쪽)';
   if (!d.girokmon) return '왕좌 뒤의 신호를 따라가기 — 잊혀진 서버실';
   if (!d.saseomon) return '기억의 도서관 — ≪프로젝트 0호≫의 흔적 찾기';
   if (!d.mirrormon) return '거울 회랑 — 거울 속의 나와 마주하기';
@@ -2360,7 +2360,7 @@ const EXAMINE_TILES = {
 // 맵별 특별 살펴보기 지점(좌표). 같은 좌표면 기본 타일 문구보다 우선.
 const MAP_PROPS = {
   village: [
-    { x: 5, y: 15, text: '하늘마을의 연못.\n물고기 대신 작은 빛 알갱이가\n헤엄치고 있다.' },
+    { x: 5, y: 15, text: '경계마을의 연못.\n물고기 대신 작은 빛 알갱이가\n헤엄치고 있다.' },
     { x: 21, y: 14, text: '벽에 붙은 게시판.\n"제1회 AI 바르게 쓰기 그림 대회"\n포스터가 붙어 있다.' },
   ],
   forest: [

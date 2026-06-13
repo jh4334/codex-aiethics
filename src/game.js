@@ -648,7 +648,7 @@
     if (w.needBadges && countBadges(game.flags) < w.needBadges) {
       pushBack();
       Sound.bump();
-      startDialog([`탑의 문이 굳게 닫혀 있다.\n배지 ${w.needBadges}개가 필요하다.\n(지금 ${countBadges(game.flags)}개)`]);
+      startDialog([`신호탑의 문이 굳게 닫혀 있다.\n마음의 증표 ${w.needBadges}개가 필요하다.\n(지금 ${countBadges(game.flags)}개)`]);
       return;
     }
     if (w.needBoss && !game.flags.defeated[w.needBoss]) {
@@ -957,10 +957,10 @@
 
     const lines = [mon.win];
     if (gotBadge) {
-      const badgeNames = { forest: '숲의 배지', lake: '호수의 배지', cave: '동굴의 배지' };
-      lines.push(`☆ ${badgeNames[mon.badge]}를 얻었다! ☆\n(배지 ${countBadges(game.flags)}개 / 3개)`);
+      const badgeNames = { forest: '정적의 숲의 증표', lake: '잔향의 호수의 증표', cave: '회로의 동굴의 증표' };
+      lines.push(`☆ ${badgeNames[mon.badge]}를 얻었다! ☆\n(마음의 증표 ${countBadges(game.flags)}개 / 3개)`);
       if (countBadges(game.flags) >= 3) {
-        lines.push('배지를 모두 모았다!\n마을의 AI 타워 문이 열렸다…!');
+        lines.push('마음의 증표를 모두 모았다!\n마을의 신호탑 문이 열렸다…!');
       }
     }
     if (mon.clear) lines.push(mon.clear);
@@ -1029,16 +1029,16 @@
 
   function drawDex() {
     const seen = getDexSeen();
-    ctx.fillStyle = '#15172a';
+    ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // 헤더
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#ffd644';
-    ctx.font = 'bold 22px sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
     ctx.fillText('♥ 몬스터 도감', 24, 38);
-    ctx.fillStyle = '#9aa0c0';
-    ctx.font = '15px sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.font = '15px monospace';
     ctx.fillText(`수집 ${dexSeenCount()} / ${DEX_ORDER.length}`, 24, 62);
 
     // 왼쪽: 목록 (커서 주변으로 스크롤)
@@ -1052,29 +1052,27 @@
       const isSeen = seen[id] && seen[id].seen;
       const y = listY + i * rowH;
       if (idx === cur) {
-        ctx.fillStyle = 'rgba(255,214,68,.16)';
-        roundRect(listX - 6, y - 18, 280, rowH - 4, 6);
-        ctx.fill();
+        ctx.fillStyle = '#e0453a';
+        ctx.font = '14px monospace';
+        ctx.fillText('♥', listX - 18, y);
       }
-      ctx.fillStyle = '#6a7090';
-      ctx.font = '12px sans-serif';
+      ctx.fillStyle = '#666';
+      ctx.font = '12px monospace';
       ctx.fillText(`S${MONSTER_DEX[id].stage}`, listX, y);
-      ctx.fillStyle = isSeen ? (idx === cur ? '#ffd644' : '#d8dcf0') : '#555a72';
-      ctx.font = (idx === cur ? 'bold ' : '') + '15px sans-serif';
+      ctx.fillStyle = isSeen ? (idx === cur ? '#fff' : '#aaa') : '#444';
+      ctx.font = (idx === cur ? 'bold ' : '') + '15px monospace';
       ctx.fillText(isSeen ? MONSTERS[id].name : '??? (미발견)', listX + 34, y);
     }
     // 스크롤 표시
-    if (start > 0) { ctx.fillStyle = '#9aa0c0'; ctx.fillText('▲', listX + 130, listY - 24); }
-    if (start + visible < DEX_ORDER.length) { ctx.fillStyle = '#9aa0c0'; ctx.fillText('▼', listX + 130, listY + visible * rowH); }
+    if (start > 0) { ctx.fillStyle = '#888'; ctx.fillText('▲', listX + 130, listY - 24); }
+    if (start + visible < DEX_ORDER.length) { ctx.fillStyle = '#888'; ctx.fillText('▼', listX + 130, listY + visible * rowH); }
 
     // 오른쪽: 상세 패널
     const id = DEX_ORDER[cur];
     const info = MONSTER_DEX[id];
     const isSeen = seen[id] && seen[id].seen;
     const panelX = 330, panelW = canvas.width - panelX - 24;
-    ctx.fillStyle = 'rgba(16,18,38,.7)';
-    roundRect(panelX, 84, panelW, 400, 10);
-    ctx.fill();
+    utBox(panelX, 84, panelW, 400, 6);
 
     const cx = panelX + panelW / 2;
     // 스프라이트 (가운데, 6배)
@@ -1084,47 +1082,48 @@
       drawSprite(ctx, MONSTER_SPRITES[id], Math.round(cx - 16 * ss / 2), Math.round(110 + bob), ss);
     } else {
       // 실루엣
-      ctx.fillStyle = '#2a2e48';
-      roundRect(cx - 44, 116, 88, 88, 10);
-      ctx.fill();
-      ctx.fillStyle = '#555a72';
-      ctx.font = 'bold 48px sans-serif';
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 2;
+      roundRect(cx - 44, 116, 88, 88, 6);
+      ctx.stroke();
+      ctx.fillStyle = '#444';
+      ctx.font = 'bold 48px monospace';
       ctx.textAlign = 'center';
       ctx.fillText('?', cx, 178);
       ctx.textAlign = 'left';
     }
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = isSeen ? '#ffd644' : '#6a7090';
-    ctx.font = 'bold 22px sans-serif';
+    ctx.fillStyle = isSeen ? '#fff' : '#555';
+    ctx.font = 'bold 22px monospace';
     ctx.fillText(isSeen ? MONSTERS[id].name : '???', cx, 238);
-    ctx.fillStyle = '#9aa0c0';
-    ctx.font = '13px sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.font = '13px monospace';
     ctx.fillText(`스테이지 ${info.stage}`, cx, 260);
     ctx.textAlign = 'left';
 
     if (isSeen) {
-      ctx.fillStyle = '#7bd1f0';
-      ctx.font = 'bold 15px sans-serif';
+      ctx.fillStyle = '#ffd644';
+      ctx.font = 'bold 15px monospace';
       wrapText(`주제 · ${info.theme}`, panelX + 24, 296, panelW - 48, 22);
-      ctx.fillStyle = '#e8ecff';
-      ctx.font = '15px sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.font = '15px monospace';
       const usedLines = wrapText(info.learn, panelX + 24, 330, panelW - 48, 24);
       const my = 330 + usedLines * 24 + 16;
       const mk = seen[id].mercy;
-      ctx.fillStyle = '#f48fb1';
-      ctx.font = '14px sans-serif';
+      ctx.fillStyle = '#e0453a';
+      ctx.font = '14px monospace';
       ctx.fillText(`작별 · ${mk ? MERCY_LABEL[mk] : '—'}`, panelX + 24, my);
     } else {
-      ctx.fillStyle = '#6a7090';
-      ctx.font = '15px sans-serif';
+      ctx.fillStyle = '#666';
+      ctx.font = '15px monospace';
       ctx.fillText('아직 만나지 못한 마음입니다.', panelX + 24, 300);
       ctx.fillText('모험에서 깨우치면 기록됩니다.', panelX + 24, 326);
     }
 
     // 푸터
-    ctx.fillStyle = '#777c98';
-    ctx.font = '13px sans-serif';
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('↑↓←→ 넘기기 · X 또는 A로 닫기', canvas.width / 2, 510);
     ctx.textAlign = 'left';
@@ -1166,7 +1165,7 @@
     const { cx, cy } = camera();
     const frame = Math.floor(game.time / 30) % 2;
 
-    ctx.fillStyle = '#1a1c2c';
+    ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const x0 = Math.floor(cx / TS), y0 = Math.floor(cy / TS);
@@ -1200,7 +1199,7 @@
         Math.round(mo.x * TS - cx), Math.round(mo.y * TS - cy - 6 + bob), SCALE);
       // 느낌표
       ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 18px sans-serif';
+      ctx.font = 'bold 18px monospace';
       ctx.fillText('!', Math.round(mo.x * TS - cx) + TS / 2 - 3, Math.round(mo.y * TS - cy) - 10 + bob);
     }
 
@@ -1218,68 +1217,67 @@
   function drawHud() {
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
-    ctx.font = 'bold 14px sans-serif';
+    ctx.font = 'bold 14px monospace';
     const title = `STAGE ${getStage(game.flags)}/10 · ${m.name}`;
     const obj = `목표: ${getObjective(game.flags)}`;
     const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
-    ctx.fillStyle = 'rgba(20,22,40,.75)';
-    roundRect(8, 8, w, 52, 8);
-    ctx.fill();
+    utBox(8, 8, w, 52, 4);
     ctx.fillStyle = '#ffd644';
     ctx.fillText(title, 18, 28);
     ctx.fillStyle = '#fff';
     ctx.fillText(obj, 18, 50);
 
-    // 배지
-    const badges = ['forest', 'lake', 'cave'];
-    const badgeCols = { forest: '#5cb85c', lake: '#4ea8de', cave: '#9b5de5' };
+    // 마음의 증표 (하트 3개)
+    const shards = ['forest', 'lake', 'cave'];
     for (let i = 0; i < 3; i++) {
-      const bx = canvas.width - 110 + i * 34;
-      ctx.fillStyle = 'rgba(20,22,40,.75)';
-      ctx.beginPath();
-      ctx.arc(bx, 26, 14, 0, Math.PI * 2);
-      ctx.fill();
-      if (game.flags.badges[badges[i]]) {
-        ctx.fillStyle = badgeCols[badges[i]];
-        ctx.beginPath();
-        ctx.arc(bx, 26, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px sans-serif';
-        ctx.fillText('★', bx - 6, 31);
-      } else {
-        ctx.strokeStyle = '#666';
-        ctx.beginPath();
-        ctx.arc(bx, 26, 10, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      const bx = canvas.width - 104 + i * 30;
+      ctx.font = '18px monospace';
+      ctx.fillStyle = game.flags.badges[shards[i]] ? '#e0453a' : '#333';
+      ctx.fillText('♥', bx, 30);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.strokeText('♥', bx, 30);
     }
 
     // 안아 준 마음 (자비)
     if (game.flags.mercy > 0) {
-      ctx.fillStyle = 'rgba(20,22,40,.75)';
-      roundRect(canvas.width - 196, 12, 64, 28, 8);
-      ctx.fill();
-      ctx.fillStyle = '#f48fb1';
-      ctx.font = 'bold 14px sans-serif';
+      utBox(canvas.width - 196, 12, 64, 28, 4);
+      ctx.fillStyle = '#e0453a';
+      ctx.font = 'bold 14px monospace';
       ctx.fillText(`♥ ${game.flags.mercy}`, canvas.width - 184, 31);
     }
 
     if (Sound.muted) {
       ctx.fillStyle = '#aaa';
-      ctx.font = '12px sans-serif';
+      ctx.font = '12px monospace';
       ctx.fillText('♪ 꺼짐(M)', canvas.width - 110, 56);
     }
   }
 
+  // 언더테일풍 — 모서리가 살짝 깎인 픽셀 상자 (r은 모서리 컷 크기로 사용)
   function roundRect(x, y, w, h, r) {
+    const c = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
+    ctx.moveTo(x + c, y);
+    ctx.lineTo(x + w - c, y);
+    ctx.lineTo(x + w, y + c);
+    ctx.lineTo(x + w, y + h - c);
+    ctx.lineTo(x + w - c, y + h);
+    ctx.lineTo(x + c, y + h);
+    ctx.lineTo(x, y + h - c);
+    ctx.lineTo(x, y + c);
     ctx.closePath();
+  }
+
+  // 박스 안에 두 줄 흰 테두리를 그려 언더테일풍 윈도우를 만든다
+  function utBox(x, y, w, h, c) {
+    ctx.fillStyle = '#000';
+    roundRect(x, y, w, h, c || 6);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    roundRect(x, y, w, h, c || 6);
+    ctx.stroke();
   }
 
   function drawDialog() {
@@ -1290,41 +1288,51 @@
     const boxH = Math.max(120, 42 + totalLines * 24);
     const y = canvas.height - boxH - 12;
 
-    ctx.fillStyle = 'rgba(16,18,38,.92)';
-    roundRect(12, y, canvas.width - 24, boxH, 10);
-    ctx.fill();
-    ctx.strokeStyle = '#ffd644';
-    ctx.lineWidth = 2;
-    roundRect(12, y, canvas.width - 24, boxH, 10);
-    ctx.stroke();
+    utBox(12, y, canvas.width - 24, boxH, 8);
 
     let ty = y + 30;
     if (d.speaker) {
       ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 16px sans-serif';
-      ctx.fillText(d.speaker, 30, ty);
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText(`* ${d.speaker}`, 30, ty);
       ty += 26;
     }
     ctx.fillStyle = '#fff';
-    ctx.font = '16px sans-serif';
+    ctx.font = '16px monospace';
     for (const part of shown.split('\n')) {
       ctx.fillText(part, 30, ty);
       ty += 24;
     }
     if (d.chars >= line.length && Math.floor(game.time / 20) % 2 === 0) {
-      ctx.fillStyle = '#ffd644';
+      ctx.fillStyle = '#fff';
       ctx.fillText('▼', canvas.width - 50, y + boxH - 16);
     }
   }
 
+  // 선택지 한 줄을 그린다 — 선택된 줄 앞에 빨간 하트가 떠 있다 (언더테일 커서)
+  function drawChoiceLine(text, x, y, selected) {
+    if (selected) {
+      ctx.fillStyle = '#e0453a';
+      ctx.font = '15px monospace';
+      ctx.fillText('♥', x, y);
+    }
+    ctx.fillStyle = selected ? '#fff' : '#888';
+    ctx.font = '16px monospace';
+    ctx.fillText(text, x + 28, y);
+  }
+
   function drawBattle() {
     const b = game.battle;
-    ctx.fillStyle = '#2a2438';
+    ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // 바닥 무늬
-    ctx.fillStyle = '#332c44';
-    for (let i = 0; i < 8; i++) {
-      ctx.fillRect(0, i * 70 + (i % 2) * 20, canvas.width, 8);
+    // 바닥 경계선
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 8; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, i * 70);
+      ctx.lineTo(canvas.width, i * 70);
+      ctx.stroke();
     }
 
     // 몬스터 (오른쪽 위, 크게)
@@ -1336,24 +1344,23 @@
       Math.round(30 + bob), monScale);
 
     // 몬스터 이름/HP
-    ctx.fillStyle = 'rgba(16,18,38,.9)';
-    roundRect(24, 24, 240, 64, 8);
-    ctx.fill();
+    utBox(24, 24, 240, 64, 6);
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 17px sans-serif';
+    ctx.font = 'bold 17px monospace';
     ctx.fillText(b.mon.name, 40, 50);
-    ctx.fillStyle = '#555';
-    ctx.fillRect(40, 62, 200, 12);
-    ctx.fillStyle = b.monHp / b.monMaxHp > 0.5 ? '#5cb85c' : b.monHp / b.monMaxHp > 0.25 ? '#ffd644' : '#e0453a';
-    ctx.fillRect(40, 62, 200 * Math.max(0, b.monHp / b.monMaxHp), 12);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px monospace';
+    ctx.fillText('HP', 40, 70);
+    ctx.fillStyle = '#601010';
+    ctx.fillRect(66, 62, 174, 12);
+    ctx.fillStyle = b.monHp / b.monMaxHp > 0.5 ? '#ffd644' : b.monHp / b.monMaxHp > 0.25 ? '#f08a24' : '#e0453a';
+    ctx.fillRect(66, 62, 174 * Math.max(0, b.monHp / b.monMaxHp), 12);
 
     // 플레이어 하트
-    ctx.fillStyle = 'rgba(16,18,38,.9)';
-    roundRect(24, 100, 30 + b.maxHearts * 32, 44, 8);
-    ctx.fill();
-    ctx.font = '22px sans-serif';
+    utBox(24, 100, 30 + b.maxHearts * 32, 44, 6);
+    ctx.font = '22px monospace';
     for (let i = 0; i < b.maxHearts; i++) {
-      ctx.fillStyle = i < b.playerHp ? '#e0453a' : '#444';
+      ctx.fillStyle = i < b.playerHp ? '#e0453a' : '#333';
       ctx.fillText('♥', 40 + i * 32, 132);
     }
 
@@ -1368,44 +1375,29 @@
 
     // 질문/피드백 박스
     const boxY = canvas.height - 250;
-    ctx.fillStyle = 'rgba(16,18,38,.95)';
-    roundRect(12, boxY, canvas.width - 24, 238, 10);
-    ctx.fill();
-    ctx.strokeStyle = '#ffd644';
-    ctx.lineWidth = 2;
-    roundRect(12, boxY, canvas.width - 24, 238, 10);
-    ctx.stroke();
+    utBox(12, boxY, canvas.width - 24, 238, 8);
 
     if (b.phase === 'question') {
       const q = currentQuestion();
       ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
+      ctx.font = '16px monospace';
       let ty = boxY + 30;
       for (const part of q.q.split('\n')) {
         ctx.fillText(part, 34, ty);
         ty += 24;
       }
       ty = boxY + 118;
-      ctx.font = '16px sans-serif';
       for (let i = 0; i < q.a.length; i++) {
-        if (i === b.cursor) {
-          ctx.fillStyle = 'rgba(255,214,68,.18)';
-          roundRect(28, ty - 20, canvas.width - 80, 30, 6);
-          ctx.fill();
-          ctx.fillStyle = '#ffd644';
-          ctx.fillText('▶', 38, ty);
-        }
-        ctx.fillStyle = i === b.cursor ? '#ffd644' : '#ccc';
-        ctx.fillText(`${i + 1}. ${q.a[i]}`, 64, ty);
+        drawChoiceLine(`${i + 1}. ${q.a[i]}`, 38, ty, i === b.cursor);
         ty += 38;
       }
     } else if (b.phase === 'feedback') {
       const f = b.feedback;
-      ctx.font = 'bold 22px sans-serif';
+      ctx.font = 'bold 22px monospace';
       ctx.fillStyle = f.correct ? '#5cb85c' : '#e0453a';
       ctx.fillText(f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.', 34, boxY + 38);
       ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
+      ctx.font = '16px monospace';
       let ty = boxY + 78;
       for (const part of f.why.split('\n')) {
         ctx.fillText(part, 34, ty);
@@ -1417,11 +1409,11 @@
       }
     } else if (b.phase === 'mercy') {
       // 마음의 선택
-      ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 18px sans-serif';
+      ctx.fillStyle = '#e0453a';
+      ctx.font = 'bold 18px monospace';
       ctx.fillText('♥ 마음의 선택', 34, boxY + 32);
       ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
+      ctx.font = '16px monospace';
       let ty = boxY + 62;
       for (const part of b.mon.mercy.prompt.split('\n')) {
         ctx.fillText(part, 34, ty);
@@ -1430,20 +1422,12 @@
       ty = boxY + 138;
       const opts = b.mon.mercy.options;
       for (let i = 0; i < opts.length; i++) {
-        if (i === b.cursor) {
-          ctx.fillStyle = 'rgba(255,214,68,.18)';
-          roundRect(28, ty - 20, canvas.width - 80, 28, 6);
-          ctx.fill();
-          ctx.fillStyle = '#ffd644';
-          ctx.fillText('♥', 38, ty);
-        }
-        ctx.fillStyle = i === b.cursor ? '#ffd644' : '#ccc';
-        ctx.fillText(opts[i].label, 64, ty);
+        drawChoiceLine(opts[i].label, 38, ty, i === b.cursor);
         ty += 34;
       }
     } else if (b.phase === 'mercyReply') {
       ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
+      ctx.font = '16px monospace';
       let ty = boxY + 40;
       for (const part of b.mercyReply.split('\n')) {
         ctx.fillText(part, 34, ty);
@@ -1461,10 +1445,10 @@
     ctx.textAlign = 'center';
     // 보스의 외침
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px sans-serif';
+    ctx.font = 'bold 18px monospace';
     ctx.fillText(b.attack.taunt, canvas.width / 2, d.box.y - 26);
-    ctx.fillStyle = '#9aa0c0';
-    ctx.font = '13px sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.font = '13px monospace';
     ctx.fillText('화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)', canvas.width / 2, d.box.y - 6);
     ctx.textAlign = 'left';
 
@@ -1484,7 +1468,7 @@
     // 하트(소울) — 무적 시간 동안 깜빡임
     if (!(d.inv > 0 && Math.floor(game.time / 4) % 2 === 0)) {
       ctx.fillStyle = '#e0453a';
-      ctx.font = '17px sans-serif';
+      ctx.font = '17px monospace';
       ctx.textAlign = 'center';
       ctx.fillText('♥', d.soul.x, d.soul.y + 6);
       ctx.textAlign = 'left';
@@ -1494,12 +1478,12 @@
     const frac = Math.max(0, 1 - d.t / d.dur);
     ctx.fillStyle = '#333';
     ctx.fillRect(d.box.x, d.box.y + d.box.h + 12, d.box.w, 6);
-    ctx.fillStyle = '#7bd1f0';
+    ctx.fillStyle = '#fff';
     ctx.fillRect(d.box.x, d.box.y + d.box.h + 12, d.box.w * frac, 6);
   }
 
   function drawTitle() {
-    ctx.fillStyle = '#1a1c2c';
+    ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // 배경 별
@@ -1512,11 +1496,11 @@
     }
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffd644';
-    ctx.font = 'bold 40px sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 40px monospace';
     ctx.fillText('AI 윤리 어드벤처', canvas.width / 2, 86);
-    ctx.fillStyle = '#9aa0c0';
-    ctx.font = '15px sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.font = '15px monospace';
     ctx.fillText('10개의 스테이지 끝에서, 잊혀진 이야기와 만나라', canvas.width / 2, 114);
 
     // 몬스터들 둥실둥실 (한 줄)
@@ -1531,37 +1515,39 @@
     for (let i = 0; i < SLOT_COUNT; i++) {
       const y = 212 + i * 74, h = 64;
       const sel = i === game.slotCursor && game.titleScreen === 'slots';
-      ctx.fillStyle = sel ? 'rgba(255,214,68,.14)' : 'rgba(20,22,40,.6)';
-      roundRect(boxX, y, boxW, h, 10); ctx.fill();
-      ctx.strokeStyle = sel ? '#ffd644' : '#3a3e5a';
-      ctx.lineWidth = 2;
-      roundRect(boxX, y, boxW, h, 10); ctx.stroke();
+      utBox(boxX, y, boxW, h, 4);
+      if (sel) {
+        ctx.fillStyle = '#e0453a';
+        ctx.font = '16px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('♥', boxX - 22, y + 38);
+      }
 
       const sum = slotSummary(i);
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#6a7090';
-      ctx.font = 'bold 13px sans-serif';
+      ctx.fillStyle = '#888';
+      ctx.font = 'bold 13px monospace';
       ctx.fillText(`슬롯 ${i + 1}`, boxX + 18, y + 22);
       if (sum) {
-        ctx.fillStyle = sel ? '#ffd644' : '#e8ecff';
-        ctx.font = 'bold 19px sans-serif';
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 19px monospace';
         ctx.fillText(sum.name, boxX + 18, y + 46);
-        ctx.fillStyle = '#9aa0c0';
-        ctx.font = '13px sans-serif';
+        ctx.fillStyle = '#888';
+        ctx.font = '13px monospace';
         const prog = sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`;
         ctx.textAlign = 'right';
         ctx.fillText(`${prog}   ♥ ${sum.mercy}`, boxX + boxW - 18, y + 40);
         ctx.textAlign = 'left';
       } else {
-        ctx.fillStyle = '#666b88';
-        ctx.font = '17px sans-serif';
+        ctx.fillStyle = '#555';
+        ctx.font = '17px monospace';
         ctx.fillText('— 비어 있음 (새 모험) —', boxX + 18, y + 46);
       }
     }
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
-    ctx.font = '13px sans-serif';
+    ctx.font = '13px monospace';
     ctx.fillText('↑↓ 선택 · Z 시작/이어하기 · X 슬롯 삭제 · C 도감 · M 음악', canvas.width / 2, 474);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
@@ -1570,27 +1556,24 @@
     const names = { home: '집으로', dawn: '새벽', farewell: '작별', silent: '침묵' };
     const found = ['home', 'dawn', 'farewell', 'silent']
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
-    ctx.fillStyle = '#f48fb1';
-    ctx.font = '13px sans-serif';
-    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   📖 도감 ${dexSeenCount()}/${DEX_ORDER.length}`, canvas.width / 2, 500);
+    ctx.fillStyle = '#e0453a';
+    ctx.font = '13px monospace';
+    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   도감 ${dexSeenCount()}/${DEX_ORDER.length}`, canvas.width / 2, 500);
 
     // 삭제 확인
     if (game.titleScreen === 'delete') {
-      ctx.fillStyle = 'rgba(10,12,28,.8)';
+      ctx.fillStyle = 'rgba(0,0,0,.8)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       const sum = slotSummary(game.slotCursor);
-      ctx.fillStyle = '#20233c';
-      roundRect(canvas.width / 2 - 200, 200, 400, 130, 12); ctx.fill();
-      ctx.strokeStyle = '#e0453a'; ctx.lineWidth = 2;
-      roundRect(canvas.width / 2 - 200, 200, 400, 130, 12); ctx.stroke();
+      utBox(canvas.width / 2 - 200, 200, 400, 130, 6);
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 18px sans-serif';
+      ctx.font = 'bold 18px monospace';
       ctx.fillText(`슬롯 ${game.slotCursor + 1} "${sum ? sum.name : ''}"`, canvas.width / 2, 240);
-      ctx.font = '15px sans-serif';
+      ctx.font = '15px monospace';
       ctx.fillStyle = '#e0453a';
       ctx.fillText('정말 삭제할까요? (되돌릴 수 없어요)', canvas.width / 2, 270);
-      ctx.fillStyle = '#9aa0c0';
-      ctx.font = '14px sans-serif';
+      ctx.fillStyle = '#888';
+      ctx.font = '14px monospace';
       ctx.fillText('Z: 삭제   ·   X: 취소', canvas.width / 2, 304);
     }
     ctx.textAlign = 'left';
@@ -1608,7 +1591,7 @@
     save();
     Sound.playSong(MAPS[game.map].song);
     startDialog([
-      `여기는 AI들과 사람들이 함께 사는\n평화로운 "하늘마을".`,
+      `여기는 AI들과 사람들이 함께 사는\n평화로운 "경계마을".`,
       `반가워, ${game.playerName}!\n그런데 요즘 이상한 몬스터들이\n나타나기 시작했는데…`,
       '마을 왼쪽 아래에 계신 박사님을\n찾아가 보자! (목표는 왼쪽 위에 표시돼요)',
     ]);
@@ -1684,7 +1667,7 @@
 
   function drawEnding() {
     game.endingT += 1;
-    ctx.fillStyle = '#1a1c2c';
+    ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // 별
@@ -1767,9 +1750,9 @@
       };
       const e = ENDINGS[game.flags.endingId] || ENDINGS.farewell;
       ctx.fillStyle = e.color;
-      ctx.font = 'bold 34px sans-serif';
+      ctx.font = 'bold 34px monospace';
       ctx.fillText(e.title, canvas.width / 2, 110);
-      ctx.font = '16px sans-serif';
+      ctx.font = '16px monospace';
       ctx.fillStyle = '#ccc';
       let ty = 160;
       for (const l of e.lines) { ctx.fillText(l, canvas.width / 2, ty); ty += 26; }
@@ -1781,7 +1764,7 @@
       }
       if (game.endingT > 150) {
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-        ctx.font = '15px sans-serif';
+        ctx.font = '15px monospace';
         ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', canvas.width / 2, 510);
         if (justPressed('action')) {
           game.mode = 'world';
@@ -1798,14 +1781,14 @@
 
     // 1차 엔딩 (스테이지 5 클리어)
     ctx.fillStyle = '#ffd644';
-    ctx.font = 'bold 36px sans-serif';
+    ctx.font = 'bold 36px monospace';
     ctx.fillText('축하합니다!', canvas.width / 2, 100);
 
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px sans-serif';
+    ctx.font = 'bold 22px monospace';
     ctx.fillText('🏆 AI 윤리 수호자 인증서 🏆', canvas.width / 2, 155);
 
-    ctx.font = '16px sans-serif';
+    ctx.font = '16px monospace';
     ctx.fillStyle = '#ccc';
     const lines = [
       '위 어린이는 다섯 스테이지를 모두 넘으며',
@@ -1838,7 +1821,7 @@
 
     if (game.endingT > 120) {
       ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-      ctx.font = '15px sans-serif';
+      ctx.font = '15px monospace';
       ctx.fillText('Z·스페이스를 누르면 모험이 계속됩니다', canvas.width / 2, 516);
       if (justPressed('action')) {
         game.mode = 'world';
