@@ -2265,6 +2265,31 @@ function getObjective(flags) {
   return '코어 — 가장 깊은 곳에서 기다리는 아이에게';
 }
 
+// 현재 목표의 위치(맵/좌표). 화면의 안내 화살표가 가리킬 곳.
+function getObjectiveTarget(flags) {
+  const d = flags.defeated;
+  if (!flags.talkedProf) return { map: 'village', x: 4, y: 12 };
+  if (d.yeongi) {
+    return flags.trueEnding ? { map: 'village', x: 5, y: 12 } : null;
+  }
+  if (!d.hondonmon) {
+    const badges = countBadges(flags);
+    if (badges >= 3) return { map: 'tower', x: 8, y: 3 };
+    if (!flags.badges.forest) return { map: 'forest', x: 13, y: 3 };
+    if (!flags.badges.lake) return { map: 'lake', x: 15, y: 5 };
+    return { map: 'cave', x: 4, y: 4 };
+  }
+  if (!d.meotdaeromon) return { map: 'meadow', x: 13, y: 16 };
+  if (!d.tteonemgimon) return { map: 'desert', x: 13, y: 15 };
+  if (!d.hollimmon) return { map: 'snow', x: 13, y: 15 };
+  if (!d.finalboss) return { map: 'castle', x: 9, y: 2 };
+  if (!d.girokmon) return { map: 'serverroom', x: 13, y: 2 };
+  if (!d.saseomon) return { map: 'library', x: 13, y: 2 };
+  if (!d.mirrormon) return { map: 'mirrors', x: 13, y: 2 };
+  if (!d.soksagimon) return { map: 'garden', x: 13, y: 15 };
+  return { map: 'core', x: 9, y: 2 };
+}
+
 // ===== 도감 =====
 // 깨우친 몬스터의 한 줄 주제와 배운 점. (도감 화면에서 사용)
 const MONSTER_DEX = {

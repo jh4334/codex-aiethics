@@ -1236,6 +1236,70 @@
       Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
 
     drawHud();
+    drawObjectiveArrow();
+  }
+
+  // 현재 맵에서 다음 목표를 향해 한 걸음 더 가야 할 타일을 찾는다.
+  // 목표가 다른 맵에 있으면, 그곳으로 가는 경로상의 다음 워프 타일을 가리킨다.
+  function nextWaypoint(flags, curMap) {
+    const target = getObjectiveTarget(flags);
+    if (!target) return null;
+    if (target.map === curMap) return { x: target.x, y: target.y };
+    const prev = { [curMap]: null };
+    const exitTile = {};
+    const queue = [curMap];
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur === target.map) break;
+      for (const w of MAPS[cur].warps) {
+        if (!(w.to in prev)) {
+          prev[w.to] = cur;
+          exitTile[w.to] = { x: w.x, y: w.y };
+          queue.push(w.to);
+        }
+      }
+    }
+    if (!(target.map in prev)) return null;
+    let m = target.map;
+    while (prev[m] !== curMap) {
+      m = prev[m];
+      if (m === null) return null;
+    }
+    return exitTile[m];
+  }
+
+  // 화면 아래에 다음 목표 방향을 알려주는 화살표를 그린다.
+  function drawObjectiveArrow() {
+    const wp = nextWaypoint(game.flags, game.map);
+    if (!wp) return;
+    const p = game.player;
+    const dx = wp.x - p.x, dy = wp.y - p.y;
+    if (dx === 0 && dy === 0) return;
+    const angle = Math.atan2(dy, dx);
+    const ax = canvas.width / 2, ay = canvas.height - 24;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.beginPath();
+    ctx.arc(ax, ay, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.translate(ax, ay);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#ffd644';
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(-6, -7);
+    ctx.lineTo(-6, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawHud() {
