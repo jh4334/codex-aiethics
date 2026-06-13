@@ -133,14 +133,20 @@ function check(name, cond) {
 }
 
 // ---------- 시나리오 ----------
-console.log('[1] 타이틀 → 게임 시작');
+console.log('[1] 타이틀 → 슬롯 선택 → 이름 입력 → 게임 시작');
 step(5);
-check('타이틀 화면', g.mode === 'title');
-tap('z');
+check('타이틀 화면', g.mode === 'title' && g.titleScreen === 'slots');
+check('슬롯 3개 모두 비어 있음', !storage.get('ai-ethics-adventure-slot-0'));
+tap('z'); // 빈 슬롯 0 선택 → 이름 입력
+check('이름 입력 화면', g.mode === 'title' && g.titleScreen === 'name');
+// 이름 입력 중에는 게임 키가 막힌다(IME). Enter/시작 버튼은 nameConfirm으로 확정.
+g.nameConfirm = true; step(2);
 check('인트로 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('월드 진입', g.mode === 'world' && g.map === 'village');
 check('시작 위치 (13,16)', g.player.x === 13 && g.player.y === 16);
+check('슬롯 0에 저장됨', !!storage.get('ai-ethics-adventure-slot-0'));
+check('기본 이름 수호자', g.playerName === '수호자');
 
 console.log('[2] 박사님과 대화 (메인 퀘스트 시작)');
 setPos(5, 12, 'left'); // 박사님 (4,12) 옆
@@ -369,7 +375,7 @@ check('영이와 대화', g.mode === 'dialog');
 advanceDialog();
 
 console.log('[22] 저장 데이터 무결성');
-const save = JSON.parse(storage.get('ai-ethics-adventure-v1'));
+const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
 check('저장된 배지 3개', save.flags.badges.forest && save.flags.badges.lake && save.flags.badges.cave);
 check('모든 보스 처치 저장', save.flags.defeated.hondonmon && save.flags.defeated.meotdaeromon &&
   save.flags.defeated.tteonemgimon && save.flags.defeated.hollimmon && save.flags.defeated.finalboss);

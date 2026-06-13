@@ -31,7 +31,15 @@
     titleCursor: 0,
     endingT: 0,
     dex: { cursor: 0, ret: 'title' },
+    titleScreen: 'slots', // slots | name | delete
+    slotCursor: 0,
+    currentSlot: 0,
+    playerName: '수호자',
+    nameConfirm: false,
+    nameCancel: false,
   };
+
+  const SLOT_COUNT = 3;
 
   function newFlags() {
     return {
@@ -57,25 +65,57 @@
     };
   }
 
-  function save() {
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({
-        map: game.map,
-        x: game.player.x, y: game.player.y,
-        flags: game.flags,
-      }));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
-  }
+  // ---------- 세이브 슬롯 (3개) ----------
+  function slotKey(i) { return 'ai-ethics-adventure-slot-' + i; }
 
-  function loadSave() {
+  function loadSlot(i) {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
+      const raw = localStorage.getItem(slotKey(i));
+      return raw ? JSON.parse(raw) : null;
     } catch (e) { return null; }
   }
 
-  function hasSave() { return !!loadSave(); }
+  function writeSlot(i, data) {
+    try { localStorage.setItem(slotKey(i), JSON.stringify(data)); }
+    catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+
+  function deleteSlot(i) {
+    try { localStorage.removeItem(slotKey(i)); } catch (e) { /* 무시 */ }
+  }
+
+  // 기존 단일 세이브를 슬롯 0으로 1회 이전한다.
+  function migrateOldSave() {
+    let old = null;
+    try { const r = localStorage.getItem(SAVE_KEY); old = r ? JSON.parse(r) : null; } catch (e) { old = null; }
+    if (old && old.flags && !loadSlot(0)) {
+      writeSlot(0, { name: '수호자', map: old.map, x: old.x, y: old.y, flags: old.flags, updatedAt: Date.now() });
+      try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 무시 */ }
+    }
+  }
+
+  function save() {
+    writeSlot(game.currentSlot, {
+      name: game.playerName,
+      map: game.map,
+      x: game.player.x, y: game.player.y,
+      flags: game.flags,
+      updatedAt: Date.now(),
+    });
+  }
+
+  // 슬롯 요약 (타이틀 표시용). 없으면 null.
+  function slotSummary(i) {
+    const s = loadSlot(i);
+    if (!s || !s.flags) return null;
+    return {
+      name: s.name || '수호자',
+      stage: getStage(s.flags),
+      mercy: s.flags.mercy || 0,
+      done: !!(s.flags.defeated && s.flags.defeated.yeongi),
+      endingId: s.flags.endingId || null,
+    };
+  }
 
   // 발견한 엔딩 기록 — 세이브와 별개로, 게임을 다시 시작해도 남는다
   const ENDINGS_KEY = 'ai-ethics-adventure-endings';
@@ -122,6 +162,8 @@
   };
 
   window.addEventListener('keydown', (e) => {
+    // 이름 입력 중에는 게임 키 매핑을 막지 않는다 (한글 IME 사용)
+    if (game.mode === 'title' && game.titleScreen === 'name') return;
     Sound.resume();
     if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
     const k = KEYMAP[e.key];
@@ -149,9 +191,46 @@
     bind('t-up', 'up'); bind('t-down', 'down');
     bind('t-left', 'left'); bind('t-right', 'right');
     bind('t-a', 'action');
+    bind('t-menu', 'menu');
   }
 
   function justPressed(k) { return pressed.has(k); }
+
+  // ---------- 이름 입력 오버레이 (HTML, 한글 IME 지원) ----------
+  const nameOverlay = document.getElementById('name-overlay');
+  const nameInput = document.getElementById('name-input');
+  const hasRealInput = !!(nameInput && 'value' in nameInput);
+
+  function showNameEntry() {
+    game.titleScreen = 'name';
+    game.nameConfirm = false;
+    game.nameCancel = false;
+    if (hasRealInput) nameInput.value = '';
+    if (nameOverlay && nameOverlay.style) nameOverlay.style.display = 'flex';
+    if (nameInput && nameInput.focus) setTimeout(() => { try { nameInput.focus(); } catch (e) {} }, 0);
+  }
+
+  function hideNameEntry() {
+    if (nameOverlay && nameOverlay.style) nameOverlay.style.display = 'none';
+    if (nameInput && nameInput.blur) { try { nameInput.blur(); } catch (e) {} }
+  }
+
+  function currentNameValue() {
+    const v = hasRealInput ? String(nameInput.value || '') : '';
+    return v.trim().slice(0, 6) || '수호자';
+  }
+
+  if (nameInput && nameInput.addEventListener) {
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); game.nameConfirm = true; }
+      else if (e.key === 'Escape') { e.preventDefault(); game.nameCancel = true; }
+      e.stopPropagation();
+    });
+  }
+  const nameGo = document.getElementById('name-go');
+  if (nameGo && nameGo.addEventListener) {
+    nameGo.addEventListener('click', () => { game.nameConfirm = true; });
+  }
 
   // ---------- 타일 ----------
   const SOLID = (ch) => !WALKABLE.has(ch);
@@ -1434,81 +1513,172 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffd644';
-    ctx.font = 'bold 44px sans-serif';
-    ctx.fillText('AI 윤리 어드벤처', canvas.width / 2, 150);
-    ctx.fillStyle = '#fff';
-    ctx.font = '17px sans-serif';
-    ctx.fillText('몬스터들에게 올바른 답을 알려주고', canvas.width / 2, 200);
-    ctx.fillText('10개의 스테이지 끝에서, 잊혀진 이야기와 만나라', canvas.width / 2, 226);
+    ctx.font = 'bold 40px sans-serif';
+    ctx.fillText('AI 윤리 어드벤처', canvas.width / 2, 86);
+    ctx.fillStyle = '#9aa0c0';
+    ctx.font = '15px sans-serif';
+    ctx.fillText('10개의 스테이지 끝에서, 잊혀진 이야기와 만나라', canvas.width / 2, 114);
 
-    // 몬스터들 둥실둥실 (두 줄)
-    const row1 = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'jungdokmon', 'bekkyeomon', 'hondonmon'];
-    const row2 = ['akpeulmon', 'meotdaeromon', 'pungpungmon', 'sideulmon', 'hollimmon', 'finalboss'];
-    for (let i = 0; i < row1.length; i++) {
-      const bx = canvas.width / 2 - 190 + i * 64;
-      drawSprite(ctx, MONSTER_SPRITES[row1[i]], bx, 250 + Math.sin(game.time / 20 + i * 1.3) * 5, 3);
-      drawSprite(ctx, MONSTER_SPRITES[row2[i]], bx, 308 + Math.sin(game.time / 20 + i * 1.3 + 2) * 5, 3);
+    // 몬스터들 둥실둥실 (한 줄)
+    const parade = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'hollimmon', 'mirrormon', 'soksagimon', 'yeongi'];
+    for (let i = 0; i < parade.length; i++) {
+      const bx = canvas.width / 2 - parade.length * 24 + i * 48;
+      drawSprite(ctx, MONSTER_SPRITES[parade[i]], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
     }
 
-    // 메뉴
-    const items = hasSave() ? ['이어하기', '처음부터'] : ['시작하기'];
-    ctx.font = 'bold 20px sans-serif';
-    for (let i = 0; i < items.length; i++) {
-      const iy = 390 + i * 40;
-      ctx.fillStyle = i === game.titleCursor ? '#ffd644' : '#999';
-      ctx.fillText((i === game.titleCursor ? '▶ ' : '') + items[i], canvas.width / 2, iy);
+    // 세이브 슬롯 3개
+    const boxW = 460, boxX = canvas.width / 2 - boxW / 2;
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const y = 212 + i * 74, h = 64;
+      const sel = i === game.slotCursor && game.titleScreen === 'slots';
+      ctx.fillStyle = sel ? 'rgba(255,214,68,.14)' : 'rgba(20,22,40,.6)';
+      roundRect(boxX, y, boxW, h, 10); ctx.fill();
+      ctx.strokeStyle = sel ? '#ffd644' : '#3a3e5a';
+      ctx.lineWidth = 2;
+      roundRect(boxX, y, boxW, h, 10); ctx.stroke();
+
+      const sum = slotSummary(i);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#6a7090';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText(`슬롯 ${i + 1}`, boxX + 18, y + 22);
+      if (sum) {
+        ctx.fillStyle = sel ? '#ffd644' : '#e8ecff';
+        ctx.font = 'bold 19px sans-serif';
+        ctx.fillText(sum.name, boxX + 18, y + 46);
+        ctx.fillStyle = '#9aa0c0';
+        ctx.font = '13px sans-serif';
+        const prog = sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${prog}   ♥ ${sum.mercy}`, boxX + boxW - 18, y + 40);
+        ctx.textAlign = 'left';
+      } else {
+        ctx.fillStyle = '#666b88';
+        ctx.font = '17px sans-serif';
+        ctx.fillText('— 비어 있음 (새 모험) —', boxX + 18, y + 46);
+      }
     }
 
+    ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
-    ctx.font = '14px sans-serif';
-    ctx.fillText('이동: 화살표/WASD · 결정: Z·스페이스 · 도감: C · 음악: M', canvas.width / 2, 482);
+    ctx.font = '13px sans-serif';
+    ctx.fillText('↑↓ 선택 · Z 시작/이어하기 · X 슬롯 삭제 · C 도감 · M 음악', canvas.width / 2, 474);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
     const seenCount = ['home', 'dawn', 'farewell', 'silent'].filter((k) => seen[k]).length;
-    if (seenCount > 0) {
-      const names = { home: '집으로', dawn: '새벽', farewell: '작별', silent: '침묵' };
-      const found = ['home', 'dawn', 'farewell', 'silent']
-        .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
-      ctx.fillStyle = '#f48fb1';
-      ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}`, canvas.width / 2, 508);
+    const names = { home: '집으로', dawn: '새벽', farewell: '작별', silent: '침묵' };
+    const found = ['home', 'dawn', 'farewell', 'silent']
+      .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
+    ctx.fillStyle = '#f48fb1';
+    ctx.font = '13px sans-serif';
+    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   📖 도감 ${dexSeenCount()}/${DEX_ORDER.length}`, canvas.width / 2, 500);
+
+    // 삭제 확인
+    if (game.titleScreen === 'delete') {
+      ctx.fillStyle = 'rgba(10,12,28,.8)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const sum = slotSummary(game.slotCursor);
+      ctx.fillStyle = '#20233c';
+      roundRect(canvas.width / 2 - 200, 200, 400, 130, 12); ctx.fill();
+      ctx.strokeStyle = '#e0453a'; ctx.lineWidth = 2;
+      roundRect(canvas.width / 2 - 200, 200, 400, 130, 12); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText(`슬롯 ${game.slotCursor + 1} "${sum ? sum.name : ''}"`, canvas.width / 2, 240);
+      ctx.font = '15px sans-serif';
+      ctx.fillStyle = '#e0453a';
+      ctx.fillText('정말 삭제할까요? (되돌릴 수 없어요)', canvas.width / 2, 270);
+      ctx.fillStyle = '#9aa0c0';
+      ctx.font = '14px sans-serif';
+      ctx.fillText('Z: 삭제   ·   X: 취소', canvas.width / 2, 304);
     }
     ctx.textAlign = 'left';
   }
 
+  function startNewGame(slot, name) {
+    game.currentSlot = slot;
+    game.playerName = name || '수호자';
+    game.map = 'village';
+    game.player.x = 13; game.player.y = 16;
+    game.player.px = 13 * TS; game.player.py = 16 * TS;
+    game.player.dir = 'up';
+    game.flags = newFlags();
+    game.mode = 'world';
+    save();
+    Sound.playSong(MAPS[game.map].song);
+    startDialog([
+      `여기는 AI들과 사람들이 함께 사는\n평화로운 "하늘마을".`,
+      `반가워, ${game.playerName}!\n그런데 요즘 이상한 몬스터들이\n나타나기 시작했는데…`,
+      '마을 왼쪽 아래에 계신 박사님을\n찾아가 보자! (목표는 왼쪽 위에 표시돼요)',
+    ]);
+  }
+
+  function continueGame(slot) {
+    const s = loadSlot(slot);
+    if (!s) return;
+    game.currentSlot = slot;
+    game.playerName = s.name || '수호자';
+    game.map = s.map;
+    game.player.x = s.x; game.player.y = s.y;
+    game.player.px = s.x * TS; game.player.py = s.y * TS;
+    game.player.dir = 'up';
+    game.flags = Object.assign(newFlags(), s.flags);
+    game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
+    game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
+    game.mode = 'world';
+    Sound.playSong(MAPS[game.map].song);
+  }
+
   function updateTitle() {
+    if (game.titleScreen === 'name') {
+      if (game.nameConfirm) {
+        game.nameConfirm = false;
+        const nm = currentNameValue();
+        hideNameEntry();
+        game.titleScreen = 'slots';
+        Sound.select();
+        startNewGame(game.slotCursor, nm);
+      } else if (game.nameCancel || justPressed('cancel')) {
+        game.nameCancel = false;
+        hideNameEntry();
+        game.titleScreen = 'slots';
+        Sound.blip();
+      } else if (justPressed('action')) {
+        // 터치 A 버튼 등으로 확정
+        const nm = currentNameValue();
+        hideNameEntry();
+        game.titleScreen = 'slots';
+        Sound.select();
+        startNewGame(game.slotCursor, nm);
+      }
+      return;
+    }
+
+    if (game.titleScreen === 'delete') {
+      if (justPressed('action')) {
+        deleteSlot(game.slotCursor);
+        game.titleScreen = 'slots';
+        Sound.wrong();
+      } else if (justPressed('cancel') || justPressed('menu')) {
+        game.titleScreen = 'slots';
+        Sound.blip();
+      }
+      return;
+    }
+
+    // slots 화면
     if (justPressed('menu')) { openDex('title'); return; }
-    const items = hasSave() ? 2 : 1;
-    if (justPressed('up')) { game.titleCursor = (game.titleCursor + items - 1) % items; Sound.blip(); }
-    if (justPressed('down')) { game.titleCursor = (game.titleCursor + 1) % items; Sound.blip(); }
+    if (justPressed('up')) { game.slotCursor = (game.slotCursor + SLOT_COUNT - 1) % SLOT_COUNT; Sound.blip(); }
+    if (justPressed('down')) { game.slotCursor = (game.slotCursor + 1) % SLOT_COUNT; Sound.blip(); }
+    if (justPressed('cancel')) {
+      if (slotSummary(game.slotCursor)) { game.titleScreen = 'delete'; Sound.blip(); }
+      return;
+    }
     if (justPressed('action')) {
       Sound.select();
-      const continueGame = hasSave() && game.titleCursor === 0;
-      if (continueGame) {
-        const s = loadSave();
-        game.map = s.map;
-        game.player.x = s.x; game.player.y = s.y;
-        game.player.px = s.x * TS; game.player.py = s.y * TS;
-        game.flags = Object.assign(newFlags(), s.flags);
-        game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
-        game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
-      } else {
-        localStorage.removeItem(SAVE_KEY);
-        game.map = 'village';
-        game.player.x = 13; game.player.y = 16;
-        game.player.px = 13 * TS; game.player.py = 16 * TS;
-        game.player.dir = 'up';
-        game.flags = newFlags();
-      }
-      game.mode = 'world';
-      Sound.playSong(MAPS[game.map].song);
-      if (!game.flags.talkedProf) {
-        startDialog([
-          '여기는 AI들과 사람들이 함께 사는\n평화로운 "하늘마을".',
-          '그런데 요즘 이상한 몬스터들이\n나타나기 시작했는데…',
-          '마을 왼쪽 아래에 계신 박사님을\n찾아가 보자! (목표는 왼쪽 위에 표시돼요)',
-        ]);
-      }
+      if (slotSummary(game.slotCursor)) continueGame(game.slotCursor);
+      else showNameEntry();
     }
   }
 
@@ -1731,6 +1901,7 @@
   window.addEventListener('touchstart', startTitleMusic);
   window.addEventListener('mousedown', startTitleMusic);
 
+  migrateOldSave();
   game.flags = newFlags();
   window.__game = game; // 디버그/테스트용
   frame();
