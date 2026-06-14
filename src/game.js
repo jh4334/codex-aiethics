@@ -38,8 +38,8 @@
     nameConfirm: false,
     nameCancel: false,
     textSpeed: 'normal', // slow | normal | fast — 대화창 자막 속도
+    largeText: false,    // 큰 글씨(접근성) 모드
   };
-  Object.assign(game, loadSettings());
 
   const SLOT_COUNT = 3;
 
@@ -142,12 +142,15 @@
     try {
       const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
       if (!TEXT_SPEEDS[s.textSpeed]) s.textSpeed = 'normal';
+      s.largeText = !!s.largeText;
       return s;
-    } catch (e) { return { textSpeed: 'normal' }; }
+    } catch (e) { return { textSpeed: 'normal', largeText: false }; }
   }
   function saveSettings() {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ textSpeed: game.textSpeed })); }
-    catch (e) { /* 저장 불가 환경이면 무시 */ }
+    try {
+      localStorage.setItem(SETTINGS_KEY,
+        JSON.stringify({ textSpeed: game.textSpeed, largeText: game.largeText }));
+    } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
   function cycleTextSpeed() {
     const i = TEXT_SPEED_ORDER.indexOf(game.textSpeed);
@@ -155,6 +158,15 @@
     saveSettings();
     Sound.blip();
   }
+  function toggleLargeText() {
+    game.largeText = !game.largeText;
+    saveSettings();
+    Sound.blip();
+  }
+  // 큰 글씨 모드 배율 — 읽기 중심 화면(대화·퀴즈)의 글자/줄간격에 적용
+  function TF() { return game.largeText ? 1.25 : 1; }
+  function fs(px, bold) { return (bold ? 'bold ' : '') + Math.round(px * TF()) + 'px monospace'; }
+  function lh(px) { return Math.round(px * TF()); }
 
   // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
   const DEX_KEY = 'ai-ethics-adventure-dex';
@@ -192,6 +204,7 @@
     Sound.resume();
     if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
     if (e.key === 't' || e.key === 'T') { cycleTextSpeed(); return; }
+    if (e.key === 'g' || e.key === 'G') { toggleLargeText(); return; }
     const k = KEYMAP[e.key];
     if (!k) return;
     e.preventDefault();
@@ -1400,7 +1413,7 @@
     const line = d.lines[d.idx];
     const shown = line.slice(0, Math.floor(d.chars));
     const totalLines = line.split('\n').length + (d.speaker ? 1 : 0);
-    const boxH = Math.max(120, 42 + totalLines * 24);
+    const boxH = Math.max(120, 42 + totalLines * lh(24));
     const y = canvas.height - boxH - 12;
 
     utBox(12, y, canvas.width - 24, boxH, 8);
@@ -1408,15 +1421,15 @@
     let ty = y + 30;
     if (d.speaker) {
       ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 16px monospace';
+      ctx.font = fs(16, true);
       ctx.fillText(`* ${d.speaker}`, 30, ty);
-      ty += 26;
+      ty += lh(26);
     }
     ctx.fillStyle = '#fff';
-    ctx.font = '16px monospace';
+    ctx.font = fs(16);
     for (const part of shown.split('\n')) {
       ctx.fillText(part, 30, ty);
-      ty += 24;
+      ty += lh(24);
     }
     if (d.chars >= line.length && Math.floor(game.time / 20) % 2 === 0) {
       ctx.fillStyle = '#fff';
@@ -1428,11 +1441,11 @@
   function drawChoiceLine(text, x, y, selected) {
     if (selected) {
       ctx.fillStyle = '#e0453a';
-      ctx.font = '15px monospace';
+      ctx.font = fs(15);
       ctx.fillText('♥', x, y);
     }
     ctx.fillStyle = selected ? '#fff' : '#888';
-    ctx.font = '16px monospace';
+    ctx.font = fs(16);
     ctx.fillText(text, x + 28, y);
   }
 
@@ -1488,69 +1501,77 @@
     // 회피 미니게임
     if (b.phase === 'dodge') { drawDodge(b); return; }
 
-    // 질문/피드백 박스
-    const boxY = canvas.height - 250;
-    utBox(12, boxY, canvas.width - 24, 238, 8);
+    // 질문/피드백 박스 — 큰 글씨 모드에서는 더 크게 잡아 글자가 넘치지 않게 한다
+    const boxH = game.largeText ? 280 : 238;
+    const boxY = canvas.height - boxH - 12;
+    const hintY = boxY + boxH - 18;
+    utBox(12, boxY, canvas.width - 24, boxH, 8);
 
     if (b.phase === 'question') {
       const q = currentQuestion();
+      const qLines = q.q.split('\n');
       ctx.fillStyle = '#fff';
-      ctx.font = '16px monospace';
+      ctx.font = fs(16);
       let ty = boxY + 30;
-      for (const part of q.q.split('\n')) {
+      for (const part of qLines) {
         ctx.fillText(part, 34, ty);
-        ty += 24;
+        ty += lh(24);
       }
-      ty = boxY + 118;
+      ty = boxY + 30 + qLines.length * lh(24) + lh(18);
+      const stepC = game.largeText ? 44 : 38;
       for (let i = 0; i < q.a.length; i++) {
         drawChoiceLine(`${i + 1}. ${q.a[i]}`, 38, ty, i === b.cursor);
-        ty += 38;
+        ty += stepC;
       }
     } else if (b.phase === 'feedback') {
       const f = b.feedback;
-      ctx.font = 'bold 22px monospace';
+      ctx.font = fs(22, true);
       ctx.fillStyle = f.correct ? '#5cb85c' : '#e0453a';
       ctx.fillText(f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.', 34, boxY + 38);
       ctx.fillStyle = '#fff';
-      ctx.font = '16px monospace';
-      let ty = boxY + 78;
+      ctx.font = fs(16);
+      let ty = boxY + (game.largeText ? 86 : 78);
       for (const part of f.why.split('\n')) {
         ctx.fillText(part, 34, ty);
-        ty += 24;
+        ty += lh(24);
       }
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
-        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, boxY + 218);
+        ctx.font = fs(16);
+        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
       }
     } else if (b.phase === 'mercy') {
       // 마음의 선택
       ctx.fillStyle = '#e0453a';
-      ctx.font = 'bold 18px monospace';
+      ctx.font = fs(18, true);
       ctx.fillText('♥ 마음의 선택', 34, boxY + 32);
       ctx.fillStyle = '#fff';
-      ctx.font = '16px monospace';
+      ctx.font = fs(16);
+      const promptLines = b.mon.mercy.prompt.split('\n');
       let ty = boxY + 62;
-      for (const part of b.mon.mercy.prompt.split('\n')) {
+      for (const part of promptLines) {
         ctx.fillText(part, 34, ty);
-        ty += 22;
+        ty += lh(22);
       }
-      ty = boxY + 138;
+      ty = boxY + 62 + promptLines.length * lh(22) + lh(14);
+      const stepM = game.largeText ? 40 : 34;
       const opts = b.mon.mercy.options;
       for (let i = 0; i < opts.length; i++) {
         drawChoiceLine(opts[i].label, 38, ty, i === b.cursor);
-        ty += 34;
+        ty += stepM;
       }
     } else if (b.phase === 'mercyReply') {
       ctx.fillStyle = '#fff';
-      ctx.font = '16px monospace';
+      ctx.font = fs(16);
       let ty = boxY + 40;
       for (const part of b.mercyReply.split('\n')) {
         ctx.fillText(part, 34, ty);
-        ty += 24;
+        ty += lh(24);
       }
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
-        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, boxY + 218);
+        ctx.font = fs(16);
+        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
       }
     }
   }
@@ -1663,7 +1684,7 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
-    ctx.fillText(`↑↓ 선택 · Z 시작/이어하기 · X 슬롯 삭제 · C 도감 · M 음악 · T 자막속도(${TEXT_SPEED_LABEL[game.textSpeed]})`, canvas.width / 2, 474);
+    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · G 큰글씨(${game.largeText ? '켜짐' : '꺼짐'})`, canvas.width / 2, 474);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -2000,6 +2021,7 @@
   window.addEventListener('mousedown', startTitleMusic);
 
   migrateOldSave();
+  Object.assign(game, loadSettings()); // 저장된 설정(자막 속도·큰 글씨) 복원
   game.flags = newFlags();
   window.__game = game; // 디버그/테스트용
   frame();
