@@ -37,6 +37,8 @@
     playerName: '수호자',
     nameConfirm: false,
     nameCancel: false,
+    textSpeed: 'normal', // slow | normal | fast — 대화창 자막 속도
+    largeText: false,    // 큰 글씨(접근성) 모드
   };
 
   const SLOT_COUNT = 3;
@@ -131,6 +133,41 @@
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
 
+  // 설정(자막 속도) — 세이브와 별개로, 게임을 다시 시작해도 남는다
+  const SETTINGS_KEY = 'ai-ethics-adventure-settings';
+  const TEXT_SPEEDS = { slow: 0.5, normal: 1, fast: 2.5 };
+  const TEXT_SPEED_ORDER = ['normal', 'fast', 'slow'];
+  const TEXT_SPEED_LABEL = { normal: '보통', fast: '빠름', slow: '느림' };
+  function loadSettings() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
+      if (!TEXT_SPEEDS[s.textSpeed]) s.textSpeed = 'normal';
+      s.largeText = !!s.largeText;
+      return s;
+    } catch (e) { return { textSpeed: 'normal', largeText: false }; }
+  }
+  function saveSettings() {
+    try {
+      localStorage.setItem(SETTINGS_KEY,
+        JSON.stringify({ textSpeed: game.textSpeed, largeText: game.largeText }));
+    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+  function cycleTextSpeed() {
+    const i = TEXT_SPEED_ORDER.indexOf(game.textSpeed);
+    game.textSpeed = TEXT_SPEED_ORDER[(i + 1) % TEXT_SPEED_ORDER.length];
+    saveSettings();
+    Sound.blip();
+  }
+  function toggleLargeText() {
+    game.largeText = !game.largeText;
+    saveSettings();
+    Sound.blip();
+  }
+  // 큰 글씨 모드 배율 — 읽기 중심 화면(대화·퀴즈)의 글자/줄간격에 적용
+  function TF() { return game.largeText ? 1.25 : 1; }
+  function fs(px, bold) { return (bold ? 'bold ' : '') + Math.round(px * TF()) + 'px monospace'; }
+  function lh(px) { return Math.round(px * TF()); }
+
   // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
   const DEX_KEY = 'ai-ethics-adventure-dex';
   function getDexSeen() {
@@ -166,6 +203,8 @@
     if (game.mode === 'title' && game.titleScreen === 'name') return;
     Sound.resume();
     if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
+    if (e.key === 't' || e.key === 'T') { cycleTextSpeed(); return; }
+    if (e.key === 'g' || e.key === 'G') { toggleLargeText(); return; }
     const k = KEYMAP[e.key];
     if (!k) return;
     e.preventDefault();
@@ -580,8 +619,9 @@
     const d = game.dialog;
     const line = d.lines[d.idx];
     if (d.chars < line.length) {
-      d.chars += 1; // 타자기 효과
-      if (game.time % 4 === 0) Sound.blip();
+      const prev = Math.floor(d.chars);
+      d.chars += TEXT_SPEEDS[game.textSpeed]; // 타자기 효과 (자막 속도 적용)
+      if (Math.floor(d.chars) !== prev && game.time % 4 === 0) Sound.blip();
       if (justPressed('action')) d.chars = line.length; // 스킵
       return;
     }
@@ -766,6 +806,8 @@
       qIdx: 0,
       phase: 'question', // question | feedback | mercy | mercyReply | dodge
       cursor: 0,
+      choiceOrder: null, // 보기 표시 순서(섞기) — setupQuestion에서 채움
+      correctPos: 0,     // 섞인 보기 중 정답의 위치
       feedback: null, // { correct, why }
       shake: 0,
       flash: 0,
@@ -773,16 +815,32 @@
       dodgeDone: false,
       dodge: null,
     };
+    setupQuestion();
     game.flags.battleCount += 1;
   }
 
-  function currentQuestion() {
+  // 현재 문항의 보기 순서를 매번 새로 섞는다. (정답이 늘 2번에 오는 것을 방지)
+  function setupQuestion() {
     const b = game.battle;
     if (b.qIdx >= b.questions.length) {
       b.questions = shuffled(questionPool(b.mon));
       b.qIdx = 0;
     }
-    return b.questions[b.qIdx];
+    const q = b.questions[b.qIdx];
+    b.choiceOrder = shuffled(q.a.map((_, i) => i));
+    b.correctPos = b.choiceOrder.indexOf(q.c);
+  }
+
+  function currentQuestion() {
+    return game.battle.questions[game.battle.qIdx];
+  }
+
+  // 표시 위치 i가 가리키는 실제 보기 인덱스 (외부 생성 배틀이면 그대로)
+  function choiceOrder() {
+    const b = game.battle;
+    const q = currentQuestion();
+    return b.choiceOrder && b.choiceOrder.length === q.a.length
+      ? b.choiceOrder : q.a.map((_, i) => i);
   }
 
   function nextQuestion() {
@@ -791,6 +849,7 @@
     b.cursor = 0;
     b.feedback = null;
     b.phase = 'question';
+    setupQuestion();
   }
 
   // 정답으로 보스 HP가 절반이 되면, 마음이 폭주하는 회피 구간이 한 번 펼쳐진다.
@@ -899,10 +958,11 @@
 
     if (b.phase === 'question') {
       const q = currentQuestion();
+      const order = choiceOrder();
       if (justPressed('up')) { b.cursor = (b.cursor + q.a.length - 1) % q.a.length; Sound.blip(); }
       if (justPressed('down')) { b.cursor = (b.cursor + 1) % q.a.length; Sound.blip(); }
       if (justPressed('action')) {
-        const correct = b.cursor === q.c;
+        const correct = order[b.cursor] === q.c;
         b.feedback = { correct, why: q.why };
         b.phase = 'feedback';
         if (correct) {
@@ -1204,15 +1264,16 @@
     // NPC
     for (const npc of m.npcs) {
       if (!npcVisible(npc)) continue;
+      const nx = Math.round(npc.x * TS - cx);
+      const ny = Math.round(npc.y * TS - cy - 6);
       if (npc.monSprite) {
         const bob = Math.round(Math.sin(game.time / 22) * 2);
-        drawSprite(ctx, MONSTER_SPRITES[npc.monSprite],
-          Math.round(npc.x * TS - cx), Math.round(npc.y * TS - cy - 6 + bob), SCALE);
+        drawSprite(ctx, MONSTER_SPRITES[npc.monSprite], nx, ny + bob, SCALE);
       } else {
-        drawSprite(ctx, NPC_SPRITES.down[frame],
-          Math.round(npc.x * TS - cx), Math.round(npc.y * TS - cy - 6),
-          SCALE, NPC_PALETTES[npc.pal]);
+        drawSprite(ctx, NPC_SPRITES.down[frame], nx, ny, SCALE, NPC_PALETTES[npc.pal]);
       }
+      // "말을 걸 수 있어요" 말풍선 (대화 가능한 NPC 머리 위)
+      drawTalkBubble(nx + TS / 2, ny - 14);
     }
 
     // 몬스터 (둥실둥실)
@@ -1236,6 +1297,129 @@
       Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
 
     drawHud();
+    drawObjectiveArrow();
+    drawControlHint();
+  }
+
+  // NPC 머리 위 작은 말풍선 — "여기 말 걸 수 있어요"
+  function drawTalkBubble(cx, topY) {
+    const bob = Math.round(Math.sin(game.time / 16) * 2);
+    const w = 16, h = 12;
+    const x = Math.round(cx - w / 2), y = Math.round(topY + bob);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+    // 꼬리
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(cx - 3, y + h);
+    ctx.lineTo(cx + 3, y + h);
+    ctx.lineTo(cx, y + h + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // 말줄임(…)
+    ctx.fillStyle = '#000';
+    for (let i = 0; i < 3; i++) ctx.fillRect(x + 4 + i * 4, y + 5, 2, 2);
+  }
+
+  // 게임을 처음 시작했을 때(박사님과 대화 전)만 보이는 조작 안내
+  function drawControlHint() {
+    if (game.flags.talkedProf) return;
+    const txt = '방향키로 이동 · Z(또는 A 버튼)로 말 걸기';
+    ctx.font = fs(12, true);
+    const tw = ctx.measureText(txt).width;
+    const bw = tw + 28, bh = game.largeText ? 30 : 26;
+    const bx = Math.round(canvas.width / 2 - bw / 2);
+    const by = canvas.height - bh - (game.largeText ? 58 : 52);
+    utBox(bx, by, bw, bh, 6);
+    ctx.fillStyle = '#9fd0ff';
+    ctx.textAlign = 'center';
+    ctx.fillText(txt, canvas.width / 2, by + bh / 2 + 4);
+    ctx.textAlign = 'left';
+  }
+
+  // 현재 맵에서 다음 목표를 향해 한 걸음 더 가야 할 타일을 찾는다.
+  // 목표가 다른 맵에 있으면, 그곳으로 가는 경로상의 다음 워프 타일을 가리킨다.
+  function nextWaypoint(flags, curMap) {
+    const target = getObjectiveTarget(flags);
+    if (!target) return null;
+    if (target.map === curMap) return { x: target.x, y: target.y };
+    const prev = { [curMap]: null };
+    const exitTile = {};
+    const queue = [curMap];
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur === target.map) break;
+      for (const w of MAPS[cur].warps) {
+        if (!(w.to in prev)) {
+          prev[w.to] = cur;
+          exitTile[w.to] = { x: w.x, y: w.y };
+          queue.push(w.to);
+        }
+      }
+    }
+    if (!(target.map in prev)) return null;
+    let m = target.map;
+    while (prev[m] !== curMap) {
+      m = prev[m];
+      if (m === null) return null;
+    }
+    return exitTile[m];
+  }
+
+  // 화면 아래에 다음 목표의 방향 + 목적지 이름을 알려주는 안내 배너를 그린다.
+  function drawObjectiveArrow() {
+    const target = getObjectiveTarget(game.flags);
+    if (!target) return;
+    const wp = nextWaypoint(game.flags, game.map);
+    if (!wp) return;
+    const p = game.player;
+    const dx = wp.x - p.x, dy = wp.y - p.y;
+    const onTargetMap = target.map === game.map;
+    const dist = Math.abs(dx) + Math.abs(dy);
+    if (onTargetMap && dist === 0) return; // 이미 도착
+
+    const destName = (MAPS[target.map] && MAPS[target.map].name) || '목표';
+    let label;
+    if (onTargetMap) label = dist <= 3 ? '바로 여기!' : (target.label || '이 지역에 있어요');
+    else label = destName;
+    const angle = Math.atan2(dy, dx);
+
+    // 배너 박스 (하단 중앙) — 화살표 + 목적지 라벨
+    ctx.font = fs(13, true);
+    const tw = ctx.measureText(label).width;
+    const bh = game.largeText ? 36 : 30;
+    const bw = tw + 56;
+    const bx = Math.round(canvas.width / 2 - bw / 2);
+    const by = canvas.height - bh - 10;
+    utBox(bx, by, bw, bh, 6);
+
+    // 방향 화살표 (배너 왼쪽, 살짝 둥실거려 눈에 띄게)
+    const bob = Math.sin(game.time / 14) * 1.5;
+    const ax = bx + 24, ay = by + bh / 2;
+    ctx.save();
+    ctx.translate(ax + Math.cos(angle) * bob, ay + Math.sin(angle) * bob);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#ffd644';
+    ctx.beginPath();
+    ctx.moveTo(12, 0);
+    ctx.lineTo(-7, -9);
+    ctx.lineTo(-7, 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // 목적지 라벨
+    ctx.fillStyle = label === '바로 여기!' ? '#ffd644' : '#fff';
+    ctx.font = fs(13, true);
+    ctx.textAlign = 'left';
+    ctx.fillText(label, bx + 44, by + bh / 2 + 5);
   }
 
   function drawHud() {
@@ -1307,9 +1491,9 @@
   function drawDialog() {
     const d = game.dialog;
     const line = d.lines[d.idx];
-    const shown = line.slice(0, d.chars);
+    const shown = line.slice(0, Math.floor(d.chars));
     const totalLines = line.split('\n').length + (d.speaker ? 1 : 0);
-    const boxH = Math.max(120, 42 + totalLines * 24);
+    const boxH = Math.max(120, 42 + totalLines * lh(24));
     const y = canvas.height - boxH - 12;
 
     utBox(12, y, canvas.width - 24, boxH, 8);
@@ -1317,15 +1501,15 @@
     let ty = y + 30;
     if (d.speaker) {
       ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 16px monospace';
+      ctx.font = fs(16, true);
       ctx.fillText(`* ${d.speaker}`, 30, ty);
-      ty += 26;
+      ty += lh(26);
     }
     ctx.fillStyle = '#fff';
-    ctx.font = '16px monospace';
+    ctx.font = fs(16);
     for (const part of shown.split('\n')) {
       ctx.fillText(part, 30, ty);
-      ty += 24;
+      ty += lh(24);
     }
     if (d.chars >= line.length && Math.floor(game.time / 20) % 2 === 0) {
       ctx.fillStyle = '#fff';
@@ -1337,11 +1521,11 @@
   function drawChoiceLine(text, x, y, selected) {
     if (selected) {
       ctx.fillStyle = '#e0453a';
-      ctx.font = '15px monospace';
+      ctx.font = fs(15);
       ctx.fillText('♥', x, y);
     }
     ctx.fillStyle = selected ? '#fff' : '#888';
-    ctx.font = '16px monospace';
+    ctx.font = fs(16);
     ctx.fillText(text, x + 28, y);
   }
 
@@ -1363,9 +1547,28 @@
     const shakeX = b.shake > 0 ? Math.sin(b.shake * 2) * 6 : 0;
     const bob = Math.sin(game.time / 20) * 5;
     const monScale = 9;
-    drawSprite(ctx, MONSTER_SPRITES[b.monId],
-      Math.round(canvas.width - 16 * monScale - 60 + shakeX),
-      Math.round(30 + bob), monScale);
+    const mx = Math.round(canvas.width - 16 * monScale - 60 + shakeX);
+    const my = Math.round(56 + bob);
+    const mcx = mx + 16 * monScale / 2;
+    // 그림자 — 몬스터가 땅에 떠 있는 느낌을 줘 화면이 덜 휑하게
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawSprite(ctx, MONSTER_SPRITES[b.monId], mx, my, monScale);
+    // 반응 이모트 — 정답이면 번쩍 깨달음(!), 오답이면 아직 갸웃(?)
+    if (b.phase === 'feedback' && b.feedback) {
+      const ch = b.feedback.correct ? '!' : '?';
+      const ey = my - 10 + Math.sin(game.time / 8) * 3;
+      ctx.font = 'bold 34px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = b.feedback.correct ? '#ffd644' : '#9aa0b0';
+      ctx.fillText(ch, mcx, ey);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.strokeText(ch, mcx, ey);
+      ctx.textAlign = 'left';
+    }
 
     // 몬스터 이름/HP
     utBox(24, 24, 240, 64, 6);
@@ -1397,69 +1600,78 @@
     // 회피 미니게임
     if (b.phase === 'dodge') { drawDodge(b); return; }
 
-    // 질문/피드백 박스
-    const boxY = canvas.height - 250;
-    utBox(12, boxY, canvas.width - 24, 238, 8);
+    // 질문/피드백 박스 — 큰 글씨 모드에서는 더 크게 잡아 글자가 넘치지 않게 한다
+    const boxH = game.largeText ? 280 : 238;
+    const boxY = canvas.height - boxH - 12;
+    const hintY = boxY + boxH - 18;
+    utBox(12, boxY, canvas.width - 24, boxH, 8);
 
     if (b.phase === 'question') {
       const q = currentQuestion();
+      const order = choiceOrder();
+      const qLines = q.q.split('\n');
       ctx.fillStyle = '#fff';
-      ctx.font = '16px monospace';
+      ctx.font = fs(16);
       let ty = boxY + 30;
-      for (const part of q.q.split('\n')) {
+      for (const part of qLines) {
         ctx.fillText(part, 34, ty);
-        ty += 24;
+        ty += lh(24);
       }
-      ty = boxY + 118;
-      for (let i = 0; i < q.a.length; i++) {
-        drawChoiceLine(`${i + 1}. ${q.a[i]}`, 38, ty, i === b.cursor);
-        ty += 38;
+      ty = boxY + 30 + qLines.length * lh(24) + lh(18);
+      const stepC = game.largeText ? 44 : 38;
+      for (let i = 0; i < order.length; i++) {
+        drawChoiceLine(`${i + 1}. ${q.a[order[i]]}`, 38, ty, i === b.cursor);
+        ty += stepC;
       }
     } else if (b.phase === 'feedback') {
       const f = b.feedback;
-      ctx.font = 'bold 22px monospace';
+      ctx.font = fs(22, true);
       ctx.fillStyle = f.correct ? '#5cb85c' : '#e0453a';
       ctx.fillText(f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.', 34, boxY + 38);
       ctx.fillStyle = '#fff';
-      ctx.font = '16px monospace';
-      let ty = boxY + 78;
+      ctx.font = fs(16);
+      let ty = boxY + (game.largeText ? 86 : 78);
       for (const part of f.why.split('\n')) {
         ctx.fillText(part, 34, ty);
-        ty += 24;
+        ty += lh(24);
       }
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
-        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, boxY + 218);
+        ctx.font = fs(16);
+        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
       }
     } else if (b.phase === 'mercy') {
       // 마음의 선택
       ctx.fillStyle = '#e0453a';
-      ctx.font = 'bold 18px monospace';
+      ctx.font = fs(18, true);
       ctx.fillText('♥ 마음의 선택', 34, boxY + 32);
       ctx.fillStyle = '#fff';
-      ctx.font = '16px monospace';
+      ctx.font = fs(16);
+      const promptLines = b.mon.mercy.prompt.split('\n');
       let ty = boxY + 62;
-      for (const part of b.mon.mercy.prompt.split('\n')) {
+      for (const part of promptLines) {
         ctx.fillText(part, 34, ty);
-        ty += 22;
+        ty += lh(22);
       }
-      ty = boxY + 138;
+      ty = boxY + 62 + promptLines.length * lh(22) + lh(14);
+      const stepM = game.largeText ? 40 : 34;
       const opts = b.mon.mercy.options;
       for (let i = 0; i < opts.length; i++) {
         drawChoiceLine(opts[i].label, 38, ty, i === b.cursor);
-        ty += 34;
+        ty += stepM;
       }
     } else if (b.phase === 'mercyReply') {
       ctx.fillStyle = '#fff';
-      ctx.font = '16px monospace';
+      ctx.font = fs(16);
       let ty = boxY + 40;
       for (const part of b.mercyReply.split('\n')) {
         ctx.fillText(part, 34, ty);
-        ty += 24;
+        ty += lh(24);
       }
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
-        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, boxY + 218);
+        ctx.font = fs(16);
+        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
       }
     }
   }
@@ -1572,7 +1784,7 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
-    ctx.fillText('↑↓ 선택 · Z 시작/이어하기 · X 슬롯 삭제 · C 도감 · M 음악', canvas.width / 2, 474);
+    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · G 큰글씨(${game.largeText ? '켜짐' : '꺼짐'})`, canvas.width / 2, 474);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -1909,6 +2121,7 @@
   window.addEventListener('mousedown', startTitleMusic);
 
   migrateOldSave();
+  Object.assign(game, loadSettings()); // 저장된 설정(자막 속도·큰 글씨) 복원
   game.flags = newFlags();
   window.__game = game; // 디버그/테스트용
   frame();

@@ -1261,6 +1261,12 @@ const QUIZZES = {
       c: 1,
       why: 'AI는 선생님처럼 도움을 주는 도구!\n생각하고 정리하는 건 내가 해야\n진짜 실력이 늘어요.',
     },
+    {
+      q: '좋아하는 만화가의 그림체를 AI에게\n그대로 따라 그리게 해서 내가 그린\n것처럼 올리면 어떨까요?',
+      a: ['스타일은 누구나 쓸 수 있으니 괜찮다', '그 작가의 노력을 흉내 낸 것이니\nAI로 만들었다고 밝혀야 한다', '아무도 모르면 상관없다'],
+      c: 1,
+      why: '특정 작가의 그림체를 흉내 낸 AI\n그림은 그 작가의 개성을 베낀 것과\n비슷해요. AI로 만들었다고 밝혀요.',
+    },
   ],
 
   fake: [
@@ -1299,6 +1305,12 @@ const QUIZZES = {
       a: ['유명인이니까 다 진짜다', 'AI로 만든 가짜일 수 있다고 생각한다', '무조건 가짜라고 화낸다'],
       c: 1,
       why: '요즘은 AI로 진짜 같은 가짜 영상을\n만들 수 있어요. "진짜일까?" 하고\n한 번 의심해 보는 게 좋아요.',
+    },
+    {
+      q: '숙제 자료를 물었더니 AI가 그럴듯한\n책 제목과 작가를 알려줬는데, 찾아보니\n그런 책이 없어요. 왜 그럴까요?',
+      a: ['도서관이 책을 잃어버려서', 'AI는 그럴듯한 말을 지어내기도 해서', 'AI가 거짓말로 장난쳐서'],
+      c: 1,
+      why: 'AI는 모르는 것도 자신 있게 지어낼\n때가 있어요(환각). 중요한 사실은\n꼭 책이나 믿을 곳에서 확인해요!',
     },
   ],
 
@@ -1845,6 +1857,12 @@ const QUIZZES = {
       c: 1,
       why: '생일, 이름, 1234는 가장 먼저\n뚫리는 비밀번호야. 길고 엉뚱할수록\n강해진다는 것, 기억해 두자.',
     },
+    {
+      q: '모르는 번호로 전화가 왔는데, 가족\n목소리로 다급하게 "지금 돈을\n보내줘"라고 한다. 어떻게 할까?',
+      a: ['목소리가 똑같으니 바로 보낸다', 'AI로 흉내 낸 목소리(딥보이스)일 수\n있으니 끊고 직접 다시 연락해본다', '무서워서 그냥 받지 않는다'],
+      c: 1,
+      why: 'AI는 짧은 녹음만으로도 목소리를\n흉내 낼 수 있어. 다급한 돈 요구는\n일단 끊고, 본인에게 직접 확인해야 해.',
+    },
   ],
 
   // ---- 스테이지 6: 디지털 발자국·잊힐 권리 ----
@@ -2263,6 +2281,31 @@ function getObjective(flags) {
   if (!d.mirrormon) return '거울 회랑 — 거울 속의 나와 마주하기';
   if (!d.soksagimon) return '속삭임 정원 — 정원의 목소리 들어 주기';
   return '코어 — 가장 깊은 곳에서 기다리는 아이에게';
+}
+
+// 현재 목표의 위치(맵/좌표). 화면의 안내 화살표가 가리킬 곳.
+function getObjectiveTarget(flags) {
+  const d = flags.defeated;
+  if (!flags.talkedProf) return { map: 'village', x: 4, y: 12, label: '박사님' };
+  if (d.yeongi) {
+    return flags.trueEnding ? { map: 'village', x: 5, y: 12, label: '영이' } : null;
+  }
+  if (!d.hondonmon) {
+    const badges = countBadges(flags);
+    if (badges >= 3) return { map: 'tower', x: 8, y: 3, label: '혼돈몬' };
+    if (!flags.badges.forest) return { map: 'forest', x: 13, y: 3, label: '숲의 수호자' };
+    if (!flags.badges.lake) return { map: 'lake', x: 15, y: 5, label: '호수의 수호자' };
+    return { map: 'cave', x: 4, y: 4, label: '동굴의 수호자' };
+  }
+  if (!d.meotdaeromon) return { map: 'meadow', x: 13, y: 16, label: '멋대로몬' };
+  if (!d.tteonemgimon) return { map: 'desert', x: 13, y: 15, label: '떠넘기몬' };
+  if (!d.hollimmon) return { map: 'snow', x: 13, y: 15, label: '홀림몬' };
+  if (!d.finalboss) return { map: 'castle', x: 9, y: 2, label: '어둠대왕몬' };
+  if (!d.girokmon) return { map: 'serverroom', x: 13, y: 2, label: '기록몬' };
+  if (!d.saseomon) return { map: 'library', x: 13, y: 2, label: '사서몬' };
+  if (!d.mirrormon) return { map: 'mirrors', x: 13, y: 2, label: '미러몬' };
+  if (!d.soksagimon) return { map: 'garden', x: 13, y: 15, label: '속삭임몬' };
+  return { map: 'core', x: 9, y: 2, label: '???' };
 }
 
 // ===== 도감 =====
