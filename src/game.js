@@ -37,7 +37,9 @@
     playerName: '수호자',
     nameConfirm: false,
     nameCancel: false,
+    textSpeed: 'normal', // slow | normal | fast — 대화창 자막 속도
   };
+  Object.assign(game, loadSettings());
 
   const SLOT_COUNT = 3;
 
@@ -131,6 +133,29 @@
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
 
+  // 설정(자막 속도) — 세이브와 별개로, 게임을 다시 시작해도 남는다
+  const SETTINGS_KEY = 'ai-ethics-adventure-settings';
+  const TEXT_SPEEDS = { slow: 0.5, normal: 1, fast: 2.5 };
+  const TEXT_SPEED_ORDER = ['normal', 'fast', 'slow'];
+  const TEXT_SPEED_LABEL = { normal: '보통', fast: '빠름', slow: '느림' };
+  function loadSettings() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
+      if (!TEXT_SPEEDS[s.textSpeed]) s.textSpeed = 'normal';
+      return s;
+    } catch (e) { return { textSpeed: 'normal' }; }
+  }
+  function saveSettings() {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ textSpeed: game.textSpeed })); }
+    catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+  function cycleTextSpeed() {
+    const i = TEXT_SPEED_ORDER.indexOf(game.textSpeed);
+    game.textSpeed = TEXT_SPEED_ORDER[(i + 1) % TEXT_SPEED_ORDER.length];
+    saveSettings();
+    Sound.blip();
+  }
+
   // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
   const DEX_KEY = 'ai-ethics-adventure-dex';
   function getDexSeen() {
@@ -166,6 +191,7 @@
     if (game.mode === 'title' && game.titleScreen === 'name') return;
     Sound.resume();
     if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
+    if (e.key === 't' || e.key === 'T') { cycleTextSpeed(); return; }
     const k = KEYMAP[e.key];
     if (!k) return;
     e.preventDefault();
@@ -580,8 +606,9 @@
     const d = game.dialog;
     const line = d.lines[d.idx];
     if (d.chars < line.length) {
-      d.chars += 1; // 타자기 효과
-      if (game.time % 4 === 0) Sound.blip();
+      const prev = Math.floor(d.chars);
+      d.chars += TEXT_SPEEDS[game.textSpeed]; // 타자기 효과 (자막 속도 적용)
+      if (Math.floor(d.chars) !== prev && game.time % 4 === 0) Sound.blip();
       if (justPressed('action')) d.chars = line.length; // 스킵
       return;
     }
@@ -1371,7 +1398,7 @@
   function drawDialog() {
     const d = game.dialog;
     const line = d.lines[d.idx];
-    const shown = line.slice(0, d.chars);
+    const shown = line.slice(0, Math.floor(d.chars));
     const totalLines = line.split('\n').length + (d.speaker ? 1 : 0);
     const boxH = Math.max(120, 42 + totalLines * 24);
     const y = canvas.height - boxH - 12;
@@ -1636,7 +1663,7 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
-    ctx.fillText('↑↓ 선택 · Z 시작/이어하기 · X 슬롯 삭제 · C 도감 · M 음악', canvas.width / 2, 474);
+    ctx.fillText(`↑↓ 선택 · Z 시작/이어하기 · X 슬롯 삭제 · C 도감 · M 음악 · T 자막속도(${TEXT_SPEED_LABEL[game.textSpeed]})`, canvas.width / 2, 474);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
