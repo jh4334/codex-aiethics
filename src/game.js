@@ -806,6 +806,8 @@
       qIdx: 0,
       phase: 'question', // question | feedback | mercy | mercyReply | dodge
       cursor: 0,
+      choiceOrder: null, // 보기 표시 순서(섞기) — setupQuestion에서 채움
+      correctPos: 0,     // 섞인 보기 중 정답의 위치
       feedback: null, // { correct, why }
       shake: 0,
       flash: 0,
@@ -813,16 +815,32 @@
       dodgeDone: false,
       dodge: null,
     };
+    setupQuestion();
     game.flags.battleCount += 1;
   }
 
-  function currentQuestion() {
+  // 현재 문항의 보기 순서를 매번 새로 섞는다. (정답이 늘 2번에 오는 것을 방지)
+  function setupQuestion() {
     const b = game.battle;
     if (b.qIdx >= b.questions.length) {
       b.questions = shuffled(questionPool(b.mon));
       b.qIdx = 0;
     }
-    return b.questions[b.qIdx];
+    const q = b.questions[b.qIdx];
+    b.choiceOrder = shuffled(q.a.map((_, i) => i));
+    b.correctPos = b.choiceOrder.indexOf(q.c);
+  }
+
+  function currentQuestion() {
+    return game.battle.questions[game.battle.qIdx];
+  }
+
+  // 표시 위치 i가 가리키는 실제 보기 인덱스 (외부 생성 배틀이면 그대로)
+  function choiceOrder() {
+    const b = game.battle;
+    const q = currentQuestion();
+    return b.choiceOrder && b.choiceOrder.length === q.a.length
+      ? b.choiceOrder : q.a.map((_, i) => i);
   }
 
   function nextQuestion() {
@@ -831,6 +849,7 @@
     b.cursor = 0;
     b.feedback = null;
     b.phase = 'question';
+    setupQuestion();
   }
 
   // 정답으로 보스 HP가 절반이 되면, 마음이 폭주하는 회피 구간이 한 번 펼쳐진다.
@@ -939,10 +958,11 @@
 
     if (b.phase === 'question') {
       const q = currentQuestion();
+      const order = choiceOrder();
       if (justPressed('up')) { b.cursor = (b.cursor + q.a.length - 1) % q.a.length; Sound.blip(); }
       if (justPressed('down')) { b.cursor = (b.cursor + 1) % q.a.length; Sound.blip(); }
       if (justPressed('action')) {
-        const correct = b.cursor === q.c;
+        const correct = order[b.cursor] === q.c;
         b.feedback = { correct, why: q.why };
         b.phase = 'feedback';
         if (correct) {
@@ -1509,6 +1529,7 @@
 
     if (b.phase === 'question') {
       const q = currentQuestion();
+      const order = choiceOrder();
       const qLines = q.q.split('\n');
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
@@ -1519,8 +1540,8 @@
       }
       ty = boxY + 30 + qLines.length * lh(24) + lh(18);
       const stepC = game.largeText ? 44 : 38;
-      for (let i = 0; i < q.a.length; i++) {
-        drawChoiceLine(`${i + 1}. ${q.a[i]}`, 38, ty, i === b.cursor);
+      for (let i = 0; i < order.length; i++) {
+        drawChoiceLine(`${i + 1}. ${q.a[order[i]]}`, 38, ty, i === b.cursor);
         ty += stepC;
       }
     } else if (b.phase === 'feedback') {

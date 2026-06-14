@@ -88,12 +88,15 @@ function advanceDialog(max = 100) {
   for (let i = 0; i < max && g.mode === 'dialog'; i++) tap('z');
   if (g.mode === 'dialog') throw new Error('대화가 끝나지 않음');
 }
+const correctPosSeen = new Set();
 function answerQuestion(correct) {
   if (g.mode !== 'battle') throw new Error('배틀 모드가 아님: ' + g.mode);
   step(1); // currentQuestion()이 풀을 다시 섞을 시간
   const b = g.battle;
   const q = b.questions[b.qIdx];
-  const target = correct ? q.c : (q.c + 1) % q.a.length;
+  correctPosSeen.add(b.correctPos);
+  // 보기 순서가 섞이므로, 정답의 '표시 위치'(correctPos)를 기준으로 고른다
+  const target = correct ? b.correctPos : (b.correctPos + 1) % q.a.length;
   while (b.cursor !== target) tap('ArrowDown');
   tap('z'); // 답 제출
   if (b.phase !== 'feedback') throw new Error('피드백 단계가 아님');
@@ -409,5 +412,8 @@ tap('ArrowDown'); tap('ArrowRight');
 check('도감에서 커서 이동', g.dex.cursor > 0);
 tap('x');
 check('도감 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[25] 보기 순서 섞기 (정답이 한 자리에 고정되지 않음)');
+check('정답 위치가 여러 곳에 분포', correctPosSeen.size >= 2);
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
