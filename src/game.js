@@ -15,7 +15,7 @@
 
   // ---------- 상태 ----------
   const game = {
-    mode: 'title', // title | world | dialog | battle | ending
+    mode: 'title', // title | world | dialog | battle | ending | dex | review | pause
     map: 'village',
     player: {
       x: 13, y: 16,       // 타일 좌표
@@ -31,6 +31,8 @@
     titleCursor: 0,
     endingT: 0,
     dex: { cursor: 0, ret: 'title' },
+    review: { cursor: 0, ret: 'world', phase: 'list', ids: [], qCursor: 0, choiceOrder: null, feedback: null },
+    pauseCursor: 0,
     titleScreen: 'slots', // slots | name | delete
     slotCursor: 0,
     currentSlot: 0,
@@ -168,6 +170,29 @@
   function fs(px, bold) { return (bold ? 'bold ' : '') + Math.round(px * TF()) + 'px monospace'; }
   function lh(px) { return Math.round(px * TF()); }
 
+  // 오답 복습 노트 — 틀린 문제를 기록. 세이브와 별개로 누적 보존된다.
+  const MISTAKES_KEY = 'ai-ethics-adventure-mistakes';
+  function getMistakes() {
+    try { return JSON.parse(localStorage.getItem(MISTAKES_KEY)) || {}; }
+    catch (e) { return {}; }
+  }
+  function recordMistake(q) {
+    if (!q._qid) return;
+    try {
+      const m = getMistakes();
+      m[q._qid] = { topic: q._topic, q: q.q, a: q.a, c: q.c, why: q.why };
+      localStorage.setItem(MISTAKES_KEY, JSON.stringify(m));
+    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+  function clearMistake(qid) {
+    try {
+      const m = getMistakes();
+      delete m[qid];
+      localStorage.setItem(MISTAKES_KEY, JSON.stringify(m));
+    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+  function mistakeCount() { return Object.keys(getMistakes()).length; }
+
   // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
   const DEX_KEY = 'ai-ethics-adventure-dex';
   function getDexSeen() {
@@ -205,6 +230,12 @@
     if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
     if (e.key === 't' || e.key === 'T') { cycleTextSpeed(); return; }
     if (e.key === 'g' || e.key === 'G') { toggleLargeText(); return; }
+    if (e.key === 'h' || e.key === 'H') { useHint(); return; }
+    if (e.key === 'v' || e.key === 'V') {
+      if (game.mode === 'world') { openReview('world'); return; }
+      if (game.mode === 'review') { closeReview(); return; }
+      return;
+    }
     const k = KEYMAP[e.key];
     if (!k) return;
     e.preventDefault();
@@ -231,6 +262,12 @@
     bind('t-left', 'left'); bind('t-right', 'right');
     bind('t-a', 'action');
     bind('t-menu', 'menu');
+    bind('t-pause', 'cancel');
+    const hintBtn = document.getElementById('t-hint');
+    if (hintBtn) {
+      const onHint = (e) => { e.preventDefault(); Sound.resume(); useHint(); };
+      hintBtn.addEventListener('touchstart', onHint);
+    }
   }
 
   function justPressed(k) { return pressed.has(k); }
@@ -758,6 +795,11 @@
       return;
     }
 
+    if (justPressed('cancel')) {
+      openPause();
+      return;
+    }
+
     if (justPressed('action')) {
       interact();
       return;
@@ -787,7 +829,7 @@
 
   function questionPool(mon) {
     const topics = Array.isArray(mon.topic) ? mon.topic : [mon.topic];
-    return topics.flatMap((t) => QUIZZES[t]);
+    return topics.flatMap((t) => QUIZZES[t].map((q, i) => Object.assign({}, q, { _topic: t, _qid: t + '#' + i })));
   }
 
   function startBattle(monId) {
@@ -808,6 +850,8 @@
       cursor: 0,
       choiceOrder: null, // 보기 표시 순서(섞기) — setupQuestion에서 채움
       correctPos: 0,     // 섞인 보기 중 정답의 위치
+      hintUsed: false,   // 이번 문항에서 50:50 힌트를 썼는지
+      hiddenPos: -1,     // 힌트로 가려진 보기의 표시 위치 (-1이면 없음)
       feedback: null, // { correct, why }
       shake: 0,
       flash: 0,
@@ -829,6 +873,24 @@
     const q = b.questions[b.qIdx];
     b.choiceOrder = shuffled(q.a.map((_, i) => i));
     b.correctPos = b.choiceOrder.indexOf(q.c);
+    b.hintUsed = false;
+    b.hiddenPos = -1;
+  }
+
+  // 50:50 힌트 — 정답이 아닌 보기 중 하나를 가린다 (한 문제당 한 번)
+  function useHint() {
+    const b = game.battle;
+    if (!b || b.phase !== 'question' || b.hintUsed) return;
+    const q = currentQuestion();
+    const order = choiceOrder();
+    const candidates = order.map((_, i) => i).filter((i) => i !== b.correctPos);
+    if (candidates.length === 0) return;
+    b.hiddenPos = candidates[Math.floor(Math.random() * candidates.length)];
+    b.hintUsed = true;
+    if (b.cursor === b.hiddenPos) {
+      b.cursor = (b.cursor + 1) % q.a.length;
+    }
+    Sound.blip();
   }
 
   function currentQuestion() {
@@ -959,8 +1021,14 @@
     if (b.phase === 'question') {
       const q = currentQuestion();
       const order = choiceOrder();
-      if (justPressed('up')) { b.cursor = (b.cursor + q.a.length - 1) % q.a.length; Sound.blip(); }
-      if (justPressed('down')) { b.cursor = (b.cursor + 1) % q.a.length; Sound.blip(); }
+      if (justPressed('up')) {
+        do { b.cursor = (b.cursor + q.a.length - 1) % q.a.length; } while (b.cursor === b.hiddenPos);
+        Sound.blip();
+      }
+      if (justPressed('down')) {
+        do { b.cursor = (b.cursor + 1) % q.a.length; } while (b.cursor === b.hiddenPos);
+        Sound.blip();
+      }
       if (justPressed('action')) {
         const correct = order[b.cursor] === q.c;
         b.feedback = { correct, why: q.why };
@@ -970,10 +1038,12 @@
           b.monHp -= 1;
           b.shake = 14;
           game.flags.correctCount += 1;
+          clearMistake(q._qid);
         } else {
           Sound.wrong();
           b.playerHp -= 1;
           b.flash = 14;
+          recordMistake(q);
         }
       }
       return;
@@ -1210,6 +1280,251 @@
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('↑↓←→ 넘기기 · X 또는 A로 닫기', canvas.width / 2, 510);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 오답 복습 노트 ----------
+  function openReview(ret) {
+    const r = game.review;
+    r.ret = ret;
+    r.ids = Object.keys(getMistakes());
+    r.cursor = 0;
+    r.phase = 'list';
+    game.mode = 'review';
+    Sound.select();
+  }
+
+  function closeReview() {
+    game.mode = game.review.ret;
+    Sound.select();
+  }
+
+  function startReviewQuestion() {
+    const r = game.review;
+    const m = getMistakes()[r.ids[r.cursor]];
+    r.choiceOrder = shuffled(m.a.map((_, i) => i));
+    r.qCursor = 0;
+    r.feedback = null;
+    r.phase = 'question';
+  }
+
+  function updateReview() {
+    const r = game.review;
+    if (r.phase === 'list') {
+      const n = r.ids.length;
+      if (n === 0) {
+        if (justPressed('cancel') || justPressed('action') || justPressed('menu')) closeReview();
+        return;
+      }
+      if (justPressed('up')) { r.cursor = (r.cursor + n - 1) % n; Sound.blip(); }
+      if (justPressed('down')) { r.cursor = (r.cursor + 1) % n; Sound.blip(); }
+      if (justPressed('action')) { startReviewQuestion(); Sound.select(); }
+      if (justPressed('cancel') || justPressed('menu')) closeReview();
+      return;
+    }
+
+    if (r.phase === 'question') {
+      const m = getMistakes()[r.ids[r.cursor]];
+      const len = m.a.length;
+      if (justPressed('up')) { r.qCursor = (r.qCursor + len - 1) % len; Sound.blip(); }
+      if (justPressed('down')) { r.qCursor = (r.qCursor + 1) % len; Sound.blip(); }
+      if (justPressed('cancel')) { r.phase = 'list'; Sound.select(); return; }
+      if (justPressed('action')) {
+        const correct = r.choiceOrder[r.qCursor] === m.c;
+        r.feedback = { correct, why: m.why };
+        r.phase = 'feedback';
+        if (correct) { Sound.correct(); clearMistake(r.ids[r.cursor]); } else { Sound.wrong(); }
+      }
+      return;
+    }
+
+    if (r.phase === 'feedback') {
+      if (justPressed('action') || justPressed('cancel')) {
+        if (r.feedback.correct) {
+          r.ids = Object.keys(getMistakes());
+          if (r.cursor >= r.ids.length) r.cursor = Math.max(0, r.ids.length - 1);
+        }
+        r.phase = 'list';
+        Sound.select();
+      }
+      return;
+    }
+  }
+
+  function drawReview() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const r = game.review;
+    const ids = r.ids;
+
+    if (r.phase === 'list') {
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 22px monospace';
+      ctx.fillText('★ 오답 복습 노트', 24, 38);
+      ctx.fillStyle = '#888';
+      ctx.font = '15px monospace';
+      ctx.fillText(`복습할 문제 ${ids.length}개`, 24, 62);
+
+      if (ids.length === 0) {
+        ctx.fillStyle = '#aaa';
+        ctx.font = '16px monospace';
+        ctx.fillText('아직 틀린 문제가 없어요!', 24, 120);
+        ctx.fillText('모험을 하며 틀린 문제가 있으면', 24, 148);
+        ctx.fillText('여기에 모여요.', 24, 174);
+      } else {
+        const listX = 24, listY = 96, rowH = 34, visible = 11;
+        let start = Math.max(0, Math.min(r.cursor - 5, ids.length - visible));
+        if (ids.length <= visible) start = 0;
+        const mistakes = getMistakes();
+        for (let i = 0; i < visible && start + i < ids.length; i++) {
+          const idx = start + i;
+          const m = mistakes[ids[idx]];
+          const y = listY + i * rowH;
+          if (idx === r.cursor) {
+            ctx.fillStyle = '#e0453a';
+            ctx.font = '14px monospace';
+            ctx.fillText('♥', listX - 18, y);
+          }
+          ctx.fillStyle = idx === r.cursor ? '#fff' : '#aaa';
+          ctx.font = (idx === r.cursor ? 'bold ' : '') + '15px monospace';
+          const firstLine = m ? m.q.split('\n')[0] : '???';
+          ctx.fillText(firstLine, listX, y);
+        }
+        if (start > 0) { ctx.fillStyle = '#888'; ctx.fillText('▲', canvas.width - 40, listY - 24); }
+        if (start + visible < ids.length) { ctx.fillStyle = '#888'; ctx.fillText('▼', canvas.width - 40, listY + visible * rowH); }
+      }
+
+      ctx.fillStyle = '#777';
+      ctx.font = '13px monospace';
+      ctx.textAlign = 'center';
+      if (ids.length > 0) ctx.fillText('↑↓ 선택 · Z/스페이스로 다시 풀기 · X로 닫기', canvas.width / 2, 510);
+      else ctx.fillText('X 또는 Z로 닫기', canvas.width / 2, 510);
+      ctx.textAlign = 'left';
+      return;
+    }
+
+    // question / feedback phase — 배틀 퀴즈 화면과 같은 형태로 표시
+    const m = getMistakes()[ids[r.cursor]];
+    const boxH = game.largeText ? 280 : 238;
+    const boxY = canvas.height - boxH - 12;
+    const hintY = boxY + boxH - 18;
+
+    ctx.fillStyle = '#888';
+    ctx.font = '14px monospace';
+    ctx.fillText('★ 오답 복습', 24, 32);
+
+    utBox(12, boxY, canvas.width - 24, boxH, 8);
+
+    if (r.phase === 'question') {
+      const qLines = m.q.split('\n');
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(16);
+      let ty = boxY + 30;
+      for (const part of qLines) { ctx.fillText(part, 34, ty); ty += lh(24); }
+      ty = boxY + 30 + qLines.length * lh(24) + lh(18);
+      const stepC = game.largeText ? 44 : 38;
+      for (let i = 0; i < r.choiceOrder.length; i++) {
+        drawChoiceLine(`${i + 1}. ${m.a[r.choiceOrder[i]]}`, 38, ty, i === r.qCursor);
+        ty += stepC;
+      }
+    } else if (r.phase === 'feedback') {
+      const f = r.feedback;
+      ctx.font = fs(22, true);
+      ctx.fillStyle = f.correct ? '#5cb85c' : '#e0453a';
+      ctx.fillText(f.correct ? '○ 정답! 잘 기억했어요!' : '× 다시 한번 살펴봐요.', 34, boxY + 38);
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(16);
+      let ty = boxY + (game.largeText ? 86 : 78);
+      for (const part of f.why.split('\n')) { ctx.fillText(part, 34, ty); ty += lh(24); }
+      if (Math.floor(game.time / 20) % 2 === 0) {
+        ctx.fillStyle = '#ffd644';
+        ctx.font = fs(16);
+        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
+      }
+    }
+  }
+
+  // ---------- 설정·일시정지 메뉴 ----------
+  const PAUSE_ITEMS = ['review', 'dex', 'textspeed', 'largetext', 'mute', 'close'];
+  const PAUSE_LABELS = {
+    review: '★ 오답 복습 노트',
+    dex: '♥ 몬스터 도감',
+    textspeed: '자막 속도',
+    largetext: '큰 글씨',
+    mute: '소리',
+    close: '닫기',
+  };
+
+  function pauseValueLabel(item) {
+    if (item === 'textspeed') return TEXT_SPEED_LABEL[game.textSpeed];
+    if (item === 'largetext') return game.largeText ? 'ON' : 'OFF';
+    if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
+    if (item === 'review') return `${mistakeCount()}개`;
+    return '';
+  }
+
+  function openPause() {
+    game.pauseCursor = 0;
+    game.mode = 'pause';
+    Sound.select();
+  }
+
+  function closePause() {
+    game.mode = 'world';
+    Sound.select();
+  }
+
+  function updatePause() {
+    const n = PAUSE_ITEMS.length;
+    if (justPressed('up')) { game.pauseCursor = (game.pauseCursor + n - 1) % n; Sound.blip(); }
+    if (justPressed('down')) { game.pauseCursor = (game.pauseCursor + 1) % n; Sound.blip(); }
+    if (justPressed('cancel')) { closePause(); return; }
+    if (justPressed('action')) {
+      const item = PAUSE_ITEMS[game.pauseCursor];
+      if (item === 'review') openReview('pause');
+      else if (item === 'dex') openDex('pause');
+      else if (item === 'textspeed') cycleTextSpeed();
+      else if (item === 'largetext') toggleLargeText();
+      else if (item === 'mute') Sound.toggleMute();
+      else if (item === 'close') closePause();
+    }
+  }
+
+  function drawPause() {
+    drawWorld();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const boxW = 320, boxH = 60 + PAUSE_ITEMS.length * 40;
+    const boxX = Math.round(canvas.width / 2 - boxW / 2);
+    const boxY = Math.round(canvas.height / 2 - boxH / 2);
+    utBox(boxX, boxY, boxW, boxH, 8);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('설정', boxX + 24, boxY + 34);
+
+    let ty = boxY + 74;
+    for (let i = 0; i < PAUSE_ITEMS.length; i++) {
+      const item = PAUSE_ITEMS[i];
+      drawChoiceLine(PAUSE_LABELS[item], boxX + 24, ty, i === game.pauseCursor);
+      const val = pauseValueLabel(item);
+      if (val) {
+        ctx.fillStyle = '#ffd644';
+        ctx.font = '14px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(val, boxX + boxW - 24, ty);
+        ctx.textAlign = 'left';
+      }
+      ty += 40;
+    }
+
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('↑↓ 선택 · Z 결정 · X 닫기', canvas.width / 2, boxY + boxH - 14);
     ctx.textAlign = 'left';
   }
 
@@ -1620,8 +1935,27 @@
       ty = boxY + 30 + qLines.length * lh(24) + lh(18);
       const stepC = game.largeText ? 44 : 38;
       for (let i = 0; i < order.length; i++) {
-        drawChoiceLine(`${i + 1}. ${q.a[order[i]]}`, 38, ty, i === b.cursor);
+        if (i === b.hiddenPos) {
+          ctx.fillStyle = '#444';
+          ctx.font = fs(16);
+          const label = `${i + 1}. ${q.a[order[i]]}`;
+          ctx.fillText(label, 38 + 28, ty);
+          const w = ctx.measureText(label).width;
+          ctx.strokeStyle = '#444';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(38 + 28, ty - 5);
+          ctx.lineTo(38 + 28 + w, ty - 5);
+          ctx.stroke();
+        } else {
+          drawChoiceLine(`${i + 1}. ${q.a[order[i]]}`, 38, ty, i === b.cursor);
+        }
         ty += stepC;
+      }
+      if (!b.hintUsed && Math.floor(game.time / 20) % 2 === 0) {
+        ctx.fillStyle = '#888';
+        ctx.font = fs(13);
+        ctx.fillText('H: 50:50 힌트', canvas.width - 134, hintY);
       }
     } else if (b.phase === 'feedback') {
       const f = b.feedback;
@@ -2102,7 +2436,19 @@
         updateDex();
         drawDex();
         break;
+      case 'review':
+        updateReview();
+        drawReview();
+        break;
+      case 'pause':
+        updatePause();
+        drawPause();
+        break;
     }
+
+    const showHintBtn = game.mode === 'battle' && game.battle &&
+      game.battle.phase === 'question' && !game.battle.hintUsed;
+    document.body.classList.toggle('battle-hint', showHintBtn);
 
     pressed.clear();
     requestAnimationFrame(frame);

@@ -73,6 +73,26 @@
     font-size: clamp(13px, 3vmin, 16px);
     border-radius: 12px;
   }
+  /* 설정·일시정지(X) — 왼쪽 위 작은 버튼 */
+  #t-pause {
+    left: calc(16px + env(safe-area-inset-left));
+    top: calc(16px + env(safe-area-inset-top));
+    --b: clamp(40px, 9vmin, 54px);
+    font-size: clamp(13px, 3vmin, 16px);
+    border-radius: 12px;
+  }
+  /* 힌트(H) — 배틀 질문 화면에서만 표시, A 버튼 위쪽 */
+  #t-hint { display: none; }
+  body.battle-hint #t-hint {
+    display: flex;
+    right: calc(24px + env(safe-area-inset-right));
+    bottom: calc(150px + var(--b) * 0.4 + env(safe-area-inset-bottom));
+    --b: clamp(46px, 11vmin, 64px);
+    font-size: clamp(12px, 2.6vmin, 15px);
+    border-radius: 12px;
+    background: rgba(255,214,68,.18);
+    border-color: rgba(255,214,68,.45);
+  }
 
   /* ---- 세로 모드일 때 가로로 돌리라는 안내 ---- */
   #rotate-hint {
@@ -140,7 +160,9 @@
   <div class="tbtn" id="t-left">◀</div>
   <div class="tbtn" id="t-right">▶</div>
   <div class="tbtn" id="t-a">A</div>
+  <div class="tbtn" id="t-hint">H</div>
   <div class="tbtn" id="t-menu">도감</div>
+  <div class="tbtn" id="t-pause">X</div>
 </div>
 <div id="rotate-hint">
   <div class="ico">📱</div>

@@ -38,7 +38,7 @@ const sandbox = {
   document: {
     getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : makeCanvas()),
     createElement: () => makeCanvas(),
-    body: { classList: { add() {} } },
+    body: { classList: { add() {}, remove() {}, toggle() {} } },
   },
   localStorage: {
     getItem: (k) => (storage.has(k) ? storage.get(k) : null),
@@ -415,5 +415,81 @@ check('도감 닫고 월드 복귀', g.mode === 'world');
 
 console.log('[25] 보기 순서 섞기 (정답이 한 자리에 고정되지 않음)');
 check('정답 위치가 여러 곳에 분포', correctPosSeen.size >= 2);
+
+console.log('[26] 오답 복습 노트');
+const mistakesBefore = JSON.parse(storage.get('ai-ethics-adventure-mistakes') || '{}');
+check('틀린 문제가 기록됨', Object.keys(mistakesBefore).length > 0);
+check('월드 상태', g.mode === 'world');
+tap('v');
+check('복습 노트 열림', g.mode === 'review' && g.review.phase === 'list');
+check('복습 목록에 항목 있음', g.review.ids.length > 0);
+tap('z'); // 첫 문제 풀기
+check('복습 문제 화면', g.review.phase === 'question');
+{
+  const m = JSON.parse(storage.get('ai-ethics-adventure-mistakes'))[g.review.ids[g.review.cursor]];
+  const target = g.review.choiceOrder.indexOf(m.c);
+  while (g.review.qCursor !== target) tap('ArrowDown');
+}
+tap('z'); // 제출
+check('복습 정답 처리', g.review.phase === 'feedback' && g.review.feedback.correct === true);
+const reviewIdsBefore = g.review.ids.length;
+tap('z'); // 목록으로
+check('맞춘 문제는 목록에서 제거', g.review.ids.length === reviewIdsBefore - 1);
+tap('x');
+check('복습 노트 닫힘', g.mode === 'world');
+
+console.log('[27] 설정·일시정지 메뉴');
+check('월드 상태', g.mode === 'world');
+tap('x');
+check('설정 메뉴 열림', g.mode === 'pause');
+check('초기 커서 0', g.pauseCursor === 0);
+while (g.pauseCursor !== 1) tap('ArrowDown'); // 도감
+tap('z');
+check('설정에서 도감 열림', g.mode === 'dex' && g.dex.ret === 'pause');
+tap('x');
+check('도감 닫고 설정으로 복귀', g.mode === 'pause');
+while (g.pauseCursor !== 2) tap('ArrowDown'); // 자막 속도
+const speedBefore = g.textSpeed;
+tap('z');
+check('자막 속도 변경', g.textSpeed !== speedBefore);
+while (g.pauseCursor !== 3) tap('ArrowDown'); // 큰 글씨
+const largeBefore = g.largeText;
+tap('z');
+check('큰 글씨 토글', g.largeText !== largeBefore);
+tap('z'); // 원래대로 되돌림
+check('큰 글씨 복원', g.largeText === largeBefore);
+while (g.pauseCursor !== 4) tap('ArrowDown'); // 음소거
+const { Sound } = vm.runInContext('({ Sound })', sandbox);
+const mutedBefore = Sound.muted;
+tap('z');
+check('음소거 토글', Sound.muted !== mutedBefore);
+tap('z'); // 원래대로 되돌림
+check('음소거 복원', Sound.muted === mutedBefore);
+tap('x'); // X로 설정 닫기
+check('설정 메뉴 닫힘', g.mode === 'world');
+
+console.log('[28] 50:50 힌트');
+check('월드 상태', g.mode === 'world');
+const { MONSTERS, QUIZZES } = vm.runInContext('({ MONSTERS, QUIZZES })', sandbox);
+const hintQ = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#0' });
+g.mode = 'battle';
+g.battle = {
+  monId: 'bekkyeomon', mon: MONSTERS.bekkyeomon,
+  monHp: 3, monMaxHp: 3, playerHp: 3, maxHearts: 3,
+  questions: [hintQ], qIdx: 0, phase: 'question', cursor: 0,
+  choiceOrder: [0, 1, 2], correctPos: hintQ.c, hintUsed: false, hiddenPos: -1,
+  feedback: null, shake: 0, flash: 0, attack: null, dodgeDone: true, dodge: null,
+};
+tap('h');
+check('힌트 사용됨', g.battle.hintUsed === true);
+check('정답은 가려지지 않음', g.battle.hiddenPos !== g.battle.correctPos && g.battle.hiddenPos !== -1);
+let hitHidden = false;
+for (let i = 0; i < 6; i++) { tap('ArrowDown'); if (g.battle.cursor === g.battle.hiddenPos) hitHidden = true; }
+check('커서가 가려진 보기를 건너뜀', !hitHidden);
+const hiddenBefore = g.battle.hiddenPos;
+tap('h');
+check('힌트는 한 번만 사용 가능', g.battle.hiddenPos === hiddenBefore);
+g.mode = 'world';
+g.battle = null;
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

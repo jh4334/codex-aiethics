@@ -47,7 +47,7 @@ const sandbox = {
   document: {
     getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : makeCanvas()),
     createElement: () => makeCanvas(),
-    body: { classList: { add() {} } },
+    body: { classList: { add() {}, remove() {}, toggle() {} } },
   },
   localStorage: {
     getItem: (k) => (storage.has(k) ? storage.get(k) : null),
