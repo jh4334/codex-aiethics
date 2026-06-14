@@ -2286,26 +2286,26 @@ function getObjective(flags) {
 // 현재 목표의 위치(맵/좌표). 화면의 안내 화살표가 가리킬 곳.
 function getObjectiveTarget(flags) {
   const d = flags.defeated;
-  if (!flags.talkedProf) return { map: 'village', x: 4, y: 12 };
+  if (!flags.talkedProf) return { map: 'village', x: 4, y: 12, label: '박사님' };
   if (d.yeongi) {
-    return flags.trueEnding ? { map: 'village', x: 5, y: 12 } : null;
+    return flags.trueEnding ? { map: 'village', x: 5, y: 12, label: '영이' } : null;
   }
   if (!d.hondonmon) {
     const badges = countBadges(flags);
-    if (badges >= 3) return { map: 'tower', x: 8, y: 3 };
-    if (!flags.badges.forest) return { map: 'forest', x: 13, y: 3 };
-    if (!flags.badges.lake) return { map: 'lake', x: 15, y: 5 };
-    return { map: 'cave', x: 4, y: 4 };
+    if (badges >= 3) return { map: 'tower', x: 8, y: 3, label: '혼돈몬' };
+    if (!flags.badges.forest) return { map: 'forest', x: 13, y: 3, label: '숲의 수호자' };
+    if (!flags.badges.lake) return { map: 'lake', x: 15, y: 5, label: '호수의 수호자' };
+    return { map: 'cave', x: 4, y: 4, label: '동굴의 수호자' };
   }
-  if (!d.meotdaeromon) return { map: 'meadow', x: 13, y: 16 };
-  if (!d.tteonemgimon) return { map: 'desert', x: 13, y: 15 };
-  if (!d.hollimmon) return { map: 'snow', x: 13, y: 15 };
-  if (!d.finalboss) return { map: 'castle', x: 9, y: 2 };
-  if (!d.girokmon) return { map: 'serverroom', x: 13, y: 2 };
-  if (!d.saseomon) return { map: 'library', x: 13, y: 2 };
-  if (!d.mirrormon) return { map: 'mirrors', x: 13, y: 2 };
-  if (!d.soksagimon) return { map: 'garden', x: 13, y: 15 };
-  return { map: 'core', x: 9, y: 2 };
+  if (!d.meotdaeromon) return { map: 'meadow', x: 13, y: 16, label: '멋대로몬' };
+  if (!d.tteonemgimon) return { map: 'desert', x: 13, y: 15, label: '떠넘기몬' };
+  if (!d.hollimmon) return { map: 'snow', x: 13, y: 15, label: '홀림몬' };
+  if (!d.finalboss) return { map: 'castle', x: 9, y: 2, label: '어둠대왕몬' };
+  if (!d.girokmon) return { map: 'serverroom', x: 13, y: 2, label: '기록몬' };
+  if (!d.saseomon) return { map: 'library', x: 13, y: 2, label: '사서몬' };
+  if (!d.mirrormon) return { map: 'mirrors', x: 13, y: 2, label: '미러몬' };
+  if (!d.soksagimon) return { map: 'garden', x: 13, y: 15, label: '속삭임몬' };
+  return { map: 'core', x: 9, y: 2, label: '???' };
 }
 
 // ===== 도감 =====

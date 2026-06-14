@@ -1264,15 +1264,16 @@
     // NPC
     for (const npc of m.npcs) {
       if (!npcVisible(npc)) continue;
+      const nx = Math.round(npc.x * TS - cx);
+      const ny = Math.round(npc.y * TS - cy - 6);
       if (npc.monSprite) {
         const bob = Math.round(Math.sin(game.time / 22) * 2);
-        drawSprite(ctx, MONSTER_SPRITES[npc.monSprite],
-          Math.round(npc.x * TS - cx), Math.round(npc.y * TS - cy - 6 + bob), SCALE);
+        drawSprite(ctx, MONSTER_SPRITES[npc.monSprite], nx, ny + bob, SCALE);
       } else {
-        drawSprite(ctx, NPC_SPRITES.down[frame],
-          Math.round(npc.x * TS - cx), Math.round(npc.y * TS - cy - 6),
-          SCALE, NPC_PALETTES[npc.pal]);
+        drawSprite(ctx, NPC_SPRITES.down[frame], nx, ny, SCALE, NPC_PALETTES[npc.pal]);
       }
+      // "말을 걸 수 있어요" 말풍선 (대화 가능한 NPC 머리 위)
+      drawTalkBubble(nx + TS / 2, ny - 14);
     }
 
     // 몬스터 (둥실둥실)
@@ -1297,6 +1298,47 @@
 
     drawHud();
     drawObjectiveArrow();
+    drawControlHint();
+  }
+
+  // NPC 머리 위 작은 말풍선 — "여기 말 걸 수 있어요"
+  function drawTalkBubble(cx, topY) {
+    const bob = Math.round(Math.sin(game.time / 16) * 2);
+    const w = 16, h = 12;
+    const x = Math.round(cx - w / 2), y = Math.round(topY + bob);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+    // 꼬리
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(cx - 3, y + h);
+    ctx.lineTo(cx + 3, y + h);
+    ctx.lineTo(cx, y + h + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // 말줄임(…)
+    ctx.fillStyle = '#000';
+    for (let i = 0; i < 3; i++) ctx.fillRect(x + 4 + i * 4, y + 5, 2, 2);
+  }
+
+  // 게임을 처음 시작했을 때(박사님과 대화 전)만 보이는 조작 안내
+  function drawControlHint() {
+    if (game.flags.talkedProf) return;
+    const txt = '방향키로 이동 · Z(또는 A 버튼)로 말 걸기';
+    ctx.font = fs(12, true);
+    const tw = ctx.measureText(txt).width;
+    const bw = tw + 28, bh = game.largeText ? 30 : 26;
+    const bx = Math.round(canvas.width / 2 - bw / 2);
+    const by = canvas.height - bh - (game.largeText ? 58 : 52);
+    utBox(bx, by, bw, bh, 6);
+    ctx.fillStyle = '#9fd0ff';
+    ctx.textAlign = 'center';
+    ctx.fillText(txt, canvas.width / 2, by + bh / 2 + 4);
+    ctx.textAlign = 'left';
   }
 
   // 현재 맵에서 다음 목표를 향해 한 걸음 더 가야 할 타일을 찾는다.
@@ -1328,38 +1370,56 @@
     return exitTile[m];
   }
 
-  // 화면 아래에 다음 목표 방향을 알려주는 화살표를 그린다.
+  // 화면 아래에 다음 목표의 방향 + 목적지 이름을 알려주는 안내 배너를 그린다.
   function drawObjectiveArrow() {
+    const target = getObjectiveTarget(game.flags);
+    if (!target) return;
     const wp = nextWaypoint(game.flags, game.map);
     if (!wp) return;
     const p = game.player;
     const dx = wp.x - p.x, dy = wp.y - p.y;
-    if (dx === 0 && dy === 0) return;
+    const onTargetMap = target.map === game.map;
+    const dist = Math.abs(dx) + Math.abs(dy);
+    if (onTargetMap && dist === 0) return; // 이미 도착
+
+    const destName = (MAPS[target.map] && MAPS[target.map].name) || '목표';
+    let label;
+    if (onTargetMap) label = dist <= 3 ? '바로 여기!' : (target.label || '이 지역에 있어요');
+    else label = destName;
     const angle = Math.atan2(dy, dx);
-    const ax = canvas.width / 2, ay = canvas.height - 24;
 
+    // 배너 박스 (하단 중앙) — 화살표 + 목적지 라벨
+    ctx.font = fs(13, true);
+    const tw = ctx.measureText(label).width;
+    const bh = game.largeText ? 36 : 30;
+    const bw = tw + 56;
+    const bx = Math.round(canvas.width / 2 - bw / 2);
+    const by = canvas.height - bh - 10;
+    utBox(bx, by, bw, bh, 6);
+
+    // 방향 화살표 (배너 왼쪽, 살짝 둥실거려 눈에 띄게)
+    const bob = Math.sin(game.time / 14) * 1.5;
+    const ax = bx + 24, ay = by + bh / 2;
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.beginPath();
-    ctx.arc(ax, ay, 16, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.translate(ax, ay);
+    ctx.translate(ax + Math.cos(angle) * bob, ay + Math.sin(angle) * bob);
     ctx.rotate(angle);
     ctx.fillStyle = '#ffd644';
     ctx.beginPath();
-    ctx.moveTo(10, 0);
-    ctx.lineTo(-6, -7);
-    ctx.lineTo(-6, 7);
+    ctx.moveTo(12, 0);
+    ctx.lineTo(-7, -9);
+    ctx.lineTo(-7, 9);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();
+
+    // 목적지 라벨
+    ctx.fillStyle = label === '바로 여기!' ? '#ffd644' : '#fff';
+    ctx.font = fs(13, true);
+    ctx.textAlign = 'left';
+    ctx.fillText(label, bx + 44, by + bh / 2 + 5);
   }
 
   function drawHud() {
