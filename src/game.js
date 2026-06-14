@@ -1547,9 +1547,28 @@
     const shakeX = b.shake > 0 ? Math.sin(b.shake * 2) * 6 : 0;
     const bob = Math.sin(game.time / 20) * 5;
     const monScale = 9;
-    drawSprite(ctx, MONSTER_SPRITES[b.monId],
-      Math.round(canvas.width - 16 * monScale - 60 + shakeX),
-      Math.round(30 + bob), monScale);
+    const mx = Math.round(canvas.width - 16 * monScale - 60 + shakeX);
+    const my = Math.round(56 + bob);
+    const mcx = mx + 16 * monScale / 2;
+    // 그림자 — 몬스터가 땅에 떠 있는 느낌을 줘 화면이 덜 휑하게
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawSprite(ctx, MONSTER_SPRITES[b.monId], mx, my, monScale);
+    // 반응 이모트 — 정답이면 번쩍 깨달음(!), 오답이면 아직 갸웃(?)
+    if (b.phase === 'feedback' && b.feedback) {
+      const ch = b.feedback.correct ? '!' : '?';
+      const ey = my - 10 + Math.sin(game.time / 8) * 3;
+      ctx.font = 'bold 34px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = b.feedback.correct ? '#ffd644' : '#9aa0b0';
+      ctx.fillText(ch, mcx, ey);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.strokeText(ch, mcx, ey);
+      ctx.textAlign = 'left';
+    }
 
     // 몬스터 이름/HP
     utBox(24, 24, 240, 64, 6);
