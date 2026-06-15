@@ -31,9 +31,11 @@
     titleCursor: 0,
     endingT: 0,
     dex: { cursor: 0, ret: 'title' },
-    review: { cursor: 0, ret: 'world', phase: 'list', ids: [], qCursor: 0, choiceOrder: null, feedback: null },
-    journal: { ret: 'world', scroll: 0, toast: 0 },
-    challenge: null, // { ret, phase, topicKeys, sel, questions, idx, cursor, choiceOrder, score, feedback }
+    review: { cursor: 0, ret: 'world', slot: 0, phase: 'list', ids: [], qCursor: 0, choiceOrder: null, feedback: null },
+    journal: { ret: 'world', slot: 0, scroll: 0, toast: 0 },
+    awards: { ret: 'world', slot: 0, scroll: 0 },
+    challenge: null, // { ret, slot, phase, topics, sel, questions, idx, cursor, choiceOrder, score, feedback }
+    helpRet: 'title',
     pauseCursor: 0,
     titleScreen: 'slots', // slots | name | delete
     slotCursor: 0,
@@ -43,6 +45,7 @@
     nameCancel: false,
     textSpeed: 'normal', // slow | normal | fast — 대화창 자막 속도
     largeText: false,    // 큰 글씨(접근성) 모드
+    colorBlind: false,   // 색약 친화 팔레트(접근성) 모드
   };
 
   const SLOT_COUNT = 3;
@@ -68,6 +71,7 @@
       trueEnding: false,
       correctCount: 0,
       battleCount: 0,
+      sawBattleTip: false, // 첫 전투 1회 안내 표시 여부
     };
   }
 
@@ -88,6 +92,7 @@
 
   function deleteSlot(i) {
     try { localStorage.removeItem(slotKey(i)); } catch (e) { /* 무시 */ }
+    clearSlotLearning(i); // 학생을 지우면 학습 기록(일지·복습·도전과제)도 함께 지운다
   }
 
   // 기존 단일 세이브를 슬롯 0으로 1회 이전한다.
@@ -147,13 +152,14 @@
       const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
       if (!TEXT_SPEEDS[s.textSpeed]) s.textSpeed = 'normal';
       s.largeText = !!s.largeText;
+      s.colorBlind = !!s.colorBlind;
       return s;
-    } catch (e) { return { textSpeed: 'normal', largeText: false }; }
+    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false }; }
   }
   function saveSettings() {
     try {
       localStorage.setItem(SETTINGS_KEY,
-        JSON.stringify({ textSpeed: game.textSpeed, largeText: game.largeText }));
+        JSON.stringify({ textSpeed: game.textSpeed, largeText: game.largeText, colorBlind: game.colorBlind }));
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
   function cycleTextSpeed() {
@@ -167,36 +173,67 @@
     saveSettings();
     Sound.blip();
   }
+  function toggleColorBlind() {
+    game.colorBlind = !game.colorBlind;
+    saveSettings();
+    Sound.blip();
+  }
   // 큰 글씨 모드 배율 — 읽기 중심 화면(대화·퀴즈)의 글자/줄간격에 적용
   function TF() { return game.largeText ? 1.25 : 1; }
   function fs(px, bold) { return (bold ? 'bold ' : '') + Math.round(px * TF()) + 'px monospace'; }
   function lh(px) { return Math.round(px * TF()); }
+  // 의미 색상 — 색약 모드에서는 빨강/초록 대신 구분이 쉬운 파랑/주황(Okabe-Ito 계열)
+  function okColor() { return game.colorBlind ? '#3b8ed0' : '#5cb85c'; }   // 정답·높음
+  function warnColor() { return game.colorBlind ? '#e69f00' : '#ffd644'; } // 보통
+  function badColor() { return game.colorBlind ? '#d55e00' : '#e0453a'; }  // 오답·낮음
 
-  // 오답 복습 노트 — 틀린 문제를 기록. 세이브와 별개로 누적 보존된다.
+  // ---------- 학생(슬롯)별 학습 데이터 ----------
+  // 일지·복습 노트·통계는 "이 슬롯을 쓰는 학생"의 개인 기록이다.
+  // 슬롯마다 따로 누적되고, 슬롯을 지우면 함께 지워진다.
+  // (도감·발견 엔딩은 기기 공용 컬렉션으로 그대로 둔다.)
+  function activeSlot() {
+    // 타이틀에서는 커서가 가리키는 슬롯, 플레이 중에는 진행 중인 슬롯
+    return game.mode === 'title' ? game.slotCursor : game.currentSlot;
+  }
+  function slotLearnName(slot) {
+    const s = loadSlot(slot);
+    if (s && s.name) return s.name;
+    if (slot === game.currentSlot && game.playerName) return game.playerName;
+    return '수호자';
+  }
+  function slotFlags(slot) {
+    if (slot === game.currentSlot && game.flags) return game.flags;
+    const s = loadSlot(slot);
+    return (s && s.flags) ? s.flags : null;
+  }
+
+  // 오답 복습 노트 — 틀린 문제를 슬롯별로 기록
   const MISTAKES_KEY = 'ai-ethics-adventure-mistakes';
-  function getMistakes() {
-    try { return JSON.parse(localStorage.getItem(MISTAKES_KEY)) || {}; }
+  function mistakesKey(slot) { return MISTAKES_KEY + '-' + slot; }
+  function getMistakes(slot) {
+    try { return JSON.parse(localStorage.getItem(mistakesKey(slot))) || {}; }
     catch (e) { return {}; }
   }
-  function recordMistake(q) {
+  function recordMistake(slot, q) {
     if (!q._qid) return;
     try {
-      const m = getMistakes();
+      const m = getMistakes(slot);
       m[q._qid] = { topic: q._topic, q: q.q, a: q.a, c: q.c, why: q.why };
-      localStorage.setItem(MISTAKES_KEY, JSON.stringify(m));
+      localStorage.setItem(mistakesKey(slot), JSON.stringify(m));
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
-  function clearMistake(qid) {
+  function clearMistake(slot, qid) {
     try {
-      const m = getMistakes();
+      const m = getMistakes(slot);
       delete m[qid];
-      localStorage.setItem(MISTAKES_KEY, JSON.stringify(m));
+      localStorage.setItem(mistakesKey(slot), JSON.stringify(m));
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
-  function mistakeCount() { return Object.keys(getMistakes()).length; }
+  function mistakeCount(slot) { return Object.keys(getMistakes(slot)).length; }
 
-  // 학습 진척도 — 주제별 정답/시도 누적. 세이브와 별개로 보존된다.
+  // 학습 진척도 — 주제별 정답/시도를 슬롯별로 누적
   const STATS_KEY = 'ai-ethics-adventure-stats';
+  function statsKey(slot) { return STATS_KEY + '-' + slot; }
   // 주제 키 → 짧은 한글 라벨 (수호자 일지·리포트 표기용)
   const TOPIC_LABEL = {
     privacy: '개인정보 보호', copyright: '저작권 · 출처', fake: '가짜 정보 분별',
@@ -209,24 +246,24 @@
     core: '존재의 가치 · 책임',
   };
   function topicLabel(t) { return TOPIC_LABEL[t] || t; }
-  function getStats() {
-    try { return JSON.parse(localStorage.getItem(STATS_KEY)) || {}; }
+  function getStats(slot) {
+    try { return JSON.parse(localStorage.getItem(statsKey(slot))) || {}; }
     catch (e) { return {}; }
   }
-  function recordTopicResult(topic, correct) {
+  function recordTopicResult(slot, topic, correct) {
     if (!topic) return;
     try {
-      const s = getStats();
+      const s = getStats(slot);
       const e = s[topic] || { correct: 0, total: 0 };
       e.total += 1;
       if (correct) e.correct += 1;
       s[topic] = e;
-      localStorage.setItem(STATS_KEY, JSON.stringify(s));
+      localStorage.setItem(statsKey(slot), JSON.stringify(s));
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
   // 학습 데이터를 한 화면 분량으로 정리한다 (일지·리포트 공용)
-  function buildLearningSummary() {
-    const stats = getStats();
+  function buildLearningSummary(slot) {
+    const stats = getStats(slot);
     const rows = Object.keys(stats)
       .filter((t) => stats[t].total > 0)
       .map((t) => ({
@@ -243,8 +280,53 @@
       correct: totC,
       overallRate: totN ? totC / totN : 0,
       weak: rows.filter((r) => r.total >= 2 && r.rate < 0.6).map((r) => r.label),
+      strongTopics: rows.filter((r) => r.total >= 1 && r.rate >= 0.8).length,
+      perfectTopic: rows.some((r) => r.total >= 3 && r.rate >= 1),
     };
   }
+
+  // 챌린지·도전과제용 슬롯별 메타 (최고 점수, 완주 횟수)
+  const META_KEY = 'ai-ethics-adventure-meta';
+  function metaKey(slot) { return META_KEY + '-' + slot; }
+  function getMeta(slot) {
+    try { return JSON.parse(localStorage.getItem(metaKey(slot))) || {}; }
+    catch (e) { return {}; }
+  }
+  function recordChallengeResult(slot, score, total) {
+    try {
+      const m = getMeta(slot);
+      m.challengeRuns = (m.challengeRuns || 0) + 1;
+      m.challengeBest = Math.max(m.challengeBest || 0, score);
+      m.challengeBestTotal = total;
+      localStorage.setItem(metaKey(slot), JSON.stringify(m));
+    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+
+  // 슬롯 삭제 시 학습 데이터도 함께 지운다
+  function clearSlotLearning(slot) {
+    try {
+      localStorage.removeItem(statsKey(slot));
+      localStorage.removeItem(mistakesKey(slot));
+      localStorage.removeItem(metaKey(slot));
+    } catch (e) { /* 무시 */ }
+  }
+
+  // 기존 전역 학습 데이터(이전 버전)를 슬롯 0으로 1회 이전한다
+  function migrateLearningData() {
+    try {
+      const oldStats = localStorage.getItem(STATS_KEY);
+      if (oldStats && !localStorage.getItem(statsKey(0))) {
+        localStorage.setItem(statsKey(0), oldStats);
+        localStorage.removeItem(STATS_KEY);
+      }
+      const oldMist = localStorage.getItem(MISTAKES_KEY);
+      if (oldMist && !localStorage.getItem(mistakesKey(0))) {
+        localStorage.setItem(mistakesKey(0), oldMist);
+        localStorage.removeItem(MISTAKES_KEY);
+      }
+    } catch (e) { /* 무시 */ }
+  }
+
 
   // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
   const DEX_KEY = 'ai-ethics-adventure-dex';
@@ -299,6 +381,18 @@
       if (game.mode === 'world') { openChallenge('world'); return; }
       if (game.mode === 'title' && game.titleScreen === 'slots') { openChallenge('title'); return; }
       if (game.mode === 'challenge') { closeChallenge(); return; }
+      return;
+    }
+    if (e.key === 'b' || e.key === 'B') {
+      if (game.mode === 'world') { openAwards('world'); return; }
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openAwards('title'); return; }
+      if (game.mode === 'awards') { closeAwards(); return; }
+      return;
+    }
+    if (e.key === 'i' || e.key === 'I') {
+      if (game.mode === 'world') { openHelp('world'); return; }
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openHelp('title'); return; }
+      if (game.mode === 'help') { closeHelp(); return; }
       return;
     }
     const k = KEYMAP[e.key];
@@ -889,7 +983,16 @@
   function startBattleIntro(monId) {
     const mon = MONSTERS[monId];
     Sound.encounter();
-    startDialog([mon.intro], mon.name, () => startBattle(monId));
+    const lines = [mon.intro];
+    // 첫 전투에서 한 번만, 전투 방법을 짧게 안내한다 (슬롯별 1회)
+    if (game.flags && !game.flags.sawBattleTip) {
+      game.flags.sawBattleTip = true;
+      lines.push(
+        '[전투 안내]\n↑↓로 답을 고르고 Z(또는 A)로 결정!\n맞히면 몬스터의 오해가 풀려요.',
+        '틀려도 괜찮아요. 해설을 읽고 배우면 돼요.\n막히면 H로 50:50 힌트를 쓸 수 있어요.'
+      );
+    }
+    startDialog(lines, mon.name, () => startBattle(monId));
   }
 
   function questionPool(mon) {
@@ -1098,18 +1201,18 @@
         const correct = order[b.cursor] === q.c;
         b.feedback = { correct, why: q.why };
         b.phase = 'feedback';
-        recordTopicResult(q._topic, correct);
+        recordTopicResult(game.currentSlot, q._topic, correct);
         if (correct) {
           Sound.correct();
           b.monHp -= 1;
           b.shake = 14;
           game.flags.correctCount += 1;
-          clearMistake(q._qid);
+          clearMistake(game.currentSlot, q._qid);
         } else {
           Sound.wrong();
           b.playerHp -= 1;
           b.flash = 14;
-          recordMistake(q);
+          recordMistake(game.currentSlot, q);
         }
       }
       return;
@@ -1353,7 +1456,8 @@
   function openReview(ret) {
     const r = game.review;
     r.ret = ret;
-    r.ids = Object.keys(getMistakes());
+    r.slot = activeSlot();
+    r.ids = Object.keys(getMistakes(r.slot));
     r.cursor = 0;
     r.phase = 'list';
     game.mode = 'review';
@@ -1367,7 +1471,7 @@
 
   function startReviewQuestion() {
     const r = game.review;
-    const m = getMistakes()[r.ids[r.cursor]];
+    const m = getMistakes(r.slot)[r.ids[r.cursor]];
     r.choiceOrder = shuffled(m.a.map((_, i) => i));
     r.qCursor = 0;
     r.feedback = null;
@@ -1390,7 +1494,7 @@
     }
 
     if (r.phase === 'question') {
-      const m = getMistakes()[r.ids[r.cursor]];
+      const m = getMistakes(r.slot)[r.ids[r.cursor]];
       const len = m.a.length;
       if (justPressed('up')) { r.qCursor = (r.qCursor + len - 1) % len; Sound.blip(); }
       if (justPressed('down')) { r.qCursor = (r.qCursor + 1) % len; Sound.blip(); }
@@ -1399,7 +1503,7 @@
         const correct = r.choiceOrder[r.qCursor] === m.c;
         r.feedback = { correct, why: m.why };
         r.phase = 'feedback';
-        if (correct) { Sound.correct(); clearMistake(r.ids[r.cursor]); } else { Sound.wrong(); }
+        if (correct) { Sound.correct(); clearMistake(r.slot, r.ids[r.cursor]); } else { Sound.wrong(); }
       }
       return;
     }
@@ -1407,7 +1511,7 @@
     if (r.phase === 'feedback') {
       if (justPressed('action') || justPressed('cancel')) {
         if (r.feedback.correct) {
-          r.ids = Object.keys(getMistakes());
+          r.ids = Object.keys(getMistakes(r.slot));
           if (r.cursor >= r.ids.length) r.cursor = Math.max(0, r.ids.length - 1);
         }
         r.phase = 'list';
@@ -1442,7 +1546,7 @@
         const listX = 24, listY = 96, rowH = 34, visible = 11;
         let start = Math.max(0, Math.min(r.cursor - 5, ids.length - visible));
         if (ids.length <= visible) start = 0;
-        const mistakes = getMistakes();
+        const mistakes = getMistakes(r.slot);
         for (let i = 0; i < visible && start + i < ids.length; i++) {
           const idx = start + i;
           const m = mistakes[ids[idx]];
@@ -1471,7 +1575,7 @@
     }
 
     // question / feedback phase — 배틀 퀴즈 화면과 같은 형태로 표시
-    const m = getMistakes()[ids[r.cursor]];
+    const m = getMistakes(r.slot)[ids[r.cursor]];
     const boxH = game.largeText ? 280 : 238;
     const boxY = canvas.height - boxH - 12;
     const hintY = boxY + boxH - 18;
@@ -1497,7 +1601,7 @@
     } else if (r.phase === 'feedback') {
       const f = r.feedback;
       ctx.font = fs(22, true);
-      ctx.fillStyle = f.correct ? '#5cb85c' : '#e0453a';
+      ctx.fillStyle = f.correct ? okColor() : badColor();
       ctx.fillText(f.correct ? '○ 정답! 잘 기억했어요!' : '× 다시 한번 살펴봐요.', 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
@@ -1512,24 +1616,32 @@
   }
 
   // ---------- 설정·일시정지 메뉴 ----------
-  const PAUSE_ITEMS = ['journal', 'review', 'dex', 'textspeed', 'largetext', 'mute', 'close'];
+  // 터치 기기에는 키보드 단축키(J/Q/B/I 등)가 없으므로, 모든 기능을 메뉴로 연다.
+  const PAUSE_ITEMS = ['journal', 'awards', 'review', 'challenge', 'dex',
+    'textspeed', 'largetext', 'colorblind', 'mute', 'help', 'close'];
   const PAUSE_LABELS = {
     journal: '◆ 수호자 일지',
+    awards: '☆ 도전과제',
     review: '★ 오답 복습 노트',
+    challenge: '▶ 퀴즈 챌린지',
     dex: '♥ 몬스터 도감',
     textspeed: '자막 속도',
     largetext: '큰 글씨',
+    colorblind: '색약 모드',
     mute: '소리',
+    help: '? 도움말',
     close: '닫기',
   };
 
   function pauseValueLabel(item) {
     if (item === 'textspeed') return TEXT_SPEED_LABEL[game.textSpeed];
     if (item === 'largetext') return game.largeText ? 'ON' : 'OFF';
+    if (item === 'colorblind') return game.colorBlind ? 'ON' : 'OFF';
     if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
-    if (item === 'review') return `${mistakeCount()}개`;
+    if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
+    if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
     if (item === 'journal') {
-      const s = buildLearningSummary();
+      const s = buildLearningSummary(game.currentSlot);
       return s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—';
     }
     return '';
@@ -1554,55 +1666,61 @@
     if (justPressed('action')) {
       const item = PAUSE_ITEMS[game.pauseCursor];
       if (item === 'journal') openJournal('pause');
+      else if (item === 'awards') openAwards('pause');
       else if (item === 'review') openReview('pause');
+      else if (item === 'challenge') openChallenge('pause');
       else if (item === 'dex') openDex('pause');
       else if (item === 'textspeed') cycleTextSpeed();
       else if (item === 'largetext') toggleLargeText();
+      else if (item === 'colorblind') toggleColorBlind();
       else if (item === 'mute') Sound.toggleMute();
+      else if (item === 'help') openHelp('pause');
       else if (item === 'close') closePause();
     }
   }
 
   function drawPause() {
     drawWorld();
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const boxW = 320, boxH = 60 + PAUSE_ITEMS.length * 40;
+    const rowH = 34;
+    const boxW = 340, boxH = 56 + PAUSE_ITEMS.length * rowH;
     const boxX = Math.round(canvas.width / 2 - boxW / 2);
     const boxY = Math.round(canvas.height / 2 - boxH / 2);
     utBox(boxX, boxY, boxW, boxH, 8);
 
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px monospace';
-    ctx.fillText('설정', boxX + 24, boxY + 34);
+    ctx.font = 'bold 17px monospace';
+    ctx.fillText('메뉴', boxX + 22, boxY + 30);
 
-    let ty = boxY + 74;
+    let ty = boxY + 62;
     for (let i = 0; i < PAUSE_ITEMS.length; i++) {
       const item = PAUSE_ITEMS[i];
-      drawChoiceLine(PAUSE_LABELS[item], boxX + 24, ty, i === game.pauseCursor);
+      drawChoiceLine(PAUSE_LABELS[item], boxX + 22, ty, i === game.pauseCursor);
       const val = pauseValueLabel(item);
       if (val) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = '14px monospace';
+        ctx.fillStyle = warnColor();
+        ctx.font = '13px monospace';
         ctx.textAlign = 'right';
-        ctx.fillText(val, boxX + boxW - 24, ty);
+        ctx.fillText(val, boxX + boxW - 22, ty);
         ctx.textAlign = 'left';
       }
-      ty += 40;
+      ty += rowH;
     }
 
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = '12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 선택 · Z 결정 · X 닫기', canvas.width / 2, boxY + boxH - 14);
+    ctx.fillText('↑↓ 선택 · Z 결정 · X 닫기', canvas.width / 2, boxY + boxH - 12);
     ctx.textAlign = 'left';
   }
 
   // ---------- 수호자 일지 (학습 진척도) ----------
   function openJournal(ret) {
     game.journal.ret = ret;
+    game.journal.slot = activeSlot();
     game.journal.scroll = 0;
     game.journal.toast = 0;
     game.mode = 'journal';
@@ -1615,15 +1733,16 @@
   }
 
   // 학습 리포트(교사·학부모용)를 텍스트로 만들어 클립보드에 복사
-  function buildReportText() {
-    const s = buildLearningSummary();
+  function buildReportText(slot) {
+    if (slot == null) slot = game.journal.slot;
+    const s = buildLearningSummary(slot);
     const pct = (r) => Math.round(r * 100) + '%';
     let date = '';
     try { date = new Date().toLocaleDateString('ko-KR'); } catch (e) {}
     const lines = [];
     lines.push('[AI 윤리 어드벤처 — 학습 리포트]');
     if (date) lines.push('날짜: ' + date);
-    lines.push('이름: ' + game.playerName);
+    lines.push('이름: ' + slotLearnName(slot));
     lines.push('──────────────────────');
     lines.push(`푼 문제: ${s.attempted}개 · 정답 ${s.correct}개 (${s.attempted ? pct(s.overallRate) : '—'})`);
     lines.push('');
@@ -1638,12 +1757,12 @@
     const endSeen = getEndingsSeen();
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
     lines.push(`발견 엔딩: ${endN}/4 · 도감 수집: ${dexSeenCount()}/${DEX_ORDER.length}`);
-    lines.push(`복습 노트 남은 문제: ${mistakeCount()}개`);
+    lines.push(`복습 노트 남은 문제: ${mistakeCount(slot)}개`);
     return lines.join('\n');
   }
 
   function copyReport() {
-    const text = buildReportText();
+    const text = buildReportText(game.journal.slot);
     let ok = false;
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1666,7 +1785,7 @@
     const j = game.journal;
     if (j.toast > 0) j.toast -= 1;
     else if (j.toast < 0) j.toast += 1;
-    const s = buildLearningSummary();
+    const s = buildLearningSummary(j.slot);
     const maxScroll = Math.max(0, s.rows.length - JOURNAL_VISIBLE);
     if (justPressed('up')) { j.scroll = Math.max(0, j.scroll - 1); Sound.blip(); }
     if (justPressed('down')) { j.scroll = Math.min(maxScroll, j.scroll + 1); Sound.blip(); }
@@ -1678,22 +1797,23 @@
   function drawJournal() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const s = buildLearningSummary();
+    const slot = game.journal.slot;
+    const s = buildLearningSummary(slot);
 
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
-    ctx.fillText('◆ 수호자 일지', 24, 38);
+    ctx.fillText(`◆ 수호자 일지 — ${slotLearnName(slot)}`, 24, 38);
 
     // 요약 줄
-    ctx.fillStyle = '#ffd644';
+    ctx.fillStyle = warnColor();
     ctx.font = 'bold 16px monospace';
     ctx.fillText(`푼 문제 ${s.attempted}개  ·  정답 ${s.correct}개  ·  정답률 ${s.attempted ? Math.round(s.overallRate * 100) + '%' : '—'}`, 24, 66);
     const endSeen = getEndingsSeen();
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText(`발견 엔딩 ${endN}/4  ·  도감 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount()}개`, 24, 88);
+    ctx.fillText(`발견 엔딩 ${endN}/4  ·  도감 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
 
     // 주제별 정답률 막대
     ctx.fillStyle = '#fff';
@@ -1711,13 +1831,13 @@
         const r = s.rows[start + i];
         const y = 140 + i * rowH;
         const weak = r.total >= 2 && r.rate < 0.6;
-        ctx.fillStyle = weak ? '#e0453a' : '#ddd';
+        ctx.fillStyle = weak ? badColor() : '#ddd';
         ctx.font = '14px monospace';
         ctx.fillText(r.label, 24, y + 14);
         // 막대 배경/채움
         ctx.fillStyle = '#222';
         ctx.fillRect(barX, y, barW, 16);
-        ctx.fillStyle = r.rate >= 0.8 ? '#5cb85c' : r.rate >= 0.6 ? '#ffd644' : '#e0453a';
+        ctx.fillStyle = r.rate >= 0.8 ? okColor() : r.rate >= 0.6 ? warnColor() : badColor();
         ctx.fillRect(barX, y, Math.round(barW * r.rate), 16);
         ctx.fillStyle = '#fff';
         ctx.font = '12px monospace';
@@ -1730,7 +1850,7 @@
 
     // 약한 주제 안내
     if (s.weak.length) {
-      ctx.fillStyle = '#e0453a';
+      ctx.fillStyle = badColor();
       ctx.font = '13px monospace';
       ctx.fillText('더 살펴볼 주제: ' + s.weak.slice(0, 3).join(', '), 24, 470);
     }
@@ -1739,7 +1859,7 @@
     if (game.journal.toast !== 0) {
       const ok = game.journal.toast > 0;
       ctx.textAlign = 'center';
-      ctx.fillStyle = ok ? '#5cb85c' : '#e0453a';
+      ctx.fillStyle = ok ? okColor() : badColor();
       ctx.font = 'bold 15px monospace';
       ctx.fillText(ok ? '✓ 학습 리포트를 클립보드에 복사했어요!' : '복사할 수 없는 환경이에요 (직접 화면을 보여 주세요)', canvas.width / 2, 490);
       ctx.textAlign = 'left';
@@ -1764,7 +1884,7 @@
 
   function openChallenge(ret) {
     game.challenge = {
-      ret, phase: 'topic', topics: challengeTopics(), sel: 0,
+      ret, slot: activeSlot(), phase: 'topic', topics: challengeTopics(), sel: 0,
       questions: [], idx: 0, cursor: 0, choiceOrder: null, score: 0, feedback: null,
     };
     game.mode = 'challenge';
@@ -1807,7 +1927,12 @@
   function challengeNext() {
     const c = game.challenge;
     c.idx += 1;
-    if (c.idx >= c.questions.length) { c.phase = 'result'; Sound.badge(); return; }
+    if (c.idx >= c.questions.length) {
+      c.phase = 'result';
+      recordChallengeResult(c.slot, c.score, c.questions.length);
+      Sound.badge();
+      return;
+    }
     c.cursor = 0;
     c.feedback = null;
     c.choiceOrder = shuffled(c.questions[c.idx].a.map((_, i) => i));
@@ -1837,9 +1962,9 @@
         const correct = c.choiceOrder[c.cursor] === q.c;
         c.feedback = { correct, why: q.why };
         c.phase = 'feedback';
-        recordTopicResult(q._topic, correct);
-        if (correct) { c.score += 1; clearMistake(q._qid); Sound.correct(); }
-        else { recordMistake(q); Sound.wrong(); }
+        recordTopicResult(c.slot, q._topic, correct);
+        if (correct) { c.score += 1; clearMistake(c.slot, q._qid); Sound.correct(); }
+        else { recordMistake(c.slot, q); Sound.wrong(); }
       }
       return;
     }
@@ -1865,12 +1990,12 @@
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 22px monospace';
-      ctx.fillText('⚡ 자유 퀴즈 챌린지', 24, 40);
+      ctx.fillText('▶ 자유 퀴즈 챌린지', 24, 40);
       ctx.fillStyle = '#888';
       ctx.font = '14px monospace';
       ctx.fillText(`주제를 골라 ${CHALLENGE_LEN}문제에 도전! (모험과 별개로 즐겨요)`, 24, 64);
 
-      const items = ['🎲 전체 랜덤'].concat(c.topics.map((t) => `${t.label}  (${t.n})`));
+      const items = ['★ 전체 랜덤'].concat(c.topics.map((t) => `${t.label}  (${t.n})`));
       const listX = 40, listY = 100, rowH = 30, visible = 12;
       let start = Math.max(0, Math.min(c.sel - 6, items.length - visible));
       if (items.length <= visible) start = 0;
@@ -1892,9 +2017,9 @@
     if (c.phase === 'result') {
       const total = c.questions.length;
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffd644';
+      ctx.fillStyle = warnColor();
       ctx.font = 'bold 26px monospace';
-      ctx.fillText('⚡ 챌린지 완료!', canvas.width / 2, 150);
+      ctx.fillText('★ 챌린지 완료!', canvas.width / 2, 150);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 40px monospace';
       ctx.fillText(`${c.score} / ${total}`, canvas.width / 2, 220);
@@ -1919,12 +2044,12 @@
     ctx.fillStyle = '#888';
     ctx.font = '14px monospace';
     ctx.fillText(`문제 ${c.idx + 1} / ${c.questions.length}`, 24, 32);
-    ctx.fillStyle = '#ffd644';
+    ctx.fillStyle = warnColor();
     ctx.fillText(`점수 ${c.score}`, canvas.width - 110, 32);
     // 진행 막대
     ctx.fillStyle = '#222';
     ctx.fillRect(24, 42, canvas.width - 48, 6);
-    ctx.fillStyle = '#5cb85c';
+    ctx.fillStyle = okColor();
     ctx.fillRect(24, 42, Math.round((canvas.width - 48) * (c.idx / c.questions.length)), 6);
 
     const boxH = game.largeText ? 300 : 260;
@@ -1947,7 +2072,7 @@
     } else if (c.phase === 'feedback') {
       const f = c.feedback;
       ctx.font = fs(22, true);
-      ctx.fillStyle = f.correct ? '#5cb85c' : '#e0453a';
+      ctx.fillStyle = f.correct ? okColor() : badColor();
       ctx.fillText(f.correct ? '○ 정답!' : '× 아쉬워요!', 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
@@ -1959,6 +2084,157 @@
         ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
       }
     }
+  }
+
+  // ---------- 도전과제 (업적) ----------
+  // 각 과제는 슬롯별 학습 데이터 + 기기 공용 컬렉션(도감·엔딩)에서 즉석 판정한다.
+  const ACHIEVEMENTS = [
+    { id: 'firstwin', cat: 'battle', name: '첫 깨우침', desc: '몬스터를 처음 깨우쳤어요', check: (c) => c.defeatedCount >= 1 },
+    { id: 'mercy1', cat: 'battle', name: '따뜻한 마음', desc: '마음을 한 번 안아 주었어요', check: (c) => c.mercy >= 1 },
+    { id: 'mercy10', cat: 'battle', name: '마음의 수호자', desc: '마음을 열 번 안아 주었어요', check: (c) => c.mercy >= 10 },
+    { id: 'solved50', cat: 'learn', name: '꾸준한 공부', desc: '문제를 50개 이상 풀었어요', check: (c) => c.attempted >= 50 },
+    { id: 'perfectTopic', cat: 'learn', name: '완벽한 한 주제', desc: '한 주제 100% (3문제 이상)', check: (c) => c.perfectTopic },
+    { id: 'wellRounded', cat: 'learn', name: '두루 박학', desc: '5개 주제에서 80% 이상', check: (c) => c.strongTopics >= 5 },
+    { id: 'dexHalf', cat: 'collect', name: '도감 수집가', desc: '도감을 절반 이상 모았어요', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
+    { id: 'dexAll', cat: 'collect', name: '도감 마스터', desc: '도감을 모두 모았어요', check: (c) => c.dexTotal > 0 && c.dex >= c.dexTotal },
+    { id: 'ending1', cat: 'collect', name: '이야기꾼', desc: '엔딩을 하나 보았어요', check: (c) => c.endings >= 1 },
+    { id: 'endingAll', cat: 'collect', name: '모든 결말', desc: '엔딩 네 가지를 모두 보았어요', check: (c) => c.endings >= 4 },
+    { id: 'challengeDone', cat: 'challenge', name: '챌린지 도전', desc: '퀴즈 챌린지를 완주했어요', check: (c) => c.challengeRuns >= 1 },
+    { id: 'challengePerfect', cat: 'challenge', name: '챌린지 만점', desc: '퀴즈 챌린지에서 만점!', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
+  ];
+  const ACH_CAT = {
+    battle: { icon: '♥', color: '#e0453a' },
+    learn: { icon: '★', color: '#ffd644' },
+    collect: { icon: '◆', color: '#5aa9e6' },
+    challenge: { icon: '✦', color: '#b48ce0' },
+  };
+  function achievementCtx(slot) {
+    const s = buildLearningSummary(slot);
+    const f = slotFlags(slot) || {};
+    const meta = getMeta(slot);
+    const defeatedCount = f.defeated ? Object.keys(f.defeated).filter((k) => f.defeated[k]).length : 0;
+    const endSeen = getEndingsSeen();
+    const endings = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
+    return {
+      attempted: s.attempted, strongTopics: s.strongTopics, perfectTopic: s.perfectTopic,
+      mercy: f.mercy || 0, defeatedCount,
+      dex: dexSeenCount(), dexTotal: DEX_ORDER.length, endings,
+      challengeRuns: meta.challengeRuns || 0,
+      challengeBest: meta.challengeBest || 0, challengeBestTotal: meta.challengeBestTotal || 0,
+    };
+  }
+  function countAchievements(slot) {
+    const ctx = achievementCtx(slot);
+    return ACHIEVEMENTS.filter((a) => a.check(ctx)).length;
+  }
+
+  function openAwards(ret) {
+    game.awards.ret = ret;
+    game.awards.slot = activeSlot();
+    game.mode = 'awards';
+    Sound.select();
+  }
+  function closeAwards() {
+    game.mode = game.awards.ret;
+    Sound.select();
+  }
+  function updateAwards() {
+    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeAwards();
+  }
+  function drawAwards() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const slot = game.awards.slot;
+    const actx = achievementCtx(slot);
+    const got = ACHIEVEMENTS.filter((a) => a.check(actx)).length;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText(`☆ 도전과제 — ${slotLearnName(slot)}`, 24, 38);
+    ctx.fillStyle = warnColor();
+    ctx.font = 'bold 15px monospace';
+    ctx.fillText(`달성 ${got} / ${ACHIEVEMENTS.length}`, 24, 62);
+
+    const colW = (canvas.width - 48) / 2, cellH = 66;
+    for (let i = 0; i < ACHIEVEMENTS.length; i++) {
+      const a = ACHIEVEMENTS[i];
+      const unlocked = a.check(actx);
+      const col = i % 2, row = Math.floor(i / 2);
+      const x = 24 + col * colW, y = 86 + row * cellH;
+      const cat = ACH_CAT[a.cat];
+      // 아이콘 배지
+      ctx.fillStyle = unlocked ? cat.color : '#333';
+      ctx.font = 'bold 26px monospace';
+      ctx.fillText(unlocked ? cat.icon : '·', x + 4, y + 26);
+      // 이름·설명
+      ctx.fillStyle = unlocked ? '#fff' : '#555';
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(a.name, x + 42, y + 18);
+      ctx.fillStyle = unlocked ? '#aaa' : '#444';
+      ctx.font = '12px monospace';
+      ctx.fillText(unlocked ? a.desc : '???  ' + a.desc, x + 42, y + 40);
+    }
+
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Z 또는 X로 닫기', canvas.width / 2, 512);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 도움말 ----------
+  const HELP_LINES = [
+    ['head', '◆ 게임 목표'],
+    ['', '윤리 오류로 헷갈리는 몬스터를 퀴즈로 깨우쳐 친구로 만들어요.'],
+    ['', '각 지역의 보스를 깨우치면 다음 지역으로 가는 길이 열립니다.'],
+    ['', ''],
+    ['head', '◆ 기본 조작'],
+    ['', '이동: 화살표 / W A S D       결정·대화·살펴보기: Z / 스페이스'],
+    ['', '퀴즈: ↑↓로 고르고 Z로 결정       취소·뒤로: X / Esc'],
+    ['', ''],
+    ['head', '◆ 전투'],
+    ['', '정답을 맞히면 몬스터의 오해가 풀려요(HP 감소).'],
+    ['', '틀려도 항상 해설이 나와요. 하트가 0이 되면 쉬었다 다시 도전!'],
+    ['', '막히면 H로 50:50 힌트(한 문제에 한 번).'],
+    ['', ''],
+    ['head', '◆ 메뉴 (X 또는 메뉴 버튼)'],
+    ['', '수호자 일지·도전과제·복습 노트·도감·퀴즈 챌린지·접근성 설정'],
+  ];
+  function openHelp(ret) {
+    game.helpRet = ret;
+    game.mode = 'help';
+    Sound.select();
+  }
+  function closeHelp() {
+    game.mode = game.helpRet || 'title';
+    Sound.select();
+  }
+  function updateHelp() {
+    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeHelp();
+  }
+  function drawHelp() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText('? 도움말', 24, 38);
+
+    let y = 76;
+    for (const [kind, text] of HELP_LINES) {
+      if (text === '') { y += 12; continue; }
+      if (kind === 'head') { ctx.fillStyle = warnColor(); ctx.font = 'bold 16px monospace'; }
+      else { ctx.fillStyle = '#ddd'; ctx.font = '14px monospace'; }
+      ctx.fillText(text, 28, y);
+      y += 26;
+    }
+
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Z 또는 X로 닫기', canvas.width / 2, 512);
+    ctx.textAlign = 'left';
   }
 
   // 텍스트 줄바꿈 그리기. 그린 줄 수를 반환.
@@ -2393,7 +2669,7 @@
     } else if (b.phase === 'feedback') {
       const f = b.feedback;
       ctx.font = fs(22, true);
-      ctx.fillStyle = f.correct ? '#5cb85c' : '#e0453a';
+      ctx.fillStyle = f.correct ? okColor() : badColor();
       ctx.fillText(f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.', 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
@@ -2550,9 +2826,9 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
-    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 퀴즈챌린지 · J 일지`, canvas.width / 2, 460);
-    ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · G 큰글씨(${game.largeText ? '켜짐' : '꺼짐'})`, canvas.width / 2, 478);
+    ctx.font = '12px monospace';
+    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · I 도움말`, canvas.width / 2, 462);
+    ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · G 큰글씨(${game.largeText ? '켜짐' : '꺼짐'}) · 설정은 게임 중 X 메뉴`, canvas.width / 2, 480);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -2882,6 +3158,14 @@
         updateJournal();
         drawJournal();
         break;
+      case 'awards':
+        updateAwards();
+        drawAwards();
+        break;
+      case 'help':
+        updateHelp();
+        drawHelp();
+        break;
       case 'challenge':
         updateChallenge();
         drawChallenge();
@@ -2909,9 +3193,10 @@
   window.addEventListener('mousedown', startTitleMusic);
 
   migrateOldSave();
-  Object.assign(game, loadSettings()); // 저장된 설정(자막 속도·큰 글씨) 복원
+  migrateLearningData(); // 이전 버전의 전역 학습 데이터를 슬롯 0으로 이전
+  Object.assign(game, loadSettings()); // 저장된 설정(자막 속도·큰 글씨·색약) 복원
   game.flags = newFlags();
   window.__game = game; // 디버그/테스트용
-  window.__test = { buildReportText, buildLearningSummary, recordTopicResult }; // 테스트용 훅
+  window.__test = { buildReportText, buildLearningSummary, recordTopicResult, countAchievements }; // 테스트용 훅
   frame();
 })();

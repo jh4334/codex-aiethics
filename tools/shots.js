@@ -163,8 +163,9 @@ setPlayer(8, 4, 'right');
 g.time = 18;
 shot('09-cave.png');
 
-// 10) 수호자 일지 (주제별 정답률 — 통계 시드)
-storage.set('ai-ethics-adventure-stats', JSON.stringify({
+// 10) 수호자 일지 (주제별 정답률 — 슬롯 0 통계 시드)
+g.currentSlot = 0; g.playerName = '수호자';
+storage.set('ai-ethics-adventure-stats-0', JSON.stringify({
   privacy: { correct: 6, total: 6 },
   copyright: { correct: 5, total: 6 },
   fake: { correct: 4, total: 5 },
@@ -174,8 +175,8 @@ storage.set('ai-ethics-adventure-stats', JSON.stringify({
   safety: { correct: 1, total: 3 },
   transparency: { correct: 4, total: 6 },
 }));
-g.mode = 'journal'; g.journal = { ret: 'world', scroll: 0, toast: 0 };
-g.playerName = '수호자';
+storage.set('ai-ethics-adventure-meta-0', JSON.stringify({ challengeRuns: 3, challengeBest: 10, challengeBestTotal: 10 }));
+g.mode = 'journal'; g.journal = { ret: 'world', slot: 0, scroll: 0, toast: 0 };
 g.time = 20;
 shot('10-journal.png');
 
@@ -186,7 +187,7 @@ g.mode = 'challenge';
     .map((t) => ({ key: t, label: t, n: QUIZZES[t].length }));
   const q = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#0' });
   g.challenge = {
-    ret: 'title', phase: 'quiz', topics, sel: 0,
+    ret: 'title', slot: 0, phase: 'quiz', topics, sel: 0,
     questions: new Array(10).fill(q), idx: 3, cursor: 1,
     choiceOrder: q.a.map((_, i) => i), score: 3, feedback: null,
   };
@@ -194,4 +195,17 @@ g.mode = 'challenge';
 g.time = 16;
 shot('11-challenge.png');
 
-console.log('완료. shots/ 폴더에 11장 생성.');
+// 12) 도전과제 (업적) — 일부 달성 상태
+g.flags.defeated = Object.assign(g.flags.defeated, { bekkyeomon: true, mollaemon: true, hondonmon: true });
+g.flags.mercy = 11;
+storage.set('ai-ethics-adventure-endings', JSON.stringify({ home: true }));
+g.mode = 'awards'; g.awards = { ret: 'world', slot: 0, scroll: 0 };
+g.time = 20;
+shot('12-awards.png');
+
+// 13) 도움말
+g.mode = 'help'; g.helpRet = 'title';
+g.time = 20;
+shot('13-help.png');
+
+console.log('완료. shots/ 폴더에 13장 생성.');

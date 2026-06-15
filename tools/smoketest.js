@@ -416,17 +416,20 @@ check('도감 닫고 월드 복귀', g.mode === 'world');
 console.log('[25] 보기 순서 섞기 (정답이 한 자리에 고정되지 않음)');
 check('정답 위치가 여러 곳에 분포', correctPosSeen.size >= 2);
 
-console.log('[26] 오답 복습 노트');
-const mistakesBefore = JSON.parse(storage.get('ai-ethics-adventure-mistakes') || '{}');
-check('틀린 문제가 기록됨', Object.keys(mistakesBefore).length > 0);
+console.log('[26] 오답 복습 노트 (슬롯별)');
+// 학습 데이터는 슬롯별 키로 저장된다 (슬롯 0 = 진행 중인 슬롯)
+const mistakesBefore = JSON.parse(storage.get('ai-ethics-adventure-mistakes-0') || '{}');
+check('틀린 문제가 슬롯 0에 기록됨', Object.keys(mistakesBefore).length > 0);
+check('이전 전역 키는 쓰지 않음', !storage.get('ai-ethics-adventure-mistakes'));
 check('월드 상태', g.mode === 'world');
 tap('v');
 check('복습 노트 열림', g.mode === 'review' && g.review.phase === 'list');
+check('복습 노트가 슬롯 0 사용', g.review.slot === 0);
 check('복습 목록에 항목 있음', g.review.ids.length > 0);
 tap('z'); // 첫 문제 풀기
 check('복습 문제 화면', g.review.phase === 'question');
 {
-  const m = JSON.parse(storage.get('ai-ethics-adventure-mistakes'))[g.review.ids[g.review.cursor]];
+  const m = JSON.parse(storage.get('ai-ethics-adventure-mistakes-0'))[g.review.ids[g.review.cursor]];
   const target = g.review.choiceOrder.indexOf(m.c);
   while (g.review.qCursor !== target) tap('ArrowDown');
 }
@@ -443,8 +446,8 @@ check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
 check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
-// PAUSE_ITEMS = ['journal','review','dex','textspeed','largetext','mute','close']
-const PAUSE_ORDER = ['journal', 'review', 'dex', 'textspeed', 'largetext', 'mute', 'close'];
+const PAUSE_ORDER = ['journal', 'awards', 'review', 'challenge', 'dex',
+  'textspeed', 'largetext', 'colorblind', 'mute', 'help', 'close'];
 const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
 while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
 tap('z');
@@ -495,22 +498,23 @@ check('힌트는 한 번만 사용 가능', g.battle.hiddenPos === hiddenBefore)
 g.mode = 'world';
 g.battle = null;
 
-console.log('[29] 학습 진척도·수호자 일지 (E)');
-// 앞선 배틀/복습에서 주제별 통계가 쌓였는지
-const stats = JSON.parse(storage.get('ai-ethics-adventure-stats') || '{}');
-check('주제별 통계가 기록됨', Object.keys(stats).length > 0);
+console.log('[29] 학습 진척도·수호자 일지 (E, 슬롯별)');
+// 앞선 배틀/복습에서 주제별 통계가 슬롯 0에 쌓였는지
+const stats = JSON.parse(storage.get('ai-ethics-adventure-stats-0') || '{}');
+check('주제별 통계가 슬롯 0에 기록됨', Object.keys(stats).length > 0);
+check('이전 전역 통계 키는 쓰지 않음', !storage.get('ai-ethics-adventure-stats'));
 check('통계에 정답/시도 수가 있음',
   Object.values(stats).every((e) => typeof e.correct === 'number' && typeof e.total === 'number' && e.total >= e.correct));
 check('월드 상태', g.mode === 'world');
 tap('j');
-check('수호자 일지 열림', g.mode === 'journal');
+check('수호자 일지 열림', g.mode === 'journal' && g.journal.slot === 0);
 tap('ArrowDown'); // 스크롤(목록이 짧으면 변화 없을 수 있음)
 tap('x');
 check('일지 닫고 월드 복귀', g.mode === 'world');
 
 console.log('[30] 교실용 학습 리포트 (F)');
 const { buildReportText } = vm.runInContext('({ buildReportText: window.__test.buildReportText })', sandbox);
-const report = buildReportText();
+const report = buildReportText(0);
 check('리포트에 제목 포함', /학습 리포트/.test(report));
 check('리포트에 정답률 포함', /푼 문제/.test(report) && /정답/.test(report));
 check('리포트에 주제별 정답률 포함', /주제별 정답률/.test(report));
@@ -519,6 +523,7 @@ console.log('[31] 자유 퀴즈 챌린지 (G)');
 check('월드 상태', g.mode === 'world');
 tap('q');
 check('챌린지 주제 선택 열림', g.mode === 'challenge' && g.challenge.phase === 'topic');
+check('챌린지가 슬롯 0 사용', g.challenge.slot === 0);
 check('주제 목록 존재', g.challenge.topics.length > 0);
 tap('z'); // 전체 랜덤 시작 (sel=0)
 check('퀴즈 시작', g.challenge.phase === 'quiz');
@@ -537,7 +542,56 @@ while (g.mode === 'challenge' && g.challenge.phase !== 'result' && guard++ < 60)
 }
 check('결과 화면 도달', g.challenge && g.challenge.phase === 'result');
 check('전부 맞히면 만점', g.challenge.score === g.challenge.questions.length);
+const meta0 = JSON.parse(storage.get('ai-ethics-adventure-meta-0') || '{}');
+check('챌린지 결과가 메타에 기록', meta0.challengeRuns >= 1 && meta0.challengeBest === g.challenge.questions.length);
 tap('z'); // 닫기 → world (ret)
 check('챌린지 닫고 복귀', g.mode === 'world');
+
+console.log('[32] 도전과제 (업적)');
+const { countAchievements } = vm.runInContext('({ countAchievements: window.__test.countAchievements })', sandbox);
+check('진엔딩까지 깬 슬롯은 도전과제 다수 달성', countAchievements(0) >= 6);
+check('월드 상태', g.mode === 'world');
+tap('b');
+check('도전과제 화면 열림', g.mode === 'awards' && g.awards.slot === 0);
+tap('x');
+check('도전과제 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[33] 접근성 — 색약 모드 토글');
+const cbBefore = g.colorBlind;
+tap('x'); // 메뉴 열기
+check('메뉴 열림', g.mode === 'pause');
+while (g.pauseCursor !== pauseIdx('colorblind')) tap('ArrowDown');
+tap('z');
+check('색약 모드 토글', g.colorBlind !== cbBefore);
+const savedSettings = JSON.parse(storage.get('ai-ethics-adventure-settings') || '{}');
+check('색약 설정이 저장됨', savedSettings.colorBlind === g.colorBlind);
+tap('z'); // 복원
+check('색약 모드 복원', g.colorBlind === cbBefore);
+tap('x'); // 닫기
+check('메뉴 닫힘', g.mode === 'world');
+
+console.log('[34] 도움말 화면');
+tap('i');
+check('도움말 열림', g.mode === 'help');
+tap('z');
+check('도움말 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[35] 슬롯별 학습 데이터 분리');
+// 슬롯 1에 기록해도 슬롯 0의 학습 기록과 섞이지 않아야 한다
+const { recordTopicResult } = vm.runInContext('({ recordTopicResult: window.__test.recordTopicResult })', sandbox);
+recordTopicResult(1, 'privacy', false); // 슬롯 1에 두 문제 기록
+recordTopicResult(1, 'privacy', true);
+const s0 = JSON.parse(storage.get('ai-ethics-adventure-stats-0') || '{}');
+const s1 = JSON.parse(storage.get('ai-ethics-adventure-stats-1') || '{}');
+check('슬롯 1 통계가 따로 쌓임', s1.privacy && s1.privacy.total === 2);
+check('슬롯 0과 슬롯 1 통계가 분리됨', JSON.stringify(s0) !== JSON.stringify(s1));
+// 슬롯 1 삭제 시 학습 데이터도 함께 지워지는지
+deleteSlotViaGame(1);
+check('슬롯 1 삭제 시 통계도 삭제', !storage.get('ai-ethics-adventure-stats-1'));
+function deleteSlotViaGame(slot) {
+  g.mode = 'title'; g.titleScreen = 'delete'; g.slotCursor = slot;
+  tap('z'); // 삭제 확정
+}
+g.mode = 'world';
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
