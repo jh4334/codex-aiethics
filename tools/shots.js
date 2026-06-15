@@ -208,4 +208,26 @@ g.mode = 'help'; g.helpRet = 'title';
 g.time = 20;
 shot('13-help.png');
 
-console.log('완료. shots/ 폴더에 13장 생성.');
+// 14) 꾸미기 (칭호 · 테마)
+storage.set('ai-ethics-adventure-cosmetic-0', JSON.stringify({ title: 'kind', theme: 'ocean' }));
+g.mode = 'cosmetics';
+g.cosmetics = { ret: 'world', slot: 0, col: 1, rowTitle: 1, rowTheme: 2, toast: 0 };
+g.time = 20;
+shot('14-cosmetics.png');
+
+// 15) 데이터 백업 · 복원
+g.mode = 'backup';
+g.backup = { ret: 'world', cursor: 1, toast: 0 };
+g.time = 20;
+shot('15-backup.png');
+
+// 16) 보너스 지역 — AI 미래연구소 (새 몬스터 3종)
+g.mode = 'world'; g.map = 'lab';
+g.flags.defeated.hwangakmon = false;
+g.flags.defeated.hapseongmon = false;
+g.flags.defeated.miraemon = false;
+setPlayer(9, 8, 'up');
+g.time = 18;
+shot('16-lab.png');
+
+console.log('완료. shots/ 폴더에 16장 생성.');

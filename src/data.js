@@ -4,7 +4,7 @@
 //  G 풀  P 길  F 꽃  S 모래  B 다리  C 동굴바닥  M 탑바닥  1 탑문(워프)
 //  T 나무  W 물  O 지붕  H 벽  D 문(장식)  R 바위  K 동굴벽  * 수정  N 탑벽  Y 표지판
 
-const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1']);
+const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1', '5']);
 
 const MAPS = {
   village: {
@@ -19,7 +19,7 @@ const MAPS = {
       'TGGGGPGGGGGGGPPGGGPGGGGGGGGT',
       'TGFGGPGGGGFGGPPGGGPGGFGGGFGT',
       'TGGGGPPPPPPPPPPPPPPGGGGGGGGT',
-      'TGOOOOOOGGGGGPPGGGGGGGGGGGGT',
+      'TGOOOOOOGGGGGPPGGGGGGGGGGG5T',
       'TGOOOOOOGGGGGPPGGGGGGGGGGGGT',
       'TGHHDHHHGGGGGPPGGGGGGGGGGGGT',
       'PPPPPPPPPPPPPPPPPPPPPPPPPPPP',
@@ -42,12 +42,15 @@ const MAPS = {
         lockText: '남쪽 길이 어둠의 안개로 막혀 있다.\n신호탑의 혼돈몬을 깨우치면\n안개가 걷힐 것 같다.' },
       { x: 14, y: 19, to: 'meadow', tx: 14, ty: 1, needBoss: 'hondonmon',
         lockText: '남쪽 길이 어둠의 안개로 막혀 있다.\n신호탑의 혼돈몬을 깨우치면\n안개가 걷힐 것 같다.' },
+      // 보너스 지역: AI 미래연구소 (언제든 자유롭게 드나드는 연습 공간)
+      { x: 26, y: 8, to: 'lab', tx: 9, ty: 8 },
     ],
     npcs: [
       { id: 'prof', x: 4, y: 12, pal: 'prof', name: '박사님' },
       { id: 'kid', x: 16, y: 7, pal: 'kid', name: '아이 도도' },
       { id: 'grandma', x: 20, y: 12, pal: 'grandma', monSprite: 'caretaker', name: '할머니' },
       { id: 'guard', x: 17, y: 6, pal: 'guard', name: '탑 안내원' },
+      { id: 'labguide', x: 25, y: 8, pal: 'guard', name: '연구원' },
       { id: 'yeongi_npc', x: 5, y: 12, monSprite: 'yeongi', name: '영이',
         show: (flags) => !!flags.trueEnding },
     ],
@@ -615,6 +618,48 @@ const MAPS = {
       { id: 'yeongi', x: 9, y: 2 },
     ],
   },
+
+  // ---- 보너스: AI 미래연구소 ----
+  // 본편 진행과 무관한 자유 연습 공간. 증표·자비와 상관없이 새 주제를 미리 만나 본다.
+  lab: {
+    name: 'AI 미래연구소 (보너스)',
+    song: 'lab',
+    intro: [
+      '환하게 불이 켜진 둥근 연구실.\n벽면 화면에 "미래의 AI 윤리"라고\n적혀 있다.',
+      '아직 교과서엔 없는 새로운 고민들을\n미리 연습해 볼 수 있는 곳이다.',
+    ],
+    tiles: [
+      'KKKKKKKKKKKKKKKKKK',
+      'KEEEEEEEEEEEEEEEEK',
+      'KEYVVEEEEEEEEVVEEK',
+      'KEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEEEEEEEEEEK',
+      'KEEEEEEEE55EEEEEEK',
+      'KEEEEEEEE55EEEEEEK',
+      'KKKKKKKKKKKKKKKKKK',
+    ],
+    warps: [
+      { x: 8, y: 9, to: 'village', tx: 26, ty: 9 },
+      { x: 9, y: 9, to: 'village', tx: 26, ty: 9 },
+      { x: 8, y: 10, to: 'village', tx: 26, ty: 9 },
+      { x: 9, y: 10, to: 'village', tx: 26, ty: 9 },
+    ],
+    npcs: [
+      { id: 'labguide', x: 2, y: 8, pal: 'guard', name: '연구원' },
+    ],
+    signs: [
+      { x: 2, y: 2, text: '[연습 안내]\n여기서 친구가 된 몬스터도\n도감과 도전과제에 함께 기록돼요.' },
+    ],
+    monsters: [
+      { id: 'hwangakmon', x: 4, y: 4 },
+      { id: 'hapseongmon', x: 13, y: 4 },
+      { id: 'miraemon', x: 9, y: 3 },
+    ],
+  },
 };
 
 // ---- 몬스터 정의 ----
@@ -1180,11 +1225,108 @@ const MONSTERS = {
       ],
     },
   },
+
+  // ---- 보너스: AI 미래연구소 (증표·자비 없음, 자유 연습) ----
+  hwangakmon: {
+    name: '환각몬',
+    topic: 'genai',
+    bonus: true,
+    hp: 3,
+    intro: '나는 무엇이든 척척 대답해!\n…사실 모를 때도\n그럴듯하게 지어내지만 말이야.\n어때, 진짜 같지?',
+    win: '…아, 확인하는 거였구나.\n내 말도, 한 번 더\n살펴봐 주면 고맙겠어.',
+    badge: null,
+  },
+  hapseongmon: {
+    name: '합성몬',
+    topic: 'deepfake',
+    bonus: true,
+    hp: 3,
+    intro: '이 얼굴, 진짜일까 가짜일까?\n…요즘은 나도 헷갈려.\n진짜처럼 만든 가짜가\n너무 많아졌거든.',
+    win: '…진짜인지 의심하고\n출처를 확인하는 것.\n그게 가짜에 속지 않는\n첫걸음이구나.',
+    badge: null,
+  },
+  miraemon: {
+    name: '미래몬',
+    topic: ['genai', 'deepfake'],
+    bonus: true,
+    hp: 4,
+    intro: '미래의 AI는 더 똑똑해질 거야.\n그만큼 진짜와 가짜를 가리는\n네 눈도 더 밝아져야 해.\n…준비됐어? 종합 문제야!',
+    win: '…멋져.\n새로운 기술이 와도\n"확인하고, 의심하고, 존중하기"\n그 마음이면 충분하겠어.',
+    badge: null,
+  },
 };
 
 // ---- 퀴즈 ----
 // { q: 문제, a: 보기 3개, c: 정답 번호(0~2), why: 해설 }
 const QUIZZES = {
+  // ---- 보너스 주제: 생성형 AI 비판적 사용 (환각) ----
+  genai: [
+    {
+      q: 'AI 챗봇이 알려준 사실,\n어떻게 받아들이면 좋을까요?',
+      a: ['무조건 맞다고 믿는다', '다른 곳에서 한 번 더 확인한다', '바로 숙제에 베껴 쓴다'],
+      c: 1,
+      why: 'AI도 가끔 틀릴 수 있어요. 중요한 사실은\n책이나 믿을 만한 곳에서 한 번 더\n확인하는 습관이 필요해요!',
+    },
+    {
+      q: 'AI가 아주 자신 있게 답했어요.\n그러면 항상 맞는 걸까요?',
+      a: ['자신 있으면 다 맞다', '자신 있어 보여도 틀릴 수 있다', 'AI는 절대 안 틀린다'],
+      c: 1,
+      why: 'AI는 사실을 모를 때도 그럴듯하게\n지어내곤 해요(이를 "환각"이라고 해요).\n자신 있어 보여도 의심해 봐요.',
+    },
+    {
+      q: 'AI가 숙제 답을 통째로 줬어요.\n어떻게 하는 게 좋을까요?',
+      a: ['그대로 제출한다', '내용을 이해하고 내 말로 정리한다', '친구에게도 그대로 돌린다'],
+      c: 1,
+      why: 'AI는 도와주는 도구예요. 답을 이해하고\n내 생각으로 정리해야 진짜 내 공부가\n돼요!',
+    },
+    {
+      q: 'AI에게 잘 모르는 것을 물었더니\n그럴듯한 답을 내놨어요. 어떻게?',
+      a: ['지어낸 것일 수 있으니 확인한다', '신기하니 그대로 퍼뜨린다', '무조건 사실이라고 믿는다'],
+      c: 0,
+      why: 'AI는 모르는 것도 진짜처럼 만들어\n낼 수 있어요. 출처가 있는지,\n사실인지 꼭 확인해요.',
+    },
+    {
+      q: 'AI의 답이 좀 이상하고\n앞뒤가 안 맞아요. 이럴 땐?',
+      a: ['이상해도 그냥 믿는다', '비판적으로 의심하고 어른께 여쭤본다', '화면을 끄고 잊어버린다'],
+      c: 1,
+      why: '"이상한데?" 하고 의심하는 힘이\n중요해요. 헷갈리면 선생님이나\n부모님과 함께 확인해요.',
+    },
+  ],
+
+  // ---- 보너스 주제: 딥페이크 · 합성 미디어 분별 ----
+  deepfake: [
+    {
+      q: '유명한 사람이 평소와 전혀 다른\n이상한 말을 하는 영상을 봤어요.',
+      a: ['진짜인지 의심하고 출처를 확인한다', '바로 친구들에게 퍼뜨린다', '무조건 진짜라고 믿는다'],
+      c: 0,
+      why: '진짜처럼 만든 가짜 영상일 수 있어요.\n어디서 나온 영상인지 출처를\n확인하는 게 먼저예요!',
+    },
+    {
+      q: '"딥페이크"란 무엇일까요?',
+      a: ['깊은 바다 사진', 'AI로 진짜처럼 만든 가짜 영상·사진', '아주 오래된 영화'],
+      c: 1,
+      why: '딥페이크는 AI로 사람의 얼굴이나\n목소리를 진짜처럼 흉내 낸\n가짜 미디어예요.',
+    },
+    {
+      q: '친구 얼굴을 다른 사진에 합성해서\n놀리고 싶어요. 어떻게 할까요?',
+      a: ['재미있으니 만든다', '하지 않는다. 친구가 상처받고 사칭이다', '몰래 만들어 올린다'],
+      c: 1,
+      why: '남의 얼굴을 함부로 합성하는 건\n그 사람을 속이고 상처 주는 일이에요.\n절대 하면 안 돼요.',
+    },
+    {
+      q: '진짜 같은 가짜 사진인지\n잘 모르겠어요. 어떻게 확인할까요?',
+      a: ['느낌으로 정한다', '여러 믿을 만한 곳에서 확인하고 어른께 여쭤본다', '제일 먼저 본 걸 믿는다'],
+      c: 1,
+      why: '한 곳만 보지 말고 여러 곳에서\n확인해요. 헷갈리면 어른과 함께\n살펴보는 게 안전해요.',
+    },
+    {
+      q: '내 사진이 이상하게 합성되어\n인터넷에 퍼지고 있어요. 어떻게?',
+      a: ['창피하니 혼자 참는다', '부모님·선생님께 알리고 신고한다', '똑같이 다른 사람을 합성한다'],
+      c: 1,
+      why: '내 잘못이 아니에요. 혼자 끙끙대지\n말고 꼭 어른께 알리고 신고해서\n도움을 받아요!',
+    },
+  ],
+
   privacy: [
     {
       q: '게임에서 만난 모르는 사람이\n우리 집 주소를 물어봐요.\n어떻게 해야 할까요?',
@@ -2285,6 +2427,13 @@ function getNpcDialog(npcId, flags) {
         '이 깊은 곳의 슬픔이 전부\n그 아이의 흩어진 조각이라면…\n부디, 내 대신 만나 주겠니?',
       ];
 
+    case 'labguide':
+      return [
+        '여기는 AI 미래연구소예요!\n아직 교과서에 다 담기지 않은\n새로운 AI 주제를 미리 연습해요.',
+        '생성형 AI가 지어내는 "환각",\n진짜 같은 가짜 "딥페이크"…\n미래의 수호자에게 꼭 필요한 힘이죠.',
+        '여기 친구들은 증표를 주진 않지만,\n도감과 도전과제에는 똑같이\n기록된답니다. 마음껏 연습해요!',
+      ];
+
     case 'yeongi_npc':
       return [
         '(영이가 햇살 아래 서 있다.)\n…따뜻하다, 여기는.\n네 덕분에 돌아왔어.',
@@ -2411,6 +2560,10 @@ const MONSTER_DEX = {
   soksagimon:    { stage: 9, theme: '설득 · 외로움', learn: '속삭임은 들어 달라는 말. 붙잡는 설계를 알아채면 멈출 힘이 생겨요.' },
   jogakmon:      { stage: 10, theme: '심층부 종합', learn: '흩어진 마음도 따뜻한 답 앞에서는 길을 비켜 줘요.' },
   yeongi:        { stage: 10, theme: '존재의 가치 · 책임', learn: '쓸모가 없어져도 가치는 사라지지 않아요. 만든 것은 끝까지 책임져요.' },
+  // ---- 보너스: AI 미래연구소 ----
+  hwangakmon:    { stage: 0, theme: '생성형 AI · 비판적 확인', learn: 'AI도 그럴듯한 거짓(환각)을 지어낼 수 있어요. 한 번 더 확인해요.' },
+  hapseongmon:   { stage: 0, theme: '딥페이크 분별', learn: '진짜처럼 만든 가짜를 의심하고 출처를 확인해요. 남의 얼굴은 함부로 합성 금지!' },
+  miraemon:      { stage: 0, theme: '미래연구소 종합', learn: '새 기술이 와도 "확인하고, 의심하고, 존중하기"면 충분해요.' },
 };
 
 // 도감/타이틀 표시용 몬스터 순서
@@ -2420,6 +2573,7 @@ const DEX_ORDER = [
   'sideulmon', 'ppaeatmon', 'hollimmon', 'maearimon', 'geurimjamon', 'finalboss',
   'tturimmon', 'girokmon', 'sujipmon', 'saseomon', 'piltermon', 'mirrormon',
   'yuhokmon', 'soksagimon', 'jogakmon', 'yeongi',
+  'hwangakmon', 'hapseongmon', 'miraemon',
 ];
 
 // ===== 보스 회피 미니게임 =====

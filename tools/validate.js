@@ -31,7 +31,7 @@ for (const [id, m] of Object.entries(MAPS)) {
   m.tiles.forEach((row, y) => {
     if (row.length !== w) err(`${id} y=${y}: 길이 ${row.length} != ${w}`);
     for (const ch of row) {
-      if (!'GPFSBCM1TWOHDRK*NYZJXEVILQ234A'.includes(ch)) err(`${id} y=${y}: 알 수 없는 타일 '${ch}'`);
+      if (!'GPFSBCM1TWOHDRK*NYZJXEVILQ234A5'.includes(ch)) err(`${id} y=${y}: 알 수 없는 타일 '${ch}'`);
     }
   });
 }
@@ -142,8 +142,11 @@ for (const [id, mon] of Object.entries(MONSTERS)) {
   }
   if (pool < mon.hp) err(`몬스터 ${id}: 퀴즈 수(${pool}) < HP(${mon.hp})`);
 
-  // 통일성: 모든 몬스터는 '마음의 선택'을 가진다
-  if (!mon.mercy) { err(`몬스터 ${id}: mercy(마음의 선택) 없음`); continue; }
+  // 통일성: 본편 몬스터는 '마음의 선택'을 가진다 (보너스 몬스터는 자유 연습용이라 없음)
+  if (!mon.mercy) {
+    if (mon.bonus) continue;
+    err(`몬스터 ${id}: mercy(마음의 선택) 없음`); continue;
+  }
   if (!mon.mercy.prompt) err(`몬스터 ${id}: mercy.prompt 없음`);
   if (!mon.mercy.options || mon.mercy.options.length !== 3) {
     err(`몬스터 ${id}: mercy 선택지는 3개여야 함`);

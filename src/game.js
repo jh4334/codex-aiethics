@@ -35,6 +35,9 @@
     journal: { ret: 'world', slot: 0, scroll: 0, toast: 0 },
     awards: { ret: 'world', slot: 0, scroll: 0 },
     challenge: null, // { ret, slot, phase, topics, sel, questions, idx, cursor, choiceOrder, score, feedback }
+    cosmetics: { ret: 'title', slot: 0, col: 0, rowTitle: 0, rowTheme: 0, toast: 0 },
+    backup: { ret: 'title', cursor: 0, toast: 0 },
+    notice: { text: '', t: 0 }, // 월드 상단 안내 토스트 (해금 알림 등)
     helpRet: 'title',
     pauseCursor: 0,
     titleScreen: 'slots', // slots | name | delete
@@ -65,6 +68,7 @@
         saseomon: false, piltermon: false, mirrormon: false,
         yuhokmon: false, soksagimon: false, jogakmon: false,
         yeongi: false,
+        hwangakmon: false, hapseongmon: false, miraemon: false,
       },
       mercy: 0,        // 마음을 안아준 횟수 (스테이지 6~)
       visited: {},     // 맵 인트로 연출 1회 표시용
@@ -244,6 +248,7 @@
     finale: '전체 종합', security: '계정 보안 · 피싱', footprint: '디지털 발자국',
     consent: '데이터 수집과 동의', identity: '사칭 · 신원', persuasion: '다크패턴 · 설득',
     core: '존재의 가치 · 책임',
+    genai: '생성형 AI · 환각', deepfake: '딥페이크 분별',
   };
   function topicLabel(t) { return TOPIC_LABEL[t] || t; }
   function getStats(slot) {
@@ -328,6 +333,209 @@
   }
 
 
+  // ---------- 일일 도전 · 연속 출석(스트릭) ----------
+  // 날짜 문자열(YYYY-MM-DD). 기본은 오늘.
+  function todayStr(d) {
+    const t = d || new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`;
+  }
+  function dayDiff(a, b) { // b - a (일 단위)
+    const pa = Date.parse(a + 'T00:00:00'), pb = Date.parse(b + 'T00:00:00');
+    if (isNaN(pa) || isNaN(pb)) return null;
+    return Math.round((pb - pa) / 86400000);
+  }
+  // 이 슬롯으로 논 날을 기록하고 연속 출석(streak)을 갱신한다.
+  function recordPlayDay(slot, day) {
+    day = day || todayStr();
+    const m = getMeta(slot);
+    if (m.lastPlayDay === day) return m; // 오늘 이미 기록됨
+    const diff = m.lastPlayDay ? dayDiff(m.lastPlayDay, day) : null;
+    m.streak = diff === 1 ? (m.streak || 0) + 1 : 1; // 이어서 오면 +1, 아니면 1부터
+    m.lastPlayDay = day;
+    m.bestStreak = Math.max(m.bestStreak || 0, m.streak);
+    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { /* 무시 */ }
+    return m;
+  }
+  function dailyDoneToday(slot, day) {
+    return getMeta(slot).lastDailyDay === (day || todayStr());
+  }
+  function recordDailyDone(slot, score, total, day) {
+    day = day || todayStr();
+    const m = getMeta(slot);
+    m.lastDailyDay = day;
+    m.dailyRuns = (m.dailyRuns || 0) + 1;
+    m.dailyBest = Math.max(m.dailyBest || 0, score);
+    m.dailyTotal = total;
+    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { /* 무시 */ }
+    return m;
+  }
+
+  // ---------- 적응형(맞춤) · 일일 문제 풀 ----------
+  function quizQ(topic, i) {
+    const base = QUIZZES[topic] && QUIZZES[topic][i];
+    return base ? Object.assign({}, base, { _topic: topic, _qid: topic + '#' + i }) : null;
+  }
+  function quizTopicKeys() {
+    return Object.keys(QUIZZES).filter((t) => QUIZZES[t] && QUIZZES[t].length > 0);
+  }
+  // 약점 집중: 이전에 틀린 문제 → 정답률 낮은(또는 안 푼) 주제 순으로 채운다.
+  function buildAdaptivePool(slot, n) {
+    n = n || CHALLENGE_LEN;
+    const out = [], used = new Set();
+    const mistakes = getMistakes(slot);
+    for (const qid of Object.keys(mistakes)) {
+      const m = mistakes[qid];
+      if (!m) continue;
+      const i = parseInt(String(qid).split('#')[1], 10);
+      const q = quizQ(m.topic, i);
+      if (!q) continue;
+      out.push(q); used.add(qid);
+      if (out.length >= n) break;
+    }
+    if (out.length < n) {
+      const summary = buildLearningSummary(slot);
+      const rate = {};
+      for (const r of summary.rows) rate[r.topic] = r.rate;
+      const weighted = [];
+      for (const t of quizTopicKeys()) {
+        const r = (t in rate) ? rate[t] : 0; // 안 푼 주제는 0(약점)으로 본다
+        const w = Math.max(1, Math.round((1 - r) * 4) + 1);
+        for (let k = 0; k < w; k++) weighted.push(t);
+      }
+      let guard = 0;
+      while (out.length < n && guard++ < 600) {
+        const t = weighted[Math.floor(Math.random() * weighted.length)];
+        const i = Math.floor(Math.random() * QUIZZES[t].length);
+        const qid = t + '#' + i;
+        if (used.has(qid)) continue;
+        used.add(qid);
+        out.push(quizQ(t, i));
+      }
+    }
+    return shuffled(out).slice(0, n);
+  }
+  // 오늘의 도전: 날짜를 시드로 결정적으로 뽑아, 같은 날 모두 같은 문제를 푼다.
+  function buildDailyPool(slot, day, n) {
+    day = day || todayStr();
+    n = n || CHALLENGE_LEN;
+    let seed = 0;
+    for (let i = 0; i < day.length; i++) seed = (seed * 31 + day.charCodeAt(i)) >>> 0;
+    const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const pool = [];
+    for (const t of quizTopicKeys()) for (let i = 0; i < QUIZZES[t].length; i++) pool.push(quizQ(t, i));
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool.slice(0, n);
+  }
+
+  // ---------- 수집·꾸미기 보상 (칭호 · 테마) ----------
+  // 학생(슬롯)마다 따로 모으고 고른다. 해금 조건은 도전과제와 같은 학습 컨텍스트로 판정.
+  const COSMETIC_KEY = 'ai-ethics-adventure-cosmetic';
+  function cosmeticKey(slot) { return COSMETIC_KEY + '-' + slot; }
+  function getCosmetic(slot) {
+    try { return JSON.parse(localStorage.getItem(cosmeticKey(slot))) || {}; }
+    catch (e) { return {}; }
+  }
+  function setCosmetic(slot, data) {
+    try { localStorage.setItem(cosmeticKey(slot), JSON.stringify(data)); } catch (e) { /* 무시 */ }
+  }
+  const TITLES = [
+    { id: 'rookie', name: '새내기 수호자', desc: '모험을 시작한 모두에게', check: () => true },
+    { id: 'kind', name: '따뜻한 마음', desc: '마음을 5번 안아 주기', check: (c) => c.mercy >= 5 },
+    { id: 'scholar', name: '공부벌레', desc: '문제 50개 이상 풀기', check: (c) => c.attempted >= 50 },
+    { id: 'collector', name: '도감 수집가', desc: '도감 절반 이상 모으기', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
+    { id: 'champion', name: '챌린지 챔피언', desc: '퀴즈 챌린지 만점', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
+    { id: 'master', name: 'AI 윤리 마스터', desc: '엔딩 보고 도전과제 8개 달성', check: (c) => c.endings >= 1 && c.achieved >= 8 },
+  ];
+  const THEMES = [
+    { id: 'classic', name: '클래식', color: '#ffd644', desc: '기본 노란빛', check: () => true },
+    { id: 'forest', name: '숲빛', color: '#5cb85c', desc: '증표 1개 모으기', check: (c) => c.badges >= 1 },
+    { id: 'ocean', name: '바다빛', color: '#4ea8de', desc: '문제 30개 풀기', check: (c) => c.attempted >= 30 },
+    { id: 'sunset', name: '노을빛', color: '#f08a24', desc: '마음 8번 안아 주기', check: (c) => c.mercy >= 8 },
+    { id: 'galaxy', name: '은하빛', color: '#b48ce0', desc: '엔딩 보기', check: (c) => c.endings >= 1 },
+  ];
+  function unlockedCount(slot) {
+    const c = achievementCtx(slot);
+    return TITLES.filter((t) => t.check(c)).length + THEMES.filter((t) => t.check(c)).length;
+  }
+  function selectedTitle(slot) {
+    const c = achievementCtx(slot), cos = getCosmetic(slot);
+    const list = TITLES.filter((t) => t.check(c));
+    return list.find((t) => t.id === cos.title) || list[0] || null;
+  }
+  function selectedTheme(slot) {
+    const c = achievementCtx(slot), cos = getCosmetic(slot);
+    const list = THEMES.filter((t) => t.check(c));
+    return list.find((t) => t.id === cos.theme) || list[0] || null;
+  }
+  // UI 강조색 — 색약 모드가 우선, 아니면 고른 테마색
+  function themeAccent() {
+    if (game.colorBlind) return warnColor();
+    const t = selectedTheme(activeSlot());
+    return t ? t.color : '#ffd644';
+  }
+  // 새로 해금된 칭호·테마가 있으면 알림 토스트를 띄운다 (월드에서)
+  function checkCosmeticUnlocks(slot) {
+    const cos = getCosmetic(slot);
+    const now = unlockedCount(slot);
+    const ack = cos.ack || 0;
+    if (now > ack) {
+      cos.ack = now;
+      setCosmetic(slot, cos);
+      if (ack > 0) { // 첫 진입(0→N)에는 시끄럽지 않게 조용히 넘어간다
+        game.notice = { text: '새 칭호·테마가 열렸어요! (메뉴 → 꾸미기)', t: 200 };
+        Sound.unlock();
+      }
+    }
+  }
+
+  // ---------- 데이터 백업 · 복원 ----------
+  function allBackupKeys() {
+    const keys = [SETTINGS_KEY, ENDINGS_KEY, DEX_KEY];
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      keys.push(slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), cosmeticKey(i));
+    }
+    return keys;
+  }
+  function buildBackupText() {
+    const data = {};
+    for (const k of allBackupKeys()) {
+      const v = localStorage.getItem(k);
+      if (v != null) data[k] = v;
+    }
+    return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data });
+  }
+  function applyBackup(text) {
+    let obj;
+    try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
+    if (!obj || obj.app !== 'ai-ethics-adventure' || !obj.data) return { ok: false, error: 'format' };
+    const valid = new Set(allBackupKeys());
+    let count = 0;
+    for (const k of Object.keys(obj.data)) {
+      if (!valid.has(k)) continue;
+      try { localStorage.setItem(k, String(obj.data[k])); count++; } catch (e) { /* 무시 */ }
+    }
+    return { ok: true, count };
+  }
+  // 텍스트를 클립보드에 복사 (가능한 환경에서). 성공 여부 반환.
+  function copyTextToClipboard(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+        return true;
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand && document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (e) { return false; }
+  }
   // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
   const DEX_KEY = 'ai-ethics-adventure-dex';
   function getDexSeen() {
@@ -393,6 +601,18 @@
       if (game.mode === 'world') { openHelp('world'); return; }
       if (game.mode === 'title' && game.titleScreen === 'slots') { openHelp('title'); return; }
       if (game.mode === 'help') { closeHelp(); return; }
+      return;
+    }
+    if (e.key === 'k' || e.key === 'K') {
+      if (game.mode === 'world') { openCosmetics('world'); return; }
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openCosmetics('title'); return; }
+      if (game.mode === 'cosmetics') { closeCosmetics(); return; }
+      return;
+    }
+    if (e.key === 'u' || e.key === 'U') {
+      if (game.mode === 'world') { openBackup('world'); return; }
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openBackup('title'); return; }
+      if (game.mode === 'backup') { closeBackup(); return; }
       return;
     }
     const k = KEYMAP[e.key];
@@ -798,6 +1018,17 @@
         if (frame) px(Math.floor(rnd(77) * 13), Math.floor(rnd(78) * 13), 3, 1, '#5a7aa0');
         break;
       }
+      case '5': { // 미래연구소 포털 (빛나는 문)
+        px(0, 0, 16, 16, '#1f2236');
+        px(3, 1, 10, 14, '#2c3050');
+        const glow = frame ? '#7bd1f0' : '#a8e4ff';
+        px(5, 3, 6, 10, glow);
+        px(6, 2, 4, 12, frame ? '#a8e4ff' : '#d4f4ff');
+        px(7, 4, 2, 8, '#ffffff');
+        px(3, 1, 1, 14, '#56b6e0');
+        px(12, 1, 1, 14, '#56b6e0');
+        break;
+      }
       default:
         px(0, 0, 16, 16, '#f0f');
     }
@@ -921,6 +1152,7 @@
     p.x = w.tx; p.y = w.ty;
     p.px = w.tx * TS; p.py = w.ty * TS;
     p.moving = false;
+    Sound.warp();
     Sound.playSong(MAPS[w.to].song);
     // 처음 방문하는 맵의 인트로 연출
     const dest = MAPS[w.to];
@@ -935,6 +1167,7 @@
 
   function updateWorld() {
     const p = game.player;
+    if (game.notice.t > 0) game.notice.t -= 1;
 
     // 픽셀 보간 이동
     const tx = p.x * TS, ty = p.y * TS;
@@ -1273,6 +1506,7 @@
     const gotBadge = mon.badge && !game.flags.badges[mon.badge];
     if (mon.badge) game.flags.badges[mon.badge] = true;
     save();
+    checkCosmeticUnlocks(game.currentSlot);
 
     game.battle = null;
     game.mode = 'world';
@@ -1381,7 +1615,7 @@
       }
       ctx.fillStyle = '#666';
       ctx.font = '12px monospace';
-      ctx.fillText(`S${MONSTER_DEX[id].stage}`, listX, y);
+      ctx.fillText(MONSTER_DEX[id].stage === 0 ? 'B' : `S${MONSTER_DEX[id].stage}`, listX, y);
       ctx.fillStyle = isSeen ? (idx === cur ? '#fff' : '#aaa') : '#444';
       ctx.font = (idx === cur ? 'bold ' : '') + '15px monospace';
       ctx.fillText(isSeen ? MONSTERS[id].name : '??? (미발견)', listX + 34, y);
@@ -1422,7 +1656,7 @@
     ctx.fillText(isSeen ? MONSTERS[id].name : '???', cx, 238);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText(`스테이지 ${info.stage}`, cx, 260);
+    ctx.fillText(info.stage === 0 ? '보너스 · 미래연구소' : `스테이지 ${info.stage}`, cx, 260);
     ctx.textAlign = 'left';
 
     if (isSeen) {
@@ -1617,14 +1851,16 @@
 
   // ---------- 설정·일시정지 메뉴 ----------
   // 터치 기기에는 키보드 단축키(J/Q/B/I 등)가 없으므로, 모든 기능을 메뉴로 연다.
-  const PAUSE_ITEMS = ['journal', 'awards', 'review', 'challenge', 'dex',
-    'textspeed', 'largetext', 'colorblind', 'mute', 'help', 'close'];
+  const PAUSE_ITEMS = ['journal', 'awards', 'cosmetics', 'challenge', 'review', 'dex',
+    'backup', 'textspeed', 'largetext', 'colorblind', 'mute', 'help', 'close'];
   const PAUSE_LABELS = {
     journal: '◆ 수호자 일지',
     awards: '☆ 도전과제',
-    review: '★ 오답 복습 노트',
+    cosmetics: '✿ 꾸미기 (칭호·테마)',
     challenge: '▶ 퀴즈 챌린지',
+    review: '★ 오답 복습 노트',
     dex: '♥ 몬스터 도감',
+    backup: '⇄ 데이터 백업·복원',
     textspeed: '자막 속도',
     largetext: '큰 글씨',
     colorblind: '색약 모드',
@@ -1640,6 +1876,7 @@
     if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
     if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
+    if (item === 'cosmetics') return `${unlockedCount(game.currentSlot)}/${TITLES.length + THEMES.length}`;
     if (item === 'journal') {
       const s = buildLearningSummary(game.currentSlot);
       return s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—';
@@ -1667,9 +1904,11 @@
       const item = PAUSE_ITEMS[game.pauseCursor];
       if (item === 'journal') openJournal('pause');
       else if (item === 'awards') openAwards('pause');
+      else if (item === 'cosmetics') openCosmetics('pause');
       else if (item === 'review') openReview('pause');
       else if (item === 'challenge') openChallenge('pause');
       else if (item === 'dex') openDex('pause');
+      else if (item === 'backup') openBackup('pause');
       else if (item === 'textspeed') cycleTextSpeed();
       else if (item === 'largetext') toggleLargeText();
       else if (item === 'colorblind') toggleColorBlind();
@@ -1740,9 +1979,10 @@
     let date = '';
     try { date = new Date().toLocaleDateString('ko-KR'); } catch (e) {}
     const lines = [];
+    const title = selectedTitle(slot);
     lines.push('[AI 윤리 어드벤처 — 학습 리포트]');
     if (date) lines.push('날짜: ' + date);
-    lines.push('이름: ' + slotLearnName(slot));
+    lines.push('이름: ' + slotLearnName(slot) + (title ? ` (칭호: ${title.name})` : ''));
     lines.push('──────────────────────');
     lines.push(`푼 문제: ${s.attempted}개 · 정답 ${s.correct}개 (${s.attempted ? pct(s.overallRate) : '—'})`);
     lines.push('');
@@ -1758,25 +1998,13 @@
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
     lines.push(`발견 엔딩: ${endN}/4 · 도감 수집: ${dexSeenCount()}/${DEX_ORDER.length}`);
     lines.push(`복습 노트 남은 문제: ${mistakeCount(slot)}개`);
+    const rm = getMeta(slot);
+    if (rm.streak || rm.bestStreak) lines.push(`연속 출석: ${rm.streak || 0}일 (최고 ${rm.bestStreak || 0}일)`);
     return lines.join('\n');
   }
 
   function copyReport() {
-    const text = buildReportText(game.journal.slot);
-    let ok = false;
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text);
-        ok = true;
-      } else if (document.createElement) {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        ok = document.execCommand && document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
-    } catch (e) { ok = false; }
+    const ok = copyTextToClipboard(buildReportText(game.journal.slot));
     game.journal.toast = ok ? 120 : -120; // 양수=성공, 음수=실패 안내
     Sound.badge();
   }
@@ -1804,6 +2032,15 @@
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
     ctx.fillText(`◆ 수호자 일지 — ${slotLearnName(slot)}`, 24, 38);
+    // 고른 칭호
+    const title = selectedTitle(slot);
+    if (title) {
+      ctx.fillStyle = themeAccent();
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`「${title.name}」`, canvas.width - 24, 38);
+      ctx.textAlign = 'left';
+    }
 
     // 요약 줄
     ctx.fillStyle = warnColor();
@@ -1811,9 +2048,14 @@
     ctx.fillText(`푼 문제 ${s.attempted}개  ·  정답 ${s.correct}개  ·  정답률 ${s.attempted ? Math.round(s.overallRate * 100) + '%' : '—'}`, 24, 66);
     const endSeen = getEndingsSeen();
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
+    const jm = getMeta(slot);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
     ctx.fillText(`발견 엔딩 ${endN}/4  ·  도감 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
+    if (jm.streak || jm.bestStreak) {
+      ctx.fillStyle = themeAccent();
+      ctx.fillText(`🔥 연속 출석 ${jm.streak || 0}일 (최고 ${jm.bestStreak || 0}일)`, 24, 106);
+    }
 
     // 주제별 정답률 막대
     ctx.fillStyle = '#fff';
@@ -1900,21 +2142,23 @@
 
   function startChallengeQuiz() {
     const c = game.challenge;
+    c.daily = false;
+    c.adaptive = false;
     let pool = [];
-    if (c.sel === 0) {
-      // 전체 랜덤
-      for (const t of c.topics) {
-        for (let i = 0; i < QUIZZES[t.key].length; i++) {
-          pool.push(Object.assign({}, QUIZZES[t.key][i], { _topic: t.key, _qid: t.key + '#' + i }));
-        }
-      }
-    } else {
-      const t = c.topics[c.sel - 1];
-      for (let i = 0; i < QUIZZES[t.key].length; i++) {
-        pool.push(Object.assign({}, QUIZZES[t.key][i], { _topic: t.key, _qid: t.key + '#' + i }));
-      }
+    if (c.sel === 0) {            // 오늘의 도전 (날짜 기반 결정적 출제)
+      c.daily = true;
+      pool = buildDailyPool(c.slot);
+    } else if (c.sel === 1) {     // 맞춤 학습 (약점 집중)
+      c.adaptive = true;
+      pool = buildAdaptivePool(c.slot);
+    } else if (c.sel === 2) {     // 전체 랜덤
+      for (const t of c.topics) for (let i = 0; i < QUIZZES[t.key].length; i++) pool.push(quizQ(t.key, i));
+      pool = shuffled(pool).slice(0, CHALLENGE_LEN);
+    } else {                      // 특정 주제
+      const t = c.topics[c.sel - 3];
+      for (let i = 0; i < QUIZZES[t.key].length; i++) pool.push(quizQ(t.key, i));
+      pool = shuffled(pool).slice(0, CHALLENGE_LEN);
     }
-    pool = shuffled(pool).slice(0, CHALLENGE_LEN);
     c.questions = pool;
     c.idx = 0;
     c.score = 0;
@@ -1930,6 +2174,8 @@
     if (c.idx >= c.questions.length) {
       c.phase = 'result';
       recordChallengeResult(c.slot, c.score, c.questions.length);
+      if (c.daily) recordDailyDone(c.slot, c.score, c.questions.length);
+      checkCosmeticUnlocks(c.slot);
       Sound.badge();
       return;
     }
@@ -1944,7 +2190,7 @@
     if (!c) { game.mode = 'title'; return; }
 
     if (c.phase === 'topic') {
-      const n = c.topics.length + 1; // 0 = 전체 랜덤
+      const n = c.topics.length + 3; // 0=오늘의 도전, 1=맞춤 학습, 2=전체 랜덤, 3.. 주제
       if (justPressed('up')) { c.sel = (c.sel + n - 1) % n; Sound.blip(); }
       if (justPressed('down')) { c.sel = (c.sel + 1) % n; Sound.blip(); }
       if (justPressed('cancel') || justPressed('menu')) { closeChallenge(); return; }
@@ -1994,8 +2240,22 @@
       ctx.fillStyle = '#888';
       ctx.font = '14px monospace';
       ctx.fillText(`주제를 골라 ${CHALLENGE_LEN}문제에 도전! (모험과 별개로 즐겨요)`, 24, 64);
+      // 연속 출석(스트릭) 표시
+      const meta = getMeta(c.slot);
+      if (meta.streak) {
+        ctx.fillStyle = themeAccent();
+        ctx.font = 'bold 13px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`🔥 연속 출석 ${meta.streak}일`, canvas.width - 24, 40);
+        ctx.textAlign = 'left';
+      }
 
-      const items = ['★ 전체 랜덤'].concat(c.topics.map((t) => `${t.label}  (${t.n})`));
+      const dailyDone = dailyDoneToday(c.slot);
+      const items = [
+        dailyDone ? '◷ 오늘의 도전 (완료 ✓)' : '◷ 오늘의 도전 (날마다 새 문제!)',
+        '◎ 맞춤 학습 (약점 집중)',
+        '★ 전체 랜덤',
+      ].concat(c.topics.map((t) => `${t.label}  (${t.n})`));
       const listX = 40, listY = 100, rowH = 30, visible = 12;
       let start = Math.max(0, Math.min(c.sel - 6, items.length - visible));
       if (items.length <= visible) start = 0;
@@ -2115,13 +2375,16 @@
     const defeatedCount = f.defeated ? Object.keys(f.defeated).filter((k) => f.defeated[k]).length : 0;
     const endSeen = getEndingsSeen();
     const endings = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
-    return {
+    const ctx = {
       attempted: s.attempted, strongTopics: s.strongTopics, perfectTopic: s.perfectTopic,
-      mercy: f.mercy || 0, defeatedCount,
+      mercy: f.mercy || 0, defeatedCount, badges: f.badges ? countBadges(f) : 0,
       dex: dexSeenCount(), dexTotal: DEX_ORDER.length, endings,
       challengeRuns: meta.challengeRuns || 0,
       challengeBest: meta.challengeBest || 0, challengeBestTotal: meta.challengeBestTotal || 0,
     };
+    // 도전과제 달성 개수 — 칭호/테마 해금 조건에서 사용 (위 필드만 참조하므로 순환 없음)
+    ctx.achieved = ACHIEVEMENTS.filter((a) => a.check(ctx)).length;
+    return ctx;
   }
   function countAchievements(slot) {
     const ctx = achievementCtx(slot);
@@ -2199,7 +2462,11 @@
     ['', '막히면 H로 50:50 힌트(한 문제에 한 번).'],
     ['', ''],
     ['head', '◆ 메뉴 (X 또는 메뉴 버튼)'],
-    ['', '수호자 일지·도전과제·복습 노트·도감·퀴즈 챌린지·접근성 설정'],
+    ['', '일지·도전과제·꾸미기·챌린지·복습·도감·백업·접근성 설정'],
+    ['', ''],
+    ['head', '◆ 더 즐기기'],
+    ['', '미래연구소: 마을 오른쪽 빛나는 문 — 새 AI 주제(환각·딥페이크) 연습'],
+    ['', '오늘의 도전·연속 출석, 칭호·테마 꾸미기(K), 데이터 백업·복원(U)'],
   ];
   function openHelp(ret) {
     game.helpRet = ret;
@@ -2234,6 +2501,212 @@
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('Z 또는 X로 닫기', canvas.width / 2, 512);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 꾸미기 (칭호 · 테마) ----------
+  function openCosmetics(ret) {
+    const slot = activeSlot();
+    game.cosmetics.ret = ret;
+    game.cosmetics.slot = slot;
+    game.cosmetics.col = 0;
+    game.cosmetics.toast = 0;
+    // 현재 고른 칭호/테마에 커서를 맞춰 둔다
+    const cos = getCosmetic(slot);
+    game.cosmetics.rowTitle = Math.max(0, TITLES.findIndex((t) => t.id === cos.title));
+    game.cosmetics.rowTheme = Math.max(0, THEMES.findIndex((t) => t.id === cos.theme));
+    // 화면을 열 때 해금 현황을 동기화(중복 알림 방지)
+    const u = getCosmetic(slot); u.ack = unlockedCount(slot); setCosmetic(slot, u);
+    game.mode = 'cosmetics';
+    Sound.select();
+  }
+  function closeCosmetics() {
+    game.mode = game.cosmetics.ret;
+    Sound.select();
+  }
+  function updateCosmetics() {
+    const cm = game.cosmetics;
+    if (cm.toast > 0) cm.toast -= 1;
+    const list = cm.col === 0 ? TITLES : THEMES;
+    const rowKey = cm.col === 0 ? 'rowTitle' : 'rowTheme';
+    if (justPressed('left') || justPressed('right')) { cm.col = cm.col === 0 ? 1 : 0; Sound.blip(); }
+    if (justPressed('up')) { cm[rowKey] = (cm[rowKey] + list.length - 1) % list.length; Sound.blip(); }
+    if (justPressed('down')) { cm[rowKey] = (cm[rowKey] + 1) % list.length; Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu')) { closeCosmetics(); return; }
+    if (justPressed('action')) {
+      const c = achievementCtx(cm.slot);
+      const item = list[cm[rowKey]];
+      if (!item.check(c)) { cm.toast = 90; Sound.bump(); return; } // 아직 잠김
+      const cos = getCosmetic(cm.slot);
+      if (cm.col === 0) cos.title = item.id; else cos.theme = item.id;
+      setCosmetic(cm.slot, cos);
+      Sound.unlock();
+    }
+  }
+  function drawCosmetics() {
+    const cm = game.cosmetics;
+    const slot = cm.slot;
+    const c = achievementCtx(slot);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText(`✿ 꾸미기 — ${slotLearnName(slot)}`, 24, 38);
+
+    const st = selectedTitle(slot), sth = selectedTheme(slot);
+    ctx.fillStyle = sth ? sth.color : '#ffd644';
+    ctx.font = 'bold 15px monospace';
+    ctx.fillText(`지금: 「${st ? st.name : '—'}」 · 테마 ${sth ? sth.name : '—'}`, 24, 62);
+
+    const cols = [{ label: '칭호', list: TITLES, row: cm.rowTitle, selId: getCosmetic(slot).title },
+      { label: '테마', list: THEMES, row: cm.rowTheme, selId: getCosmetic(slot).theme }];
+    const colW = (canvas.width - 48) / 2;
+    for (let ci = 0; ci < 2; ci++) {
+      const col = cols[ci];
+      const x = 24 + ci * colW;
+      ctx.fillStyle = ci === cm.col ? themeAccent() : '#888';
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(`◆ ${col.label}`, x, 92);
+      for (let i = 0; i < col.list.length; i++) {
+        const item = col.list[i];
+        const unlocked = item.check(c);
+        const y = 118 + i * 52;
+        const active = ci === cm.col && i === col.row;
+        if (active) { ctx.fillStyle = '#e0453a'; ctx.font = '14px monospace'; ctx.fillText('♥', x - 2, y); }
+        // 테마는 색 스와치를 보여 준다
+        if (ci === 1) {
+          ctx.fillStyle = unlocked ? item.color : '#333';
+          ctx.fillRect(x + 16, y - 11, 14, 14);
+        }
+        const equipped = item.id === col.selId || (!col.selId && i === 0);
+        ctx.fillStyle = !unlocked ? '#555' : active ? '#fff' : '#bbb';
+        ctx.font = (active ? 'bold ' : '') + '15px monospace';
+        ctx.fillText((unlocked ? item.name : '???') + (equipped && unlocked ? ' ✓' : ''), x + (ci === 1 ? 38 : 18), y);
+        ctx.fillStyle = unlocked ? '#777' : '#444';
+        ctx.font = '11px monospace';
+        ctx.fillText(unlocked ? item.desc : '잠김 · ' + item.desc, x + (ci === 1 ? 38 : 18), y + 16);
+      }
+    }
+
+    if (cm.toast > 0) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = badColor();
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('아직 잠긴 보상이에요. 조건을 채워 보세요!', canvas.width / 2, 490);
+      ctx.textAlign = 'left';
+    }
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('←→ 칭호/테마 · ↑↓ 선택 · Z 적용 · X 닫기', canvas.width / 2, 512);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 데이터 백업 · 복원 화면 ----------
+  const BACKUP_ITEMS = ['exportClip', 'exportFile', 'importFile', 'close'];
+  const BACKUP_LABELS = {
+    exportClip: '내보내기 — 클립보드 복사',
+    exportFile: '내보내기 — 파일로 저장(.json)',
+    importFile: '가져오기 — 파일에서 복원',
+    close: '닫기',
+  };
+  function openBackup(ret) {
+    game.backup.ret = ret;
+    game.backup.cursor = 0;
+    game.backup.toast = 0;
+    game.mode = 'backup';
+    Sound.select();
+  }
+  function closeBackup() {
+    game.mode = game.backup.ret;
+    Sound.select();
+  }
+  function downloadBackup() {
+    try {
+      const text = buildBackupText();
+      const a = document.createElement('a');
+      a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(text);
+      a.download = 'ai-ethics-save-' + todayStr() + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return true;
+    } catch (e) { return false; }
+  }
+  function importBackupFile() {
+    try {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = 'application/json,.json';
+      inp.addEventListener('change', () => {
+        const file = inp.files && inp.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const res = applyBackup(String(reader.result));
+          game.backup.toast = res.ok ? 200 : -200;
+          if (res.ok) {
+            Object.assign(game, loadSettings());
+            game.mode = 'title';
+            game.titleScreen = 'slots';
+          }
+          Sound.badge();
+        };
+        reader.readAsText(file);
+      });
+      inp.click();
+      return true;
+    } catch (e) { game.backup.toast = -200; return false; }
+  }
+  function updateBackup() {
+    const b = game.backup;
+    if (b.toast > 0) b.toast -= 1; else if (b.toast < 0) b.toast += 1;
+    const n = BACKUP_ITEMS.length;
+    if (justPressed('up')) { b.cursor = (b.cursor + n - 1) % n; Sound.blip(); }
+    if (justPressed('down')) { b.cursor = (b.cursor + 1) % n; Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu')) { closeBackup(); return; }
+    if (justPressed('action')) {
+      const item = BACKUP_ITEMS[b.cursor];
+      if (item === 'exportClip') { b.toast = copyTextToClipboard(buildBackupText()) ? 200 : -200; Sound.badge(); }
+      else if (item === 'exportFile') { b.toast = downloadBackup() ? 200 : -200; Sound.badge(); }
+      else if (item === 'importFile') { importBackupFile(); }
+      else if (item === 'close') { closeBackup(); }
+    }
+  }
+  function drawBackup() {
+    const b = game.backup;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText('⇄ 데이터 백업 · 복원', 24, 40);
+    ctx.fillStyle = '#888';
+    ctx.font = '13px monospace';
+    ctx.fillText('모든 슬롯·학습 기록·도감·설정을 한 파일로 저장하고', 24, 66);
+    ctx.fillText('다른 기기나 브라우저에서 다시 불러올 수 있어요.', 24, 86);
+
+    const listY = 130, rowH = 44;
+    for (let i = 0; i < BACKUP_ITEMS.length; i++) {
+      drawChoiceLine(BACKUP_LABELS[BACKUP_ITEMS[i]], 48, listY + i * rowH, i === b.cursor);
+    }
+
+    ctx.fillStyle = '#777';
+    ctx.font = '12px monospace';
+    ctx.fillText('※ 가져오기를 하면 지금 이 기기의 기록을 덮어씁니다.', 24, listY + BACKUP_ITEMS.length * rowH + 24);
+
+    if (b.toast !== 0) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = b.toast > 0 ? okColor() : badColor();
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(b.toast > 0 ? '✓ 완료했어요!' : '이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)', canvas.width / 2, 470);
+      ctx.textAlign = 'left';
+    }
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('↑↓ 선택 · Z 실행 · X 닫기', canvas.width / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -2323,6 +2796,25 @@
     drawHud();
     drawObjectiveArrow();
     drawControlHint();
+    drawNotice();
+  }
+
+  // 월드 상단 안내 토스트 (해금 알림 등) — 잠깐 떴다 사라진다
+  function drawNotice() {
+    if (!game.notice || game.notice.t <= 0) return;
+    const txt = game.notice.text;
+    ctx.font = fs(13, true);
+    const tw = ctx.measureText(txt).width;
+    const bw = tw + 28, bh = game.largeText ? 32 : 28;
+    const bx = Math.round(canvas.width / 2 - bw / 2), by = 70;
+    const fade = Math.min(1, game.notice.t / 40);
+    ctx.globalAlpha = fade;
+    utBox(bx, by, bw, bh, 6);
+    ctx.fillStyle = themeAccent();
+    ctx.textAlign = 'center';
+    ctx.fillText(txt, canvas.width / 2, by + bh / 2 + 4);
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
   }
 
   // NPC 머리 위 작은 말풍선 — "여기 말 걸 수 있어요"
@@ -2814,8 +3306,9 @@
         ctx.fillStyle = '#888';
         ctx.font = '13px monospace';
         const prog = sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`;
+        const streak = getMeta(i).streak || 0;
         ctx.textAlign = 'right';
-        ctx.fillText(`${prog}   ♥ ${sum.mercy}`, boxX + boxW - 18, y + 40);
+        ctx.fillText(`${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);
         ctx.textAlign = 'left';
       } else {
         ctx.fillStyle = '#555';
@@ -2827,8 +3320,8 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
-    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · I 도움말`, canvas.width / 2, 462);
-    ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · G 큰글씨(${game.largeText ? '켜짐' : '꺼짐'}) · 설정은 게임 중 X 메뉴`, canvas.width / 2, 480);
+    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제`, canvas.width / 2, 462);
+    ctx.fillText(`K 꾸미기 · U 백업 · I 도움말 · M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · G 큰글씨(${game.largeText ? '켜짐' : '꺼짐'})`, canvas.width / 2, 480);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -2869,6 +3362,8 @@
     game.flags = newFlags();
     game.mode = 'world';
     save();
+    recordPlayDay(slot);
+    checkCosmeticUnlocks(slot);
     Sound.playSong(MAPS[game.map].song);
     startDialog([
       `여기는 AI들과 사람들이 함께 사는\n평화로운 "경계마을".`,
@@ -2890,6 +3385,8 @@
     game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
     game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
     game.mode = 'world';
+    recordPlayDay(slot);
+    checkCosmeticUnlocks(slot);
     Sound.playSong(MAPS[game.map].song);
   }
 
@@ -3170,6 +3667,14 @@
         updateChallenge();
         drawChallenge();
         break;
+      case 'cosmetics':
+        updateCosmetics();
+        drawCosmetics();
+        break;
+      case 'backup':
+        updateBackup();
+        drawBackup();
+        break;
     }
 
     const showHintBtn = game.mode === 'battle' && game.battle &&
@@ -3197,6 +3702,11 @@
   Object.assign(game, loadSettings()); // 저장된 설정(자막 속도·큰 글씨·색약) 복원
   game.flags = newFlags();
   window.__game = game; // 디버그/테스트용
-  window.__test = { buildReportText, buildLearningSummary, recordTopicResult, countAchievements }; // 테스트용 훅
+  window.__test = { // 테스트용 훅
+    buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
+    buildBackupText, applyBackup, buildAdaptivePool, buildDailyPool,
+    recordPlayDay, recordDailyDone, getMeta, todayStr,
+    unlockedCount, getCosmetic, setCosmetic, achievementCtx,
+  };
   frame();
 })();

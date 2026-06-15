@@ -446,8 +446,8 @@ check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
 check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
-const PAUSE_ORDER = ['journal', 'awards', 'review', 'challenge', 'dex',
-  'textspeed', 'largetext', 'colorblind', 'mute', 'help', 'close'];
+const PAUSE_ORDER = ['journal', 'awards', 'cosmetics', 'challenge', 'review', 'dex',
+  'backup', 'textspeed', 'largetext', 'colorblind', 'mute', 'help', 'close'];
 const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
 while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
 tap('z');
@@ -525,7 +525,10 @@ tap('q');
 check('챌린지 주제 선택 열림', g.mode === 'challenge' && g.challenge.phase === 'topic');
 check('챌린지가 슬롯 0 사용', g.challenge.slot === 0);
 check('주제 목록 존재', g.challenge.topics.length > 0);
-tap('z'); // 전체 랜덤 시작 (sel=0)
+// 0=오늘의 도전, 1=맞춤 학습, 2=전체 랜덤 — 전체 랜덤으로 이동해 시작
+tap('ArrowDown'); tap('ArrowDown');
+check('전체 랜덤 선택', g.challenge.sel === 2);
+tap('z'); // 전체 랜덤 시작
 check('퀴즈 시작', g.challenge.phase === 'quiz');
 check('문항 10개 이하로 출제', g.challenge.questions.length > 0 && g.challenge.questions.length <= 10);
 // 10문제를 모두 정답으로 풀어 결과 화면까지
@@ -593,5 +596,73 @@ function deleteSlotViaGame(slot) {
   tap('z'); // 삭제 확정
 }
 g.mode = 'world';
+
+console.log('[36] 데이터 백업·복원 (내보내기·가져오기)');
+const T = vm.runInContext('window.__test', sandbox);
+const backupText = T.buildBackupText();
+const backupObj = JSON.parse(backupText);
+check('백업에 앱 식별자 포함', backupObj.app === 'ai-ethics-adventure');
+check('백업에 슬롯 0 세이브 포함', !!backupObj.data['ai-ethics-adventure-slot-0']);
+check('백업에 슬롯 0 통계 포함', !!backupObj.data['ai-ethics-adventure-stats-0']);
+// 데이터를 망가뜨린 뒤 복원
+const goodStats = storage.get('ai-ethics-adventure-stats-0');
+storage.set('ai-ethics-adventure-stats-0', '{}');
+const res = T.applyBackup(backupText);
+check('복원 성공', res.ok === true && res.count >= 2);
+check('통계가 복원됨', storage.get('ai-ethics-adventure-stats-0') === goodStats);
+check('잘못된 데이터는 거부', T.applyBackup('{"app":"other"}').ok === false);
+check('깨진 JSON은 거부', T.applyBackup('not json').ok === false);
+
+console.log('[37] 적응형(맞춤) 학습 — 약점 집중 출제');
+const adaptive = T.buildAdaptivePool(0, 8);
+check('맞춤 풀 생성', adaptive.length > 0 && adaptive.length <= 8);
+check('맞춤 풀 항목 형식', adaptive.every((q) => q.q && q.a && typeof q.c === 'number' && q._topic && q._qid));
+check('맞춤 풀 중복 문제 없음', new Set(adaptive.map((q) => q._qid)).size === adaptive.length);
+
+console.log('[38] 오늘의 도전 + 연속 출석(스트릭)');
+const d1 = T.buildDailyPool(0, '2026-06-15', 10).map((q) => q._qid).join(',');
+const d2 = T.buildDailyPool(0, '2026-06-15', 10).map((q) => q._qid).join(',');
+const d3 = T.buildDailyPool(0, '2026-06-16', 10).map((q) => q._qid).join(',');
+check('같은 날짜는 같은 문제(결정적)', d1 === d2);
+check('다른 날짜는 다른 문제 구성', d1 !== d3);
+T.recordPlayDay(0, '2026-06-10');
+check('출석 첫날 스트릭 1', T.getMeta(0).streak === 1);
+T.recordPlayDay(0, '2026-06-11');
+check('이어서 오면 스트릭 2', T.getMeta(0).streak === 2);
+T.recordPlayDay(0, '2026-06-11'); // 같은 날 중복 → 변화 없음
+check('같은 날 중복은 그대로', T.getMeta(0).streak === 2);
+T.recordPlayDay(0, '2026-06-14'); // 건너뜀 → 리셋
+check('건너뛰면 스트릭 리셋', T.getMeta(0).streak === 1);
+check('최고 스트릭 보존', T.getMeta(0).bestStreak >= 2);
+T.recordDailyDone(0, 8, 10, '2026-06-14');
+check('오늘의 도전 완료 기록', T.getMeta(0).lastDailyDay === '2026-06-14' && T.getMeta(0).dailyBest === 8);
+
+console.log('[39] 수집·꾸미기 보상 (칭호·테마)');
+check('진엔딩까지 깬 슬롯은 보상 다수 해금', T.unlockedCount(0) >= 4);
+g.mode = 'world';
+tap('k');
+check('꾸미기 화면 열림', g.mode === 'cosmetics' && g.cosmetics.slot === 0);
+tap('z'); // col 0(칭호) row 0(새내기 수호자, 항상 해금) 적용
+check('칭호 적용됨', T.getCosmetic(0).title === 'rookie');
+tap('ArrowRight'); // 테마 칼럼으로
+tap('z'); // 테마 row 0(클래식, 항상 해금) 적용
+check('테마 적용됨', T.getCosmetic(0).theme === 'classic');
+tap('x');
+check('꾸미기 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[40] 보너스 지역: AI 미래연구소 (새 주제·새 몬스터)');
+g.map = 'village';
+setPos(26, 9, 'up');
+hold('ArrowUp', 14); // 빛나는 문(26,8)으로 → 미래연구소 워프
+check('미래연구소 진입', g.map === 'lab');
+if (g.mode === 'dialog') advanceDialog(); // 첫 방문 인트로
+setPos(4, 5, 'up'); // 환각몬 (4,4)
+tap('z'); advanceDialog();
+check('환각몬 배틀 (생성형 AI 주제)', g.mode === 'battle' && g.battle.monId === 'hwangakmon');
+fightAndWin(3); // 보너스 몬스터는 마음의 선택이 없음
+check('환각몬 깨우침(자비 증가 없음)', g.flags.defeated.hwangakmon === true);
+if (g.mode === 'dialog') advanceDialog();
+const dexSeen2 = JSON.parse(storage.get('ai-ethics-adventure-dex'));
+check('보너스 몬스터도 도감에 기록', dexSeen2.hwangakmon && dexSeen2.hwangakmon.seen);
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

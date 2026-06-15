@@ -742,6 +742,65 @@ MONSTER_SPRITES.mirrormon = PLAYER_DOWN_0.map((row) =>
   row.replace(/[hrbiu]/g, 'd').replace(/f/g, 'x').replace(/e/g, 'w')
 );
 
+// ---- 보너스 지역: AI 미래연구소 ----
+// 환각몬: 생성형 AI가 그럴듯한 거짓을 지어내는 모습 (몽실몽실 구름 + 반짝임)
+MONSTER_SPRITES.hwangakmon = [
+  '..y..........y..',
+  '.....vvvvvv.....',
+  '...vvvvvvvvvv...',
+  '..vvvvvvvvvvvv..',
+  '.vvvvvvvvvvvvvv.',
+  '.vvwkvvvvvvkwvv.',
+  '.vvvvvvvvvvvvvv.',
+  '.vvvvwwwwwwvvvv.',
+  '.vvvvvvvvvvvvvv.',
+  '..vvvvvvvvvvvv..',
+  'y..vvvvvvvvvv..y',
+  '...vv.vvvv.vv...',
+  '....v..vv..v....',
+  '.....y....y.....',
+  '................',
+  '................',
+];
+// 합성몬: 진짜 얼굴 반쪽 + 가짜(딥페이크) 얼굴 반쪽 (가운데 솔기)
+MONSTER_SPRITES.hapseongmon = [
+  '................',
+  '....ffffkvvvv...',
+  '...fffffkvvvvv..',
+  '..ffffffkvvvvvv.',
+  '..ffffffkvvvvvv.',
+  '..fwkfffkvvkwvv.',
+  '..ffffffkvvvvvv.',
+  '..ffffffkvvvvvv.',
+  '..ffffffkvvvvvv.',
+  '..ffkkffkvvkkvv.',
+  '..ffffffkvvvvvv.',
+  '..ffffffkvvvvvv.',
+  '...fffffkvvvvv..',
+  '....ff.fk.vv.v..',
+  '....ff..k..vv...',
+  '................',
+];
+// 미래몬: 두 오류가 합쳐진 보너스 미니보스 (회로 + 빨간 눈)
+MONSTER_SPRITES.miraemon = [
+  '..y..y....y..y..',
+  '...yy......yy...',
+  '...vvvvvvvvvv...',
+  '..vvvvvvvvvvvv..',
+  '.vvyvvvvvvvvyvv.',
+  '.vvqvvvvvvvvqvv.',
+  '.vvvvvvvvvvvvvv.',
+  '.vvyyvkkkkvyyvv.',
+  '.vvvvvvvvvvvvvv.',
+  '.vvvyvvvvvvyvvv.',
+  '.vvvvvvvvvvvvvv.',
+  '..vvyvvvvvvyvv..',
+  '...vvvvvvvvvv...',
+  '...vv.vv.vv.v...',
+  '...vv.vv.vv.v...',
+  '................',
+];
+
 // 스프라이트 렌더 캐시
 const _spriteCache = new Map();
 
