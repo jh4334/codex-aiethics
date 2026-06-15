@@ -230,4 +230,28 @@ setPlayer(9, 8, 'up');
 g.time = 18;
 shot('16-lab.png');
 
-console.log('완료. shots/ 폴더에 16장 생성.');
+// 17) 교사용 대시보드 (학생 둘은 데이터, 하나는 비어 있음)
+storage.set('ai-ethics-adventure-stats-1', JSON.stringify({
+  privacy: { correct: 3, total: 4 }, copyright: { correct: 2, total: 5 },
+  fake: { correct: 4, total: 4 }, bias: { correct: 1, total: 4 },
+}));
+storage.set('ai-ethics-adventure-meta-1', JSON.stringify({ streak: 2, bestStreak: 3 }));
+storage.set('ai-ethics-adventure-meta-0', JSON.stringify({
+  challengeRuns: 3, challengeBest: 10, challengeBestTotal: 10, streak: 5, bestStreak: 7,
+}));
+g.mode = 'dashboard';
+g.dashboard = { ret: 'title', cursor: 0 };
+g.time = 20;
+shot('17-dashboard.png');
+
+// 18) 커스텀 퀴즈 (선생님 문제)
+storage.set('ai-ethics-adventure-customquiz', JSON.stringify([
+  { q: '우리 반 규칙: AI에게 물어봐도 되는 것은?', a: ['친구 비밀', '숙제 푸는 방법 설명', '내 주소'], c: 1, why: '예시 문제입니다.' },
+  { q: '두 번째 커스텀 문제', a: ['1', '2', '3'], c: 0, why: '해설' },
+]));
+g.mode = 'quizedit';
+g.quizedit = { ret: 'title', cursor: 0, toast: 0 };
+g.time = 20;
+shot('18-quizedit.png');
+
+console.log('완료. shots/ 폴더에 18장 생성.');

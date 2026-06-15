@@ -49,6 +49,11 @@
     textSpeed: 'normal', // slow | normal | fast — 대화창 자막 속도
     largeText: false,    // 큰 글씨(접근성) 모드
     colorBlind: false,   // 색약 친화 팔레트(접근성) 모드
+    difficulty: 'normal', // easy | normal | hard — 학년별 난이도
+    tts: false,          // 읽어주기(TTS) 접근성
+    dashboard: { ret: 'title', cursor: 0 }, // 교사용 대시보드
+    quizedit: { ret: 'title', cursor: 0, toast: 0 }, // 커스텀 퀴즈 편집·가져오기
+    pauseScroll: 0,      // 일시정지 메뉴 스크롤
   };
 
   const SLOT_COUNT = 3;
@@ -151,20 +156,63 @@
   const TEXT_SPEEDS = { slow: 0.5, normal: 1, fast: 2.5 };
   const TEXT_SPEED_ORDER = ['normal', 'fast', 'slow'];
   const TEXT_SPEED_LABEL = { normal: '보통', fast: '빠름', slow: '느림' };
+  const DIFF_ORDER = ['easy', 'normal', 'hard'];
+  const DIFF_LABEL = { easy: '저학년', normal: '기본', hard: '고학년' };
   function loadSettings() {
     try {
       const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
       if (!TEXT_SPEEDS[s.textSpeed]) s.textSpeed = 'normal';
       s.largeText = !!s.largeText;
       s.colorBlind = !!s.colorBlind;
+      if (!DIFF_ORDER.includes(s.difficulty)) s.difficulty = 'normal';
+      s.tts = !!s.tts;
       return s;
-    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false }; }
+    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false }; }
   }
   function saveSettings() {
     try {
-      localStorage.setItem(SETTINGS_KEY,
-        JSON.stringify({ textSpeed: game.textSpeed, largeText: game.largeText, colorBlind: game.colorBlind }));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+        textSpeed: game.textSpeed, largeText: game.largeText, colorBlind: game.colorBlind,
+        difficulty: game.difficulty, tts: game.tts,
+      }));
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+  function cycleDifficulty() {
+    const i = DIFF_ORDER.indexOf(game.difficulty);
+    game.difficulty = DIFF_ORDER[(i + 1) % DIFF_ORDER.length];
+    saveSettings();
+    Sound.blip();
+  }
+  function toggleTTS() {
+    game.tts = !game.tts;
+    saveSettings();
+    if (game.tts) Speech.speak('읽어주기를 켰어요'); else Speech.stop();
+    Sound.blip();
+  }
+
+  // ---------- 읽어주기 (TTS) — Web Speech API ----------
+  const Speech = {
+    supported() { try { return typeof window !== 'undefined' && 'speechSynthesis' in window; } catch (e) { return false; } },
+    speak(text) {
+      if (!game.tts || !this.supported() || !text) return;
+      try {
+        window.speechSynthesis.cancel();
+        const u = new window.SpeechSynthesisUtterance(String(text).replace(/\n/g, ' ').replace(/[♥♪★☆◆◇○×▶◷◎✿⇄→]/g, ' '));
+        u.lang = 'ko-KR';
+        u.rate = 0.95;
+        window.speechSynthesis.speak(u);
+      } catch (e) { /* 미지원/차단 환경 무시 */ }
+    },
+    stop() { try { if (this.supported()) window.speechSynthesis.cancel(); } catch (e) { /* 무시 */ } },
+  };
+  // 퀴즈 문제+보기를 읽어 준다 (표시 순서대로)
+  function speakQuiz(qText, choiceTexts) {
+    if (!game.tts) return;
+    Speech.speak(qText + '. ' + choiceTexts.map((c, i) => `${i + 1}번, ${c}`).join('. '));
+  }
+  function speakFeedback(correct, why) {
+    if (!game.tts) return;
+    Speech.speak((correct ? '정답! ' : '아쉬워요. ') + why);
   }
   function cycleTextSpeed() {
     const i = TEXT_SPEED_ORDER.indexOf(game.textSpeed);
@@ -249,6 +297,7 @@
     consent: '데이터 수집과 동의', identity: '사칭 · 신원', persuasion: '다크패턴 · 설득',
     core: '존재의 가치 · 책임',
     genai: '생성형 AI · 환각', deepfake: '딥페이크 분별',
+    custom: '커스텀 · 선생님 문제',
   };
   function topicLabel(t) { return TOPIC_LABEL[t] || t; }
   function getStats(slot) {
@@ -371,13 +420,60 @@
     return m;
   }
 
+  // ---------- 커스텀 퀴즈 (선생님이 추가한 문제) ----------
+  // 기기 공용으로 저장한다. 'custom' 주제로 챌린지·맞춤·일일 문제에 함께 쓰인다.
+  const CUSTOM_QUIZ_KEY = 'ai-ethics-adventure-customquiz';
+  function getCustomQuizzes() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(CUSTOM_QUIZ_KEY));
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  // 한 문항이 올바른 형식인지 검사
+  function validQuizItem(q) {
+    return q && typeof q.q === 'string' && q.q.trim() &&
+      Array.isArray(q.a) && q.a.length === 3 && q.a.every((x) => typeof x === 'string' && x.trim()) &&
+      Number.isInteger(q.c) && q.c >= 0 && q.c < 3 &&
+      typeof q.why === 'string' && q.why.trim();
+  }
+  // 가져온 텍스트(JSON)를 검사해 커스텀 문제로 저장. { ok, count, error } 반환.
+  function importCustomQuizzes(text) {
+    let obj;
+    try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
+    // 허용 형식: 배열 [ {q,a,c,why}, ... ] 또는 { questions: [...] }
+    const list = Array.isArray(obj) ? obj : (obj && Array.isArray(obj.questions) ? obj.questions : null);
+    if (!list) return { ok: false, error: 'format' };
+    const clean = list.filter(validQuizItem).map((q) => ({ q: q.q, a: q.a.slice(0, 3), c: q.c, why: q.why }));
+    if (clean.length === 0) return { ok: false, error: 'empty' };
+    try { localStorage.setItem(CUSTOM_QUIZ_KEY, JSON.stringify(clean)); } catch (e) { return { ok: false, error: 'save' }; }
+    return { ok: true, count: clean.length };
+  }
+  function clearCustomQuizzes() {
+    try { localStorage.removeItem(CUSTOM_QUIZ_KEY); } catch (e) { /* 무시 */ }
+  }
+  // 커스텀 문제 양식(템플릿) 텍스트
+  function customQuizTemplate() {
+    return JSON.stringify({
+      questions: [
+        { q: '문제를 여기에 쓰세요 (줄바꿈은 \\n)', a: ['보기1', '보기2', '보기3'], c: 1, why: '정답 해설을 쓰세요' },
+      ],
+    }, null, 2);
+  }
+  // 기본 퀴즈 + 커스텀('custom' 주제)을 합친 문제 출처
+  function quizSource() {
+    const custom = getCustomQuizzes();
+    return custom.length ? Object.assign({}, QUIZZES, { custom }) : QUIZZES;
+  }
+
   // ---------- 적응형(맞춤) · 일일 문제 풀 ----------
   function quizQ(topic, i) {
-    const base = QUIZZES[topic] && QUIZZES[topic][i];
+    const src = quizSource();
+    const base = src[topic] && src[topic][i];
     return base ? Object.assign({}, base, { _topic: topic, _qid: topic + '#' + i }) : null;
   }
   function quizTopicKeys() {
-    return Object.keys(QUIZZES).filter((t) => QUIZZES[t] && QUIZZES[t].length > 0);
+    const src = quizSource();
+    return Object.keys(src).filter((t) => src[t] && src[t].length > 0);
   }
   // 약점 집중: 이전에 틀린 문제 → 정답률 낮은(또는 안 푼) 주제 순으로 채운다.
   function buildAdaptivePool(slot, n) {
@@ -397,6 +493,7 @@
       const summary = buildLearningSummary(slot);
       const rate = {};
       for (const r of summary.rows) rate[r.topic] = r.rate;
+      const src = quizSource();
       const weighted = [];
       for (const t of quizTopicKeys()) {
         const r = (t in rate) ? rate[t] : 0; // 안 푼 주제는 0(약점)으로 본다
@@ -406,7 +503,7 @@
       let guard = 0;
       while (out.length < n && guard++ < 600) {
         const t = weighted[Math.floor(Math.random() * weighted.length)];
-        const i = Math.floor(Math.random() * QUIZZES[t].length);
+        const i = Math.floor(Math.random() * src[t].length);
         const qid = t + '#' + i;
         if (used.has(qid)) continue;
         used.add(qid);
@@ -423,7 +520,8 @@
     for (let i = 0; i < day.length; i++) seed = (seed * 31 + day.charCodeAt(i)) >>> 0;
     const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
     const pool = [];
-    for (const t of quizTopicKeys()) for (let i = 0; i < QUIZZES[t].length; i++) pool.push(quizQ(t, i));
+    const src = quizSource();
+    for (const t of quizTopicKeys()) for (let i = 0; i < src[t].length; i++) pool.push(quizQ(t, i));
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -613,6 +711,18 @@
       if (game.mode === 'world') { openBackup('world'); return; }
       if (game.mode === 'title' && game.titleScreen === 'slots') { openBackup('title'); return; }
       if (game.mode === 'backup') { closeBackup(); return; }
+      return;
+    }
+    if (e.key === 'p' || e.key === 'P') { // 교사용 대시보드
+      if (game.mode === 'world') { openDashboard('world'); return; }
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openDashboard('title'); return; }
+      if (game.mode === 'dashboard') { closeDashboard(); return; }
+      return;
+    }
+    if (e.key === 'e' || e.key === 'E') { // 커스텀 퀴즈 편집(Edit)
+      if (game.mode === 'world') { openQuizEdit('world'); return; }
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openQuizEdit('title'); return; }
+      if (game.mode === 'quizedit') { closeQuizEdit(); return; }
       return;
     }
     const k = KEYMAP[e.key];
@@ -1040,6 +1150,7 @@
   function startDialog(lines, speaker, onEnd) {
     game.mode = 'dialog';
     game.dialog = { lines, idx: 0, chars: 0, speaker: speaker || null, onEnd: onEnd || null };
+    Speech.speak(lines[0]);
   }
 
   function updateDialog() {
@@ -1060,7 +1171,10 @@
         const onEnd = d.onEnd;
         game.dialog = null;
         game.mode = 'world';
+        Speech.stop();
         if (onEnd) onEnd();
+      } else {
+        Speech.speak(d.lines[d.idx]);
       }
     }
   }
@@ -1237,7 +1351,8 @@
     const mon = MONSTERS[monId];
     game.mode = 'battle';
     Sound.playSong(mon.song || 'battle');
-    const maxHearts = mon.hp >= 5 ? 4 : 3;
+    // 학년별 난이도: 저학년은 하트 1개 더 (기본은 그대로 유지)
+    const maxHearts = (mon.hp >= 5 ? 4 : 3) + (game.difficulty === 'easy' ? 1 : 0);
     game.battle = {
       monId,
       mon,
@@ -1276,12 +1391,15 @@
     b.correctPos = b.choiceOrder.indexOf(q.c);
     b.hintUsed = false;
     b.hiddenPos = -1;
+    speakQuiz(q.q, b.choiceOrder.map((ai) => q.a[ai]));
   }
 
   // 50:50 힌트 — 정답이 아닌 보기 중 하나를 가린다 (한 문제당 한 번)
   function useHint() {
     const b = game.battle;
-    if (!b || b.phase !== 'question' || b.hintUsed) return;
+    if (!b || b.phase !== 'question') return;
+    if (game.difficulty === 'hard') return;         // 고학년: 힌트 없음
+    if (b.hintUsed && game.difficulty !== 'easy') return; // 기본: 문제당 1회 / 저학년: 여러 번
     const q = currentQuestion();
     const order = choiceOrder();
     const candidates = order.map((_, i) => i).filter((i) => i !== b.correctPos);
@@ -1326,6 +1444,8 @@
     }
   }
 
+  // 학년별 난이도: 회피 구간 길이·탄막 속도 배율 (기본 1)
+  function dodgeSpeedFactor() { return game.difficulty === 'easy' ? 0.8 : game.difficulty === 'hard' ? 1.25 : 1; }
   function enterDodge() {
     const b = game.battle;
     const atk = b.attack;
@@ -1333,7 +1453,7 @@
     b.phase = 'dodge';
     const boxW = 300, boxH = 170;
     b.dodge = {
-      t: 0, dur: atk.dur,
+      t: 0, dur: Math.round(atk.dur * (game.difficulty === 'easy' ? 0.75 : game.difficulty === 'hard' ? 1.2 : 1)),
       box: { x: Math.round(canvas.width / 2 - boxW / 2), y: 150, w: boxW, h: boxH },
       soul: { x: canvas.width / 2, y: 235 },
       bullets: [],
@@ -1347,20 +1467,21 @@
 
   function spawnBullets(d, pattern) {
     const box = d.box;
+    const sf = dodgeSpeedFactor();
     if (pattern === 'rain') {
       const x = box.x + 12 + Math.random() * (box.w - 24);
-      d.bullets.push({ x, y: box.y - 6, vx: 0, vy: 2.0 + Math.random() * 1.4, r: 6 });
+      d.bullets.push({ x, y: box.y - 6, vx: 0, vy: (2.0 + Math.random() * 1.4) * sf, r: 6 });
     } else if (pattern === 'sides') {
       const fromLeft = Math.random() < 0.5;
       const y = box.y + 12 + Math.random() * (box.h - 24);
       d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
-        vx: (fromLeft ? 1 : -1) * (2.2 + Math.random() * 1.2), vy: 0, r: 6 });
+        vx: (fromLeft ? 1 : -1) * (2.2 + Math.random() * 1.2) * sf, vy: 0, r: 6 });
     } else { // burst — 중앙에서 방사형
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
       const n = 6, base = Math.random() * Math.PI * 2;
       for (let i = 0; i < n; i++) {
         const a = base + i * Math.PI * 2 / n;
-        d.bullets.push({ x: cx, y: cy, vx: Math.cos(a) * 2.0, vy: Math.sin(a) * 2.0, r: 5 });
+        d.bullets.push({ x: cx, y: cy, vx: Math.cos(a) * 2.0 * sf, vy: Math.sin(a) * 2.0 * sf, r: 5 });
       }
     }
   }
@@ -1434,6 +1555,7 @@
         const correct = order[b.cursor] === q.c;
         b.feedback = { correct, why: q.why };
         b.phase = 'feedback';
+        speakFeedback(correct, q.why);
         recordTopicResult(game.currentSlot, q._topic, correct);
         if (correct) {
           Sound.correct();
@@ -1710,6 +1832,7 @@
     r.qCursor = 0;
     r.feedback = null;
     r.phase = 'question';
+    speakQuiz(m.q, r.choiceOrder.map((ai) => m.a[ai]));
   }
 
   function updateReview() {
@@ -1737,6 +1860,7 @@
         const correct = r.choiceOrder[r.qCursor] === m.c;
         r.feedback = { correct, why: m.why };
         r.phase = 'feedback';
+        speakFeedback(correct, m.why);
         if (correct) { Sound.correct(); clearMistake(r.slot, r.ids[r.cursor]); } else { Sound.wrong(); }
       }
       return;
@@ -1851,32 +1975,40 @@
 
   // ---------- 설정·일시정지 메뉴 ----------
   // 터치 기기에는 키보드 단축키(J/Q/B/I 등)가 없으므로, 모든 기능을 메뉴로 연다.
-  const PAUSE_ITEMS = ['journal', 'awards', 'cosmetics', 'challenge', 'review', 'dex',
-    'backup', 'textspeed', 'largetext', 'colorblind', 'mute', 'help', 'close'];
+  const PAUSE_ITEMS = ['journal', 'dashboard', 'awards', 'cosmetics', 'challenge', 'review', 'dex',
+    'quizedit', 'backup', 'difficulty', 'textspeed', 'tts', 'largetext', 'colorblind', 'mute', 'help', 'close'];
   const PAUSE_LABELS = {
     journal: '◆ 수호자 일지',
+    dashboard: '▤ 교사용 대시보드',
     awards: '☆ 도전과제',
     cosmetics: '✿ 꾸미기 (칭호·테마)',
     challenge: '▶ 퀴즈 챌린지',
     review: '★ 오답 복습 노트',
     dex: '♥ 몬스터 도감',
+    quizedit: '✎ 커스텀 퀴즈',
     backup: '⇄ 데이터 백업·복원',
+    difficulty: '난이도',
     textspeed: '자막 속도',
+    tts: '읽어주기',
     largetext: '큰 글씨',
     colorblind: '색약 모드',
     mute: '소리',
     help: '? 도움말',
     close: '닫기',
   };
+  const PAUSE_VISIBLE = 12; // 한 화면에 보이는 메뉴 항목 수 (넘으면 스크롤)
 
   function pauseValueLabel(item) {
     if (item === 'textspeed') return TEXT_SPEED_LABEL[game.textSpeed];
+    if (item === 'difficulty') return DIFF_LABEL[game.difficulty];
+    if (item === 'tts') return game.tts ? 'ON' : 'OFF';
     if (item === 'largetext') return game.largeText ? 'ON' : 'OFF';
     if (item === 'colorblind') return game.colorBlind ? 'ON' : 'OFF';
     if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
     if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
     if (item === 'cosmetics') return `${unlockedCount(game.currentSlot)}/${TITLES.length + THEMES.length}`;
+    if (item === 'quizedit') return `${getCustomQuizzes().length}개`;
     if (item === 'journal') {
       const s = buildLearningSummary(game.currentSlot);
       return s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—';
@@ -1886,6 +2018,7 @@
 
   function openPause() {
     game.pauseCursor = 0;
+    game.pauseScroll = 0;
     game.mode = 'pause';
     Sound.select();
   }
@@ -1895,21 +2028,31 @@
     Sound.select();
   }
 
+  function clampPauseScroll() {
+    const maxScroll = Math.max(0, PAUSE_ITEMS.length - PAUSE_VISIBLE);
+    if (game.pauseCursor < game.pauseScroll) game.pauseScroll = game.pauseCursor;
+    if (game.pauseCursor >= game.pauseScroll + PAUSE_VISIBLE) game.pauseScroll = game.pauseCursor - PAUSE_VISIBLE + 1;
+    game.pauseScroll = Math.max(0, Math.min(game.pauseScroll, maxScroll));
+  }
   function updatePause() {
     const n = PAUSE_ITEMS.length;
-    if (justPressed('up')) { game.pauseCursor = (game.pauseCursor + n - 1) % n; Sound.blip(); }
-    if (justPressed('down')) { game.pauseCursor = (game.pauseCursor + 1) % n; Sound.blip(); }
+    if (justPressed('up')) { game.pauseCursor = (game.pauseCursor + n - 1) % n; clampPauseScroll(); Sound.blip(); }
+    if (justPressed('down')) { game.pauseCursor = (game.pauseCursor + 1) % n; clampPauseScroll(); Sound.blip(); }
     if (justPressed('cancel')) { closePause(); return; }
     if (justPressed('action')) {
       const item = PAUSE_ITEMS[game.pauseCursor];
       if (item === 'journal') openJournal('pause');
+      else if (item === 'dashboard') openDashboard('pause');
       else if (item === 'awards') openAwards('pause');
       else if (item === 'cosmetics') openCosmetics('pause');
       else if (item === 'review') openReview('pause');
       else if (item === 'challenge') openChallenge('pause');
       else if (item === 'dex') openDex('pause');
+      else if (item === 'quizedit') openQuizEdit('pause');
       else if (item === 'backup') openBackup('pause');
+      else if (item === 'difficulty') cycleDifficulty();
       else if (item === 'textspeed') cycleTextSpeed();
+      else if (item === 'tts') toggleTTS();
       else if (item === 'largetext') toggleLargeText();
       else if (item === 'colorblind') toggleColorBlind();
       else if (item === 'mute') Sound.toggleMute();
@@ -1924,7 +2067,8 @@
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const rowH = 34;
-    const boxW = 340, boxH = 56 + PAUSE_ITEMS.length * rowH;
+    const shown = Math.min(PAUSE_VISIBLE, PAUSE_ITEMS.length);
+    const boxW = 340, boxH = 64 + shown * rowH;
     const boxX = Math.round(canvas.width / 2 - boxW / 2);
     const boxY = Math.round(canvas.height / 2 - boxH / 2);
     utBox(boxX, boxY, boxW, boxH, 8);
@@ -1934,8 +2078,11 @@
     ctx.font = 'bold 17px monospace';
     ctx.fillText('메뉴', boxX + 22, boxY + 30);
 
+    const start = game.pauseScroll;
     let ty = boxY + 62;
-    for (let i = 0; i < PAUSE_ITEMS.length; i++) {
+    for (let k = 0; k < shown; k++) {
+      const i = start + k;
+      if (i >= PAUSE_ITEMS.length) break;
       const item = PAUSE_ITEMS[i];
       drawChoiceLine(PAUSE_LABELS[item], boxX + 22, ty, i === game.pauseCursor);
       const val = pauseValueLabel(item);
@@ -1948,6 +2095,9 @@
       }
       ty += rowH;
     }
+    // 스크롤 표시
+    if (start > 0) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('▲', boxX + boxW - 16, boxY + 56); }
+    if (start + shown < PAUSE_ITEMS.length) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('▼', boxX + boxW - 16, boxY + boxH - 22); }
 
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
@@ -2118,10 +2268,9 @@
   // ---------- 자유 퀴즈 챌린지 ----------
   const CHALLENGE_LEN = 10;
   function challengeTopics() {
-    // 실제 퀴즈가 있는 주제만, 표시 라벨과 함께
-    return Object.keys(QUIZZES)
-      .filter((t) => QUIZZES[t] && QUIZZES[t].length > 0)
-      .map((t) => ({ key: t, label: topicLabel(t), n: QUIZZES[t].length }));
+    // 실제 퀴즈가 있는 주제만, 표시 라벨과 함께 (커스텀 문제 포함)
+    const src = quizSource();
+    return quizTopicKeys().map((t) => ({ key: t, label: topicLabel(t), n: src[t].length }));
   }
 
   function openChallenge(ret) {
@@ -2152,11 +2301,11 @@
       c.adaptive = true;
       pool = buildAdaptivePool(c.slot);
     } else if (c.sel === 2) {     // 전체 랜덤
-      for (const t of c.topics) for (let i = 0; i < QUIZZES[t.key].length; i++) pool.push(quizQ(t.key, i));
+      for (const t of c.topics) for (let i = 0; i < t.n; i++) pool.push(quizQ(t.key, i));
       pool = shuffled(pool).slice(0, CHALLENGE_LEN);
     } else {                      // 특정 주제
       const t = c.topics[c.sel - 3];
-      for (let i = 0; i < QUIZZES[t.key].length; i++) pool.push(quizQ(t.key, i));
+      for (let i = 0; i < t.n; i++) pool.push(quizQ(t.key, i));
       pool = shuffled(pool).slice(0, CHALLENGE_LEN);
     }
     c.questions = pool;
@@ -2166,6 +2315,7 @@
     c.feedback = null;
     c.choiceOrder = shuffled(pool[0].a.map((_, i) => i));
     c.phase = 'quiz';
+    speakQuiz(pool[0].q, c.choiceOrder.map((ai) => pool[0].a[ai]));
   }
 
   function challengeNext() {
@@ -2181,8 +2331,10 @@
     }
     c.cursor = 0;
     c.feedback = null;
-    c.choiceOrder = shuffled(c.questions[c.idx].a.map((_, i) => i));
+    const nq = c.questions[c.idx];
+    c.choiceOrder = shuffled(nq.a.map((_, i) => i));
     c.phase = 'quiz';
+    speakQuiz(nq.q, c.choiceOrder.map((ai) => nq.a[ai]));
   }
 
   function updateChallenge() {
@@ -2208,6 +2360,7 @@
         const correct = c.choiceOrder[c.cursor] === q.c;
         c.feedback = { correct, why: q.why };
         c.phase = 'feedback';
+        speakFeedback(correct, q.why);
         recordTopicResult(c.slot, q._topic, correct);
         if (correct) { c.score += 1; clearMistake(c.slot, q._qid); Sound.correct(); }
         else { recordMistake(c.slot, q); Sound.wrong(); }
@@ -2467,6 +2620,10 @@
     ['head', '◆ 더 즐기기'],
     ['', '미래연구소: 마을 오른쪽 빛나는 문 — 새 AI 주제(환각·딥페이크) 연습'],
     ['', '오늘의 도전·연속 출석, 칭호·테마 꾸미기(K), 데이터 백업·복원(U)'],
+    ['', ''],
+    ['head', '◆ 선생님 · 접근성'],
+    ['', '교사용 대시보드(P): 학생별 학습 현황 비교 · 커스텀 퀴즈(E)'],
+    ['', '난이도(저학년/기본/고학년) · 읽어주기(TTS)는 메뉴에서 켜요'],
   ];
   function openHelp(ret) {
     game.helpRet = ret;
@@ -2701,6 +2858,197 @@
       ctx.fillStyle = b.toast > 0 ? okColor() : badColor();
       ctx.font = 'bold 15px monospace';
       ctx.fillText(b.toast > 0 ? '✓ 완료했어요!' : '이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)', canvas.width / 2, 470);
+      ctx.textAlign = 'left';
+    }
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('↑↓ 선택 · Z 실행 · X 닫기', canvas.width / 2, 512);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 교사용 대시보드 (모든 학생 한눈에) ----------
+  function openDashboard(ret) {
+    game.dashboard.ret = ret;
+    game.dashboard.cursor = 0;
+    game.mode = 'dashboard';
+    Sound.select();
+  }
+  function closeDashboard() {
+    game.mode = game.dashboard.ret;
+    Sound.select();
+  }
+  function updateDashboard() {
+    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeDashboard();
+  }
+  function drawDashboard() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText('▤ 교사용 대시보드 — 학생 현황', 24, 36);
+    ctx.fillStyle = '#888';
+    ctx.font = '12px monospace';
+    ctx.fillText('한 기기를 나눠 쓰는 세 학생(슬롯)의 학습 현황을 비교합니다.', 24, 56);
+
+    const colW = (canvas.width - 32) / SLOT_COUNT;
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const x = 16 + i * colW;
+      const y = 74, w = colW - 12, h = 410;
+      utBox(x, y, w, h, 6);
+      const sum = slotSummary(i);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#888';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText(`슬롯 ${i + 1}`, x + 14, y + 22);
+      if (!sum) {
+        ctx.fillStyle = '#555';
+        ctx.font = '14px monospace';
+        ctx.fillText('— 비어 있음 —', x + 14, y + 56);
+        continue;
+      }
+      const s = buildLearningSummary(i);
+      const meta = getMeta(i);
+      const title = selectedTitle(i);
+      let ly = y + 46;
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 17px monospace';
+      ctx.fillText(sum.name, x + 14, ly); ly += 22;
+      if (title) {
+        ctx.fillStyle = themeAccent();
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText(`「${title.name}」`, x + 14, ly);
+      }
+      ly += 22;
+      const line = (label, val, col) => {
+        ctx.fillStyle = '#999'; ctx.font = '12px monospace';
+        ctx.fillText(label, x + 14, ly);
+        ctx.fillStyle = col || '#fff'; ctx.font = 'bold 13px monospace';
+        ctx.textAlign = 'right'; ctx.fillText(val, x + w - 14, ly); ctx.textAlign = 'left';
+        ly += 24;
+      };
+      line('진행', sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`);
+      line('푼 문제', `${s.attempted}개`);
+      line('정답률', s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—',
+        s.attempted ? (s.overallRate >= 0.8 ? okColor() : s.overallRate >= 0.6 ? warnColor() : badColor()) : '#888');
+      line('복습 노트', `${mistakeCount(i)}개`);
+      line('도전과제', `${countAchievements(i)}/${ACHIEVEMENTS.length}`);
+      line('안아준 마음', `♥ ${sum.mercy}`);
+      line('연속 출석', meta.streak ? `🔥 ${meta.streak}일` : '—');
+      // 약점 주제
+      ctx.fillStyle = '#999'; ctx.font = '12px monospace';
+      ctx.fillText('더 살펴볼 주제', x + 14, ly); ly += 18;
+      ctx.fillStyle = badColor(); ctx.font = '11px monospace';
+      if (s.weak.length) {
+        for (const wlabel of s.weak.slice(0, 3)) { ctx.fillText('· ' + wlabel, x + 16, ly); ly += 16; }
+      } else {
+        ctx.fillStyle = '#5a8'; ctx.fillText('· 약점 없음 👍', x + 16, ly);
+      }
+    }
+
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Z 또는 X로 닫기 · (리포트 복사는 각 학생의 수호자 일지에서)', canvas.width / 2, 512);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 커스텀 퀴즈 (선생님 문제) 편집·가져오기 ----------
+  const QUIZEDIT_ITEMS = ['importFile', 'importClip', 'template', 'clear', 'close'];
+  const QUIZEDIT_LABELS = {
+    importFile: '가져오기 — 파일에서 (.json)',
+    importClip: '가져오기 — 클립보드에서 붙여넣기',
+    template: '문제 양식(템플릿) 복사하기',
+    clear: '커스텀 문제 모두 지우기',
+    close: '닫기',
+  };
+  function openQuizEdit(ret) {
+    game.quizedit.ret = ret;
+    game.quizedit.cursor = 0;
+    game.quizedit.toast = 0;
+    game.mode = 'quizedit';
+    Sound.select();
+  }
+  function closeQuizEdit() {
+    game.mode = game.quizedit.ret;
+    Sound.select();
+  }
+  function setQuizToast(res) {
+    game.quizedit.toast = res && res.ok ? (res.count || 1) : -1;
+    Sound.badge();
+  }
+  function importQuizFile() {
+    try {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = 'application/json,.json';
+      inp.addEventListener('change', () => {
+        const file = inp.files && inp.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => setQuizToast(importCustomQuizzes(String(reader.result)));
+        reader.readAsText(file);
+      });
+      inp.click();
+    } catch (e) { game.quizedit.toast = -1; }
+  }
+  function importQuizClip() {
+    try {
+      if (window.navigator && navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then((t) => setQuizToast(importCustomQuizzes(t))).catch(() => { game.quizedit.toast = -1; });
+      } else { game.quizedit.toast = -1; }
+    } catch (e) { game.quizedit.toast = -1; }
+  }
+  function updateQuizEdit() {
+    const q = game.quizedit;
+    // q.toast: 0=없음, 음수=실패, 양수=성공(>=1이면 등록 개수). 다음 행동까지 유지.
+    const n = QUIZEDIT_ITEMS.length;
+    if (justPressed('up')) { q.cursor = (q.cursor + n - 1) % n; Sound.blip(); }
+    if (justPressed('down')) { q.cursor = (q.cursor + 1) % n; Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu')) { closeQuizEdit(); return; }
+    if (justPressed('action')) {
+      const item = QUIZEDIT_ITEMS[q.cursor];
+      if (item === 'importFile') importQuizFile();
+      else if (item === 'importClip') importQuizClip();
+      else if (item === 'template') { q.toast = copyTextToClipboard(customQuizTemplate()) ? 0.5 : -1; Sound.badge(); }
+      else if (item === 'clear') { clearCustomQuizzes(); q.toast = 0.4; Sound.badge(); }
+      else if (item === 'close') closeQuizEdit();
+    }
+  }
+  function drawQuizEdit() {
+    const q = game.quizedit;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText('✎ 커스텀 퀴즈 (선생님 문제)', 24, 38);
+    const cnt = getCustomQuizzes().length;
+    ctx.fillStyle = cnt ? okColor() : '#888';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(`현재 등록된 커스텀 문제: ${cnt}개`, 24, 64);
+    ctx.fillStyle = '#888';
+    ctx.font = '12px monospace';
+    ctx.fillText('커스텀 문제는 퀴즈 챌린지의 「커스텀 · 선생님 문제」 주제와', 24, 86);
+    ctx.fillText('맞춤·오늘의 도전에 함께 출제됩니다.', 24, 104);
+
+    const listY = 142, rowH = 40;
+    for (let i = 0; i < QUIZEDIT_ITEMS.length; i++) {
+      drawChoiceLine(QUIZEDIT_LABELS[QUIZEDIT_ITEMS[i]], 48, listY + i * rowH, i === q.cursor);
+    }
+
+    ctx.fillStyle = '#777';
+    ctx.font = '11px monospace';
+    ctx.fillText('형식: [ {"q":"문제","a":["보기1","보기2","보기3"],"c":1,"why":"해설"}, … ]', 24, listY + QUIZEDIT_ITEMS.length * rowH + 18);
+    ctx.fillText('또는 { "questions": [ … ] }  ·  c는 정답 번호(0~2)', 24, listY + QUIZEDIT_ITEMS.length * rowH + 36);
+
+    if (q.toast !== 0) {
+      ctx.textAlign = 'center';
+      if (q.toast < 0) { ctx.fillStyle = badColor(); ctx.font = 'bold 14px monospace';
+        ctx.fillText('가져올 수 없어요. 형식을 확인하거나 브라우저에서 시도해 주세요.', canvas.width / 2, 462); }
+      else { ctx.fillStyle = okColor(); ctx.font = 'bold 14px monospace';
+        ctx.fillText(q.toast >= 1 ? `✓ 커스텀 문제 ${q.toast}개를 등록했어요!` : '✓ 완료했어요!', canvas.width / 2, 462); }
       ctx.textAlign = 'left';
     }
     ctx.fillStyle = '#777';
@@ -3320,8 +3668,8 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
-    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제`, canvas.width / 2, 462);
-    ctx.fillText(`K 꾸미기 · U 백업 · I 도움말 · M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · G 큰글씨(${game.largeText ? '켜짐' : '꺼짐'})`, canvas.width / 2, 480);
+    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · K 꾸미기`, canvas.width / 2, 462);
+    ctx.fillText(`P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말 · M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, canvas.width / 2, 480);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -3675,6 +4023,14 @@
         updateBackup();
         drawBackup();
         break;
+      case 'dashboard':
+        updateDashboard();
+        drawDashboard();
+        break;
+      case 'quizedit':
+        updateQuizEdit();
+        drawQuizEdit();
+        break;
     }
 
     const showHintBtn = game.mode === 'battle' && game.battle &&
@@ -3707,6 +4063,7 @@
     buildBackupText, applyBackup, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
+    getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
   };
   frame();
 })();

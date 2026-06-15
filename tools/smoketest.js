@@ -446,8 +446,8 @@ check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
 check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
-const PAUSE_ORDER = ['journal', 'awards', 'cosmetics', 'challenge', 'review', 'dex',
-  'backup', 'textspeed', 'largetext', 'colorblind', 'mute', 'help', 'close'];
+const PAUSE_ORDER = ['journal', 'dashboard', 'awards', 'cosmetics', 'challenge', 'review', 'dex',
+  'quizedit', 'backup', 'difficulty', 'textspeed', 'tts', 'largetext', 'colorblind', 'mute', 'help', 'close'];
 const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
 while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
 tap('z');
@@ -664,5 +664,69 @@ check('환각몬 깨우침(자비 증가 없음)', g.flags.defeated.hwangakmon =
 if (g.mode === 'dialog') advanceDialog();
 const dexSeen2 = JSON.parse(storage.get('ai-ethics-adventure-dex'));
 check('보너스 몬스터도 도감에 기록', dexSeen2.hwangakmon && dexSeen2.hwangakmon.seen);
+
+console.log('[41] 교사용 대시보드');
+g.mode = 'world';
+tap('p');
+check('대시보드 열림', g.mode === 'dashboard');
+tap('x');
+check('대시보드 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[42] 커스텀 퀴즈 편집·가져오기');
+const goodQuiz = JSON.stringify({ questions: [
+  { q: '커스텀 문제?', a: ['보기1', '보기2', '보기3'], c: 0, why: '해설입니다' },
+  { q: '형식이 틀린 문제', a: ['하나만'], c: 5 }, // 무효 → 걸러짐
+] });
+const cq = T.importCustomQuizzes(goodQuiz);
+check('유효 문항만 등록', cq.ok === true && cq.count === 1);
+check('커스텀 문제 저장됨', T.getCustomQuizzes().length === 1);
+check('챌린지 주제에 커스텀 등장', T.challengeTopics().some((t) => t.key === 'custom'));
+check('빈 목록 가져오기 거부', T.importCustomQuizzes('[]').ok === false);
+check('깨진 JSON 거부', T.importCustomQuizzes('nope').ok === false);
+check('양식 템플릿 생성', /questions/.test(T.customQuizTemplate()));
+T.clearCustomQuizzes();
+check('커스텀 문제 모두 삭제', T.getCustomQuizzes().length === 0);
+check('삭제 후 챌린지에서 커스텀 사라짐', !T.challengeTopics().some((t) => t.key === 'custom'));
+
+console.log('[43] 학년별 난이도 모드');
+g.mode = 'world';
+const diffBefore = g.difficulty;
+tap('x');
+while (g.pauseCursor !== pauseIdx('difficulty')) tap('ArrowDown');
+tap('z');
+check('난이도 변경됨', g.difficulty !== diffBefore);
+check('난이도 설정 저장', JSON.parse(storage.get('ai-ethics-adventure-settings')).difficulty === g.difficulty);
+tap('x');
+// 고학년: 50:50 힌트 비활성 / 저학년: 힌트 재사용 가능
+const mkHintBattle = () => {
+  const hq = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#0' });
+  g.mode = 'battle';
+  g.battle = { monId: 'bekkyeomon', mon: MONSTERS.bekkyeomon, monHp: 3, monMaxHp: 3,
+    playerHp: 3, maxHearts: 3, questions: [hq], qIdx: 0, phase: 'question', cursor: 0,
+    choiceOrder: [0, 1, 2], correctPos: hq.c, hintUsed: false, hiddenPos: -1,
+    feedback: null, shake: 0, flash: 0, attack: null, dodgeDone: true, dodge: null };
+};
+g.difficulty = 'hard'; mkHintBattle();
+tap('h');
+check('고학년은 힌트 비활성', g.battle.hintUsed === false && g.battle.hiddenPos === -1);
+g.difficulty = 'easy'; mkHintBattle();
+tap('h');
+check('저학년도 힌트 동작', g.battle.hintUsed === true && g.battle.hiddenPos !== -1);
+g.battle.hiddenPos = -1; // 다시 사용 가능한지 확인
+tap('h');
+check('저학년은 힌트 재사용 가능', g.battle.hiddenPos !== -1);
+g.difficulty = 'normal'; g.mode = 'world'; g.battle = null;
+
+console.log('[44] 읽어주기(TTS) 접근성 토글');
+const ttsBefore = g.tts;
+tap('x');
+while (g.pauseCursor !== pauseIdx('tts')) tap('ArrowDown');
+tap('z');
+check('읽어주기 토글', g.tts !== ttsBefore);
+check('읽어주기 설정 저장', JSON.parse(storage.get('ai-ethics-adventure-settings')).tts === g.tts);
+tap('z'); // 복원
+check('읽어주기 복원', g.tts === ttsBefore);
+tap('x');
+check('메뉴 닫힘', g.mode === 'world');
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
