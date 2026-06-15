@@ -163,4 +163,35 @@ setPlayer(8, 4, 'right');
 g.time = 18;
 shot('09-cave.png');
 
-console.log('완료. shots/ 폴더에 9장 생성.');
+// 10) 수호자 일지 (주제별 정답률 — 통계 시드)
+storage.set('ai-ethics-adventure-stats', JSON.stringify({
+  privacy: { correct: 6, total: 6 },
+  copyright: { correct: 5, total: 6 },
+  fake: { correct: 4, total: 5 },
+  bias: { correct: 2, total: 5 },
+  balance: { correct: 3, total: 4 },
+  manners: { correct: 5, total: 5 },
+  safety: { correct: 1, total: 3 },
+  transparency: { correct: 4, total: 6 },
+}));
+g.mode = 'journal'; g.journal = { ret: 'world', scroll: 0, toast: 0 };
+g.playerName = '수호자';
+g.time = 20;
+shot('10-journal.png');
+
+// 11) 자유 퀴즈 챌린지 (진행 중 화면)
+g.mode = 'challenge';
+{
+  const topics = Object.keys(QUIZZES).filter((t) => QUIZZES[t] && QUIZZES[t].length)
+    .map((t) => ({ key: t, label: t, n: QUIZZES[t].length }));
+  const q = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#0' });
+  g.challenge = {
+    ret: 'title', phase: 'quiz', topics, sel: 0,
+    questions: new Array(10).fill(q), idx: 3, cursor: 1,
+    choiceOrder: q.a.map((_, i) => i), score: 3, feedback: null,
+  };
+}
+g.time = 16;
+shot('11-challenge.png');
+
+console.log('완료. shots/ 폴더에 11장 생성.');

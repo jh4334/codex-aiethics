@@ -8,6 +8,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="AI 윤리 어드벤처">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
 <title>AI 윤리 어드벤처</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -182,5 +185,13 @@
 <script src="src/audio.js"></script>
 <script src="src/data.js"></script>
 <script src="src/game.js"></script>
+<script>
+  // 오프라인 설치(PWA) — file:// 로 직접 열었을 때는 등록하지 않는다
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
 </body>
 </html>

@@ -1,0 +1,17 @@
+{
+  "name": "AI 윤리 어드벤처",
+  "short_name": "AI윤리",
+  "description": "한국 초등학생을 위한 AI 윤리 교육 게임. 몬스터를 퀴즈로 깨우치는 어드벤처.",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

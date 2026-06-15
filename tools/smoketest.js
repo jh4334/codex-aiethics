@@ -442,23 +442,26 @@ console.log('[27] 설정·일시정지 메뉴');
 check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
-check('초기 커서 0', g.pauseCursor === 0);
-while (g.pauseCursor !== 1) tap('ArrowDown'); // 도감
+check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
+// PAUSE_ITEMS = ['journal','review','dex','textspeed','largetext','mute','close']
+const PAUSE_ORDER = ['journal', 'review', 'dex', 'textspeed', 'largetext', 'mute', 'close'];
+const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
+while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
 tap('z');
 check('설정에서 도감 열림', g.mode === 'dex' && g.dex.ret === 'pause');
 tap('x');
 check('도감 닫고 설정으로 복귀', g.mode === 'pause');
-while (g.pauseCursor !== 2) tap('ArrowDown'); // 자막 속도
+while (g.pauseCursor !== pauseIdx('textspeed')) tap('ArrowDown');
 const speedBefore = g.textSpeed;
 tap('z');
 check('자막 속도 변경', g.textSpeed !== speedBefore);
-while (g.pauseCursor !== 3) tap('ArrowDown'); // 큰 글씨
+while (g.pauseCursor !== pauseIdx('largetext')) tap('ArrowDown');
 const largeBefore = g.largeText;
 tap('z');
 check('큰 글씨 토글', g.largeText !== largeBefore);
 tap('z'); // 원래대로 되돌림
 check('큰 글씨 복원', g.largeText === largeBefore);
-while (g.pauseCursor !== 4) tap('ArrowDown'); // 음소거
+while (g.pauseCursor !== pauseIdx('mute')) tap('ArrowDown');
 const { Sound } = vm.runInContext('({ Sound })', sandbox);
 const mutedBefore = Sound.muted;
 tap('z');
@@ -491,5 +494,50 @@ tap('h');
 check('힌트는 한 번만 사용 가능', g.battle.hiddenPos === hiddenBefore);
 g.mode = 'world';
 g.battle = null;
+
+console.log('[29] 학습 진척도·수호자 일지 (E)');
+// 앞선 배틀/복습에서 주제별 통계가 쌓였는지
+const stats = JSON.parse(storage.get('ai-ethics-adventure-stats') || '{}');
+check('주제별 통계가 기록됨', Object.keys(stats).length > 0);
+check('통계에 정답/시도 수가 있음',
+  Object.values(stats).every((e) => typeof e.correct === 'number' && typeof e.total === 'number' && e.total >= e.correct));
+check('월드 상태', g.mode === 'world');
+tap('j');
+check('수호자 일지 열림', g.mode === 'journal');
+tap('ArrowDown'); // 스크롤(목록이 짧으면 변화 없을 수 있음)
+tap('x');
+check('일지 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[30] 교실용 학습 리포트 (F)');
+const { buildReportText } = vm.runInContext('({ buildReportText: window.__test.buildReportText })', sandbox);
+const report = buildReportText();
+check('리포트에 제목 포함', /학습 리포트/.test(report));
+check('리포트에 정답률 포함', /푼 문제/.test(report) && /정답/.test(report));
+check('리포트에 주제별 정답률 포함', /주제별 정답률/.test(report));
+
+console.log('[31] 자유 퀴즈 챌린지 (G)');
+check('월드 상태', g.mode === 'world');
+tap('q');
+check('챌린지 주제 선택 열림', g.mode === 'challenge' && g.challenge.phase === 'topic');
+check('주제 목록 존재', g.challenge.topics.length > 0);
+tap('z'); // 전체 랜덤 시작 (sel=0)
+check('퀴즈 시작', g.challenge.phase === 'quiz');
+check('문항 10개 이하로 출제', g.challenge.questions.length > 0 && g.challenge.questions.length <= 10);
+// 10문제를 모두 정답으로 풀어 결과 화면까지
+let guard = 0;
+while (g.mode === 'challenge' && g.challenge.phase !== 'result' && guard++ < 60) {
+  if (g.challenge.phase === 'quiz') {
+    const q = g.challenge.questions[g.challenge.idx];
+    const target = g.challenge.choiceOrder.indexOf(q.c);
+    while (g.challenge.cursor !== target) tap('ArrowDown');
+    tap('z'); // 제출 → feedback
+  } else if (g.challenge.phase === 'feedback') {
+    tap('z'); // 다음
+  }
+}
+check('결과 화면 도달', g.challenge && g.challenge.phase === 'result');
+check('전부 맞히면 만점', g.challenge.score === g.challenge.questions.length);
+tap('z'); // 닫기 → world (ret)
+check('챌린지 닫고 복귀', g.mode === 'world');
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
