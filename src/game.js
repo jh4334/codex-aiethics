@@ -61,6 +61,27 @@
 
   const SLOT_COUNT = 3;
 
+  // ---------- 저장 가능 여부 (비공개 모드·저장공간 가득 등) ----------
+  // 모든 쓰기가 조용히 실패해 진행이 안 저장되는 최악의 상황을 사용자에게 알린다.
+  let storageOk = true;
+  function probeStorage() {
+    try {
+      const k = '__ae_probe__';
+      localStorage.setItem(k, '1');
+      const ok = localStorage.getItem(k) === '1';
+      localStorage.removeItem(k);
+      storageOk = ok;
+    } catch (e) { storageOk = false; }
+    return storageOk;
+  }
+  // 런타임에 저장이 처음 실패하면(쿼터 초과 등) 경고로 승격하고 안내를 띄운다.
+  function noteStorageFail() {
+    if (storageOk) {
+      storageOk = false;
+      try { game.notice = { text: '⚠ 이 기기에서는 진행이 저장되지 않아요. 백업을 이용해 주세요.', t: 360 }; } catch (e) { /* 무시 */ }
+    }
+  }
+
   function newFlags() {
     return {
       talkedProf: false,
@@ -99,7 +120,7 @@
 
   function writeSlot(i, data) {
     try { localStorage.setItem(slotKey(i), JSON.stringify(data)); }
-    catch (e) { /* 저장 불가 환경이면 무시 */ }
+    catch (e) { noteStorageFail(); }
   }
 
   function deleteSlot(i) {
@@ -4153,6 +4174,13 @@
     ctx.font = '13px monospace';
     ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   도감 ${dexSeenCount()}/${DEX_ORDER.length}`, canvas.width / 2, 500);
 
+    // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
+    if (!storageOk) {
+      ctx.fillStyle = badColor();
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText('⚠ 진행이 저장되지 않는 환경이에요 — 메뉴의 데이터 백업을 이용하세요', canvas.width / 2, 520);
+    }
+
     // 삭제 확인
     if (game.titleScreen === 'delete') {
       ctx.fillStyle = 'rgba(0,0,0,.8)';
@@ -4595,6 +4623,7 @@
     });
   }
 
+  probeStorage(); // 저장 가능 여부 확인 (불가하면 타이틀에 경고 표시)
   migrateOldSave();
   migrateLearningData(); // 이전 버전의 전역 학습 데이터를 슬롯 0으로 이전
   Object.assign(game, loadSettings()); // 저장된 설정(자막 속도·큰 글씨·색약) 복원
@@ -4607,7 +4636,7 @@
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
-    sanitizeName,
+    sanitizeName, probeStorage, getStorageOk: () => storageOk,
   };
   frame();
 })();
