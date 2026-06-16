@@ -254,4 +254,23 @@ g.quizedit = { ret: 'title', cursor: 0, toast: 0 };
 g.time = 20;
 shot('18-quizedit.png');
 
-console.log('완료. shots/ 폴더에 18장 생성.');
+// 19) 배움 카드 컬렉션 (슬롯 0의 정답 통계로 일부 해금)
+g.currentSlot = 0;
+g.mode = 'cards';
+g.cards = { ret: 'title', slot: 0, scroll: 0 };
+g.time = 20;
+shot('19-cards.png');
+
+// 20) 수료증 · 진도 인증서
+g.mode = 'cert';
+g.cert = { ret: 'title', slot: 0, toast: 0 };
+g.time = 20;
+shot('20-cert.png');
+
+// 21) 명예의 전당 (슬롯들의 최고 기록)
+g.mode = 'hof';
+g.hof = { ret: 'title', cat: 0 };
+g.time = 20;
+shot('21-hof.png');
+
+console.log('완료. shots/ 폴더에 21장 생성.');

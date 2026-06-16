@@ -446,8 +446,9 @@ check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
 check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
-const PAUSE_ORDER = ['journal', 'dashboard', 'awards', 'cosmetics', 'challenge', 'review', 'dex',
-  'quizedit', 'backup', 'difficulty', 'textspeed', 'tts', 'largetext', 'colorblind', 'mute', 'help', 'close'];
+const PAUSE_ORDER = ['journal', 'cards', 'halloffame', 'dashboard', 'awards', 'cosmetics', 'cert',
+  'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
+  'largetext', 'colorblind', 'mute', 'help', 'close'];
 const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
 while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
 tap('z');
@@ -728,5 +729,49 @@ tap('z'); // 복원
 check('읽어주기 복원', g.tts === ttsBefore);
 tap('x');
 check('메뉴 닫힘', g.mode === 'world');
+
+console.log('[45] 학습 카드 컬렉션');
+check('카드 데이터 존재', Array.isArray(T.LEARN_CARDS) && T.LEARN_CARDS.length >= 20);
+T.recordTopicResult(2, 'privacy', true);
+check('주제 정답 시 카드 해금', T.cardUnlocked(2, 'privacy') === true);
+check('안 푼 주제는 잠김', T.cardUnlocked(2, 'deepfake') === false);
+check('해금 카드 수 집계', T.collectedCards(2) >= 1);
+T.recordTopicResult(2, 'privacy', false); // 틀려도 이미 해금된 카드는 유지
+check('이미 해금된 카드는 유지', T.cardUnlocked(2, 'privacy') === true);
+g.mode = 'world';
+tap('l');
+check('배움 카드 화면 열림', g.mode === 'cards');
+tap('ArrowDown'); tap('ArrowUp');
+tap('x');
+check('배움 카드 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[46] 수료증·진도 인증서');
+const certText = T.buildCertText(0);
+check('수료증 텍스트 생성', typeof certText === 'string' && certText.includes('수료증'));
+check('수료증에 정답률·진행도 포함', certText.includes('정답률') && certText.includes('진행도'));
+g.mode = 'world';
+tap('n');
+check('수료증 화면 열림', g.mode === 'cert');
+tap('z'); // 클립보드 복사 시도(샌드박스에선 토스트만)
+tap('x');
+check('수료증 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[47] 명예의 전당 (로컬 기록)');
+check('전당 부문 정의', Array.isArray(T.HOF_CATS) && T.HOF_CATS.length >= 4);
+g.mode = 'world';
+tap('f');
+check('명예의 전당 열림', g.mode === 'hof');
+tap('ArrowDown');
+check('부문 이동', g.hof.cat === 1);
+tap('x');
+check('전당 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[48] 미니게임·보스 패턴 확장');
+const { BOSS_ATTACKS } = vm.runInContext('({ BOSS_ATTACKS })', sandbox);
+const patterns = Object.values(BOSS_ATTACKS).map((a) => a.pattern);
+check('나선형 패턴 존재', patterns.includes('spiral'));
+check('빈틈 벽 패턴 존재', patterns.includes('wall'));
+check('지그재그 패턴 존재', patterns.includes('zigzag'));
+check('보너스 몬스터도 회피 패턴 보유', BOSS_ATTACKS.miraemon && BOSS_ATTACKS.miraemon.pattern === 'spiral');
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

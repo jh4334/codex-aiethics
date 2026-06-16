@@ -53,6 +53,9 @@
     tts: false,          // 읽어주기(TTS) 접근성
     dashboard: { ret: 'title', cursor: 0 }, // 교사용 대시보드
     quizedit: { ret: 'title', cursor: 0, toast: 0 }, // 커스텀 퀴즈 편집·가져오기
+    cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
+    cert: { ret: 'title', slot: 0, toast: 0 },       // 수료증·진도 인증서
+    hof: { ret: 'title', cat: 0 },                   // 명예의 전당(로컬 기록)
     pauseScroll: 0,      // 일시정지 메뉴 스크롤
   };
 
@@ -590,6 +593,40 @@
     }
   }
 
+  // ---------- 학습 카드 컬렉션 ----------
+  // 한 주제에서 한 번이라도 정답을 맞히면 그 주제의 '배움 카드'가 열린다.
+  // 별도 저장 없이 슬롯별 정답 통계(getStats)에서 그대로 끌어온다 → 백업/복원에도 자동 반영.
+  const LEARN_CARDS = [
+    { topic: 'privacy', icon: '🔒', lesson: '이름·주소·사진 같은 내 정보는 함부로 입력하거나 알려주지 않아요.' },
+    { topic: 'copyright', icon: '✏', lesson: '남이 만든 글·그림·음악을 쓸 땐 출처를 밝히고 허락을 구해요.' },
+    { topic: 'fake', icon: '🔍', lesson: 'AI의 답도 틀릴 수 있어요. 여러 곳에서 사실인지 확인해요.' },
+    { topic: 'bias', icon: '⚖', lesson: 'AI는 한쪽으로 치우칠 수 있어요. 모두에게 공정한지 살펴요.' },
+    { topic: 'balance', icon: '🌱', lesson: 'AI에 너무 기대지 말고 스스로 생각하는 힘도 길러요.' },
+    { topic: 'manners', icon: '💬', lesson: '상대가 AI라도 고운 말로 예의 있게 대화해요.' },
+    { topic: 'filterbubble', icon: '🫧', lesson: '추천만 보면 생각이 좁아져요. 다양한 정보를 찾아봐요.' },
+    { topic: 'safety', icon: '🛡', lesson: '중요한 결정은 AI에만 맡기지 말고 사람이 꼭 확인해요.' },
+    { topic: 'environment', icon: '🌍', lesson: 'AI도 전기를 많이 써요. 꼭 필요할 때 알맞게 사용해요.' },
+    { topic: 'transparency', icon: '💡', lesson: '왜 그런 답이 나왔는지 물어보고 근거를 따져봐요.' },
+    { topic: 'responsibility', icon: '🤝', lesson: 'AI를 쓴 결과에는 그것을 사용한 사람의 책임도 있어요.' },
+    { topic: 'creativity', icon: '🎨', lesson: 'AI에 맡기기 전에 내 생각으로 먼저 만들어 봐요.' },
+    { topic: 'jobs', icon: '🛠', lesson: 'AI는 도구예요. 사람과 힘을 합칠 때 더 좋아져요.' },
+    { topic: 'emotion', icon: '💗', lesson: 'AI는 진짜 친구나 가족의 마음을 대신할 수 없어요.' },
+    { topic: 'security', icon: '🔑', lesson: '비밀번호는 비밀로! 수상한 링크·요청은 어른께 확인해요.' },
+    { topic: 'footprint', icon: '👣', lesson: '인터넷에 남긴 기록은 오래 남아요. 올리기 전에 한 번 더 생각해요.' },
+    { topic: 'consent', icon: '📝', lesson: '내 정보를 모을 땐 누가·왜 모으는지 알고 동의해요.' },
+    { topic: 'identity', icon: '🎭', lesson: '남인 척하거나 AI를 사람인 척 속이면 안 돼요.' },
+    { topic: 'persuasion', icon: '🪤', lesson: '자꾸 누르게 만드는 화면에 속지 말고 천천히 결정해요.' },
+    { topic: 'genai', icon: '✨', lesson: 'AI는 그럴듯한 거짓(환각)을 지어낼 수 있어요. 꼭 확인해요.' },
+    { topic: 'deepfake', icon: '🎬', lesson: '진짜 같은 가짜 영상·목소리가 있어요. 출처를 의심해 봐요.' },
+  ];
+  function cardUnlocked(slot, topic) {
+    const s = getStats(slot)[topic];
+    return !!(s && s.correct >= 1);
+  }
+  function collectedCards(slot) {
+    return LEARN_CARDS.filter((c) => cardUnlocked(slot, c.topic)).length;
+  }
+
   // ---------- 데이터 백업 · 복원 ----------
   function allBackupKeys() {
     const keys = [SETTINGS_KEY, ENDINGS_KEY, DEX_KEY];
@@ -723,6 +760,24 @@
       if (game.mode === 'world') { openQuizEdit('world'); return; }
       if (game.mode === 'title' && game.titleScreen === 'slots') { openQuizEdit('title'); return; }
       if (game.mode === 'quizedit') { closeQuizEdit(); return; }
+      return;
+    }
+    if (e.key === 'l' || e.key === 'L') { // 배움 카드(Learn)
+      if (game.mode === 'world') { openCards('world'); return; }
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openCards('title'); return; }
+      if (game.mode === 'cards') { closeCards(); return; }
+      return;
+    }
+    if (e.key === 'n' || e.key === 'N') { // 수료증(iNjeungseo)
+      if (game.mode === 'world') { openCert('world'); return; }
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openCert('title'); return; }
+      if (game.mode === 'cert') { closeCert(); return; }
+      return;
+    }
+    if (e.key === 'f' || e.key === 'F') { // 명예의 전당(Fame)
+      if (game.mode === 'world') { openHof('world'); return; }
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openHof('title'); return; }
+      if (game.mode === 'hof') { closeHof(); return; }
       return;
     }
     const k = KEYMAP[e.key];
@@ -1476,6 +1531,28 @@
       const y = box.y + 12 + Math.random() * (box.h - 24);
       d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
         vx: (fromLeft ? 1 : -1) * (2.2 + Math.random() * 1.2) * sf, vy: 0, r: 6 });
+    } else if (pattern === 'spiral') {
+      // 중앙에서 회전하며 뿜어내는 나선형 탄막
+      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      d.spiralA = (d.spiralA || 0) + 0.55;
+      for (let i = 0; i < 3; i++) {
+        const a = d.spiralA + i * (Math.PI * 2 / 3);
+        d.bullets.push({ x: cx, y: cy, vx: Math.cos(a) * 2.1 * sf, vy: Math.sin(a) * 2.1 * sf, r: 5 });
+      }
+    } else if (pattern === 'wall') {
+      // 위에서 내려오는 한 줄, 빠져나갈 빈틈이 하나 있다
+      const cols = 7, gap = 1 + Math.floor(Math.random() * (cols - 3));
+      for (let i = 0; i < cols; i++) {
+        if (i === gap || i === gap + 1) continue;
+        const x = box.x + 12 + i * (box.w - 24) / (cols - 1);
+        d.bullets.push({ x, y: box.y - 6, vx: 0, vy: 2.0 * sf, r: 6 });
+      }
+    } else if (pattern === 'zigzag') {
+      // 옆에서 들어와 위아래로 일렁이며 날아오는 탄막
+      const fromLeft = Math.random() < 0.5;
+      const y = box.y + 16 + Math.random() * (box.h - 32);
+      d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
+        vx: (fromLeft ? 1 : -1) * 1.9 * sf, vy: 0, r: 6, zig: 2.4 * sf, zigT: Math.random() * 6 });
     } else { // burst — 중앙에서 방사형
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
       const n = 6, base = Math.random() * Math.PI * 2;
@@ -1506,11 +1583,15 @@
     d.spawnTimer -= 1;
     if (d.spawnTimer <= 0 && d.t < d.dur - 50) {
       spawnBullets(d, atk.pattern);
-      d.spawnTimer = atk.pattern === 'burst' ? 24 : 15;
+      d.spawnTimer = atk.pattern === 'burst' ? 24 : atk.pattern === 'spiral' ? 8
+        : atk.pattern === 'wall' ? 42 : atk.pattern === 'zigzag' ? 18 : 15;
     }
 
-    // 탄막 이동 + 화면 밖 제거
-    for (const bu of d.bullets) { bu.x += bu.vx; bu.y += bu.vy; }
+    // 탄막 이동 + 화면 밖 제거 (zigzag 탄막은 진행하며 위아래로 일렁인다)
+    for (const bu of d.bullets) {
+      if (bu.zig) { bu.zigT = (bu.zigT || 0) + 1; bu.vy = Math.sin(bu.zigT / 7) * bu.zig; }
+      bu.x += bu.vx; bu.y += bu.vy;
+    }
     d.bullets = d.bullets.filter((bu) =>
       bu.x > d.box.x - 24 && bu.x < d.box.x + d.box.w + 24 &&
       bu.y > d.box.y - 24 && bu.y < d.box.y + d.box.h + 24);
@@ -1975,13 +2056,17 @@
 
   // ---------- 설정·일시정지 메뉴 ----------
   // 터치 기기에는 키보드 단축키(J/Q/B/I 등)가 없으므로, 모든 기능을 메뉴로 연다.
-  const PAUSE_ITEMS = ['journal', 'dashboard', 'awards', 'cosmetics', 'challenge', 'review', 'dex',
-    'quizedit', 'backup', 'difficulty', 'textspeed', 'tts', 'largetext', 'colorblind', 'mute', 'help', 'close'];
+  const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'dashboard', 'awards', 'cosmetics', 'cert',
+    'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
+    'largetext', 'colorblind', 'mute', 'help', 'close'];
   const PAUSE_LABELS = {
     journal: '◆ 수호자 일지',
+    cards: '📚 배움 카드',
+    halloffame: '🏆 명예의 전당',
     dashboard: '▤ 교사용 대시보드',
     awards: '☆ 도전과제',
     cosmetics: '✿ 꾸미기 (칭호·테마)',
+    cert: '🎓 수료증',
     challenge: '▶ 퀴즈 챌린지',
     review: '★ 오답 복습 노트',
     dex: '♥ 몬스터 도감',
@@ -2008,6 +2093,7 @@
     if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
     if (item === 'cosmetics') return `${unlockedCount(game.currentSlot)}/${TITLES.length + THEMES.length}`;
+    if (item === 'cards') return `${collectedCards(game.currentSlot)}/${LEARN_CARDS.length}`;
     if (item === 'quizedit') return `${getCustomQuizzes().length}개`;
     if (item === 'journal') {
       const s = buildLearningSummary(game.currentSlot);
@@ -2042,6 +2128,9 @@
     if (justPressed('action')) {
       const item = PAUSE_ITEMS[game.pauseCursor];
       if (item === 'journal') openJournal('pause');
+      else if (item === 'cards') openCards('pause');
+      else if (item === 'halloffame') openHof('pause');
+      else if (item === 'cert') openCert('pause');
       else if (item === 'dashboard') openDashboard('pause');
       else if (item === 'awards') openAwards('pause');
       else if (item === 'cosmetics') openCosmetics('pause');
@@ -2620,10 +2709,11 @@
     ['head', '◆ 더 즐기기'],
     ['', '미래연구소: 마을 오른쪽 빛나는 문 — 새 AI 주제(환각·딥페이크) 연습'],
     ['', '오늘의 도전·연속 출석, 칭호·테마 꾸미기(K), 데이터 백업·복원(U)'],
+    ['', '배움 카드(L): 주제를 맞히면 카드가 열려요 · 명예의 전당(F): 최고 기록'],
     ['', ''],
     ['head', '◆ 선생님 · 접근성'],
     ['', '교사용 대시보드(P): 학생별 학습 현황 비교 · 커스텀 퀴즈(E)'],
-    ['', '난이도(저학년/기본/고학년) · 읽어주기(TTS)는 메뉴에서 켜요'],
+    ['', '수료증(N): 진도를 증서로 저장 · 난이도·읽어주기(TTS)는 메뉴에서'],
   ];
   function openHelp(ret) {
     game.helpRet = ret;
@@ -2757,6 +2847,320 @@
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('←→ 칭호/테마 · ↑↓ 선택 · Z 적용 · X 닫기', canvas.width / 2, 512);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 학습 카드 컬렉션 화면 ----------
+  const CARDS_VISIBLE = 4; // 한 화면에 보이는 카드 수
+  function openCards(ret) {
+    game.cards.ret = ret;
+    game.cards.slot = activeSlot();
+    game.cards.scroll = 0;
+    game.mode = 'cards';
+    Sound.select();
+  }
+  function closeCards() {
+    game.mode = game.cards.ret;
+    Sound.select();
+  }
+  function updateCards() {
+    const cd = game.cards;
+    const maxScroll = Math.max(0, LEARN_CARDS.length - CARDS_VISIBLE);
+    if (justPressed('up')) { cd.scroll = Math.max(0, cd.scroll - 1); Sound.blip(); }
+    if (justPressed('down')) { cd.scroll = Math.min(maxScroll, cd.scroll + 1); Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeCards();
+  }
+  function drawCards() {
+    const cd = game.cards, slot = cd.slot;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText(`📚 배움 카드 — ${slotLearnName(slot)}`, 24, 36);
+    const got = collectedCards(slot);
+    ctx.fillStyle = warnColor();
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(`모은 카드 ${got} / ${LEARN_CARDS.length}`, 24, 58);
+    ctx.fillStyle = '#888';
+    ctx.font = '11px monospace';
+    ctx.fillText('각 주제에서 한 번이라도 정답을 맞히면 그 카드가 열려요.', 220, 58);
+
+    const cardH = 96, top = 74, w = canvas.width - 48;
+    for (let k = 0; k < CARDS_VISIBLE; k++) {
+      const i = cd.scroll + k;
+      if (i >= LEARN_CARDS.length) break;
+      const card = LEARN_CARDS[i];
+      const unlocked = cardUnlocked(slot, card.topic);
+      const x = 24, y = top + k * (cardH + 6);
+      utBox(x, y, w, cardH, 6);
+      // 아이콘
+      ctx.textAlign = 'center';
+      ctx.font = '38px monospace';
+      ctx.fillStyle = unlocked ? '#fff' : '#444';
+      ctx.fillText(unlocked ? card.icon : '🔒', x + 44, y + 58);
+      // 제목 + 해설
+      ctx.textAlign = 'left';
+      ctx.fillStyle = unlocked ? themeAccent() : '#555';
+      ctx.font = 'bold 17px monospace';
+      ctx.fillText(`${i + 1}. ${topicLabel(card.topic)}`, x + 86, y + 32);
+      ctx.fillStyle = unlocked ? '#ddd' : '#444';
+      ctx.font = '13px monospace';
+      if (unlocked) wrapText(card.lesson, x + 86, y + 58, w - 110, 19);
+      else ctx.fillText('아직 잠긴 카드예요 — 이 주제 문제를 맞혀 보세요!', x + 86, y + 58);
+    }
+    // 스크롤 표시
+    ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.textAlign = 'center';
+    if (cd.scroll > 0) ctx.fillText('▲', canvas.width / 2, top - 2);
+    if (cd.scroll + CARDS_VISIBLE < LEARN_CARDS.length) ctx.fillText('▼', canvas.width / 2, top + CARDS_VISIBLE * (cardH + 6) + 2);
+
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('↑↓ 넘기기 · Z 또는 X로 닫기', canvas.width / 2, 514);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 수료증 · 진도 인증서 ----------
+  function certDateStr() {
+    const d = new Date();
+    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+  }
+  function buildCertText(slot) {
+    const s = buildLearningSummary(slot);
+    const sum = slotSummary(slot);
+    const title = selectedTitle(slot);
+    const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : '—';
+    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`) : '시작 전';
+    return [
+      '════════ AI 윤리 어드벤처 수료증 ════════',
+      '',
+      `  이름: ${slotLearnName(slot)}${title ? ` (${title.name})` : ''}`,
+      `  날짜: ${certDateStr()}`,
+      '',
+      `  진행도   : ${prog}`,
+      `  푼 문제  : ${s.attempted}개   ·   정답률 ${acc}`,
+      `  배움 카드: ${collectedCards(slot)} / ${LEARN_CARDS.length}`,
+      `  도전과제 : ${countAchievements(slot)} / ${ACHIEVEMENTS.length}`,
+      `  안아준 마음: ♥ ${sum ? sum.mercy : 0}`,
+      '',
+      '  위 학생은 AI를 바르고 안전하게 쓰는 법을',
+      '  열심히 익혔기에 이 증서를 드립니다.',
+      '',
+      '             — AI 윤리 연구소 —',
+      '═══════════════════════════════════════',
+    ].join('\n');
+  }
+  function openCert(ret) {
+    game.cert.ret = ret;
+    game.cert.slot = activeSlot();
+    game.cert.toast = 0;
+    game.mode = 'cert';
+    Sound.select();
+  }
+  function closeCert() {
+    game.mode = game.cert.ret;
+    Sound.select();
+  }
+  function downloadCert() {
+    try {
+      const text = buildCertText(game.cert.slot);
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `수료증-${slotLearnName(game.cert.slot)}.txt`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      game.cert.toast = 1;
+    } catch (e) { game.cert.toast = -1; }
+    Sound.badge();
+  }
+  function updateCert() {
+    if (game.cert.toast > 0) { /* 유지 */ }
+    if (justPressed('action')) { if (copyTextToClipboard(buildCertText(game.cert.slot))) { game.cert.toast = 2; Sound.badge(); } else { game.cert.toast = -1; } return; }
+    if (justPressed('menu')) { downloadCert(); return; }
+    if (justPressed('cancel')) { closeCert(); return; }
+  }
+  function drawCert() {
+    const slot = game.cert.slot;
+    ctx.fillStyle = '#1a1626';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // 증서 카드
+    const cx = canvas.width / 2;
+    const bx = 90, by = 56, bw = canvas.width - 180, bh = 392;
+    ctx.fillStyle = '#fbf6e9';
+    roundRect(bx, by, bw, bh, 10); ctx.fill();
+    ctx.strokeStyle = themeAccent(); ctx.lineWidth = 4;
+    roundRect(bx + 10, by + 10, bw - 20, bh - 20, 8); ctx.stroke();
+    ctx.lineWidth = 1;
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#7a5c12';
+    ctx.font = 'bold 15px monospace';
+    ctx.fillText('AI 윤리 어드벤처', cx, by + 50);
+    ctx.fillStyle = '#2a2417';
+    ctx.font = 'bold 30px monospace';
+    ctx.fillText('수 료 증', cx, by + 92);
+
+    const s = buildLearningSummary(slot);
+    const sum = slotSummary(slot);
+    const title = selectedTitle(slot);
+    ctx.fillStyle = '#2a2417';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText(slotLearnName(slot), cx, by + 138);
+    if (title) { ctx.fillStyle = '#a07b1e'; ctx.font = 'bold 13px monospace'; ctx.fillText(`「${title.name}」`, cx, by + 160); }
+
+    ctx.fillStyle = '#3a3220';
+    ctx.font = '13px monospace';
+    ctx.fillText('위 학생은 AI를 바르고 안전하게 쓰는 법을', cx, by + 192);
+    ctx.fillText('열심히 익혔기에 이 증서를 드립니다.', cx, by + 212);
+
+    const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : '—';
+    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`) : '시작 전';
+    const rows = [
+      ['진행도', prog], ['정답률', `${acc} (${s.attempted}문제)`],
+      ['배움 카드', `${collectedCards(slot)}/${LEARN_CARDS.length}`],
+      ['도전과제', `${countAchievements(slot)}/${ACHIEVEMENTS.length}`],
+      ['안아준 마음', `♥ ${sum ? sum.mercy : 0}`],
+    ];
+    let ry = by + 244;
+    ctx.font = '14px monospace';
+    for (const [k, v] of rows) {
+      ctx.textAlign = 'left'; ctx.fillStyle = '#6a5a2e'; ctx.fillText(k, bx + 70, ry);
+      ctx.textAlign = 'right'; ctx.fillStyle = '#2a2417'; ctx.fillText(v, bx + bw - 70, ry);
+      ry += 24;
+    }
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#7a5c12';
+    ctx.font = '13px monospace';
+    ctx.fillText(`${certDateStr()}   ·   AI 윤리 연구소`, cx, by + bh - 24);
+
+    if (game.cert.toast !== 0) {
+      ctx.fillStyle = game.cert.toast < 0 ? badColor() : okColor();
+      ctx.font = 'bold 13px monospace';
+      ctx.fillText(game.cert.toast < 0 ? '복사·저장에 실패했어요 (브라우저에서 시도해 주세요)'
+        : game.cert.toast === 1 ? '✓ 파일로 저장했어요!' : '✓ 글자로 복사했어요!', cx, 472);
+    }
+    ctx.fillStyle = '#aaa';
+    ctx.font = '13px monospace';
+    ctx.fillText('Z 글자 복사 · C 파일 저장(.txt) · X 닫기', cx, 500);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 명예의 전당 (로컬 기록) ----------
+  const HOF_CATS = [
+    { key: 'challenge', label: '챌린지 최고점', icon: '✦',
+      val: (i) => { const m = getMeta(i); return m.challengeBestTotal ? (m.challengeBest || 0) : -1; },
+      fmt: (i) => { const m = getMeta(i); return m.challengeBestTotal ? `${m.challengeBest || 0}/${m.challengeBestTotal}` : '—'; } },
+    { key: 'streak', label: '최장 연속 출석', icon: '🔥',
+      val: (i) => getMeta(i).bestStreak || 0, fmt: (i) => { const b = getMeta(i).bestStreak || 0; return b ? `${b}일` : '—'; } },
+    { key: 'mercy', label: '안아준 마음', icon: '♥',
+      val: (i) => { const s = slotSummary(i); return s ? s.mercy : -1; }, fmt: (i) => { const s = slotSummary(i); return s ? `♥ ${s.mercy}` : '—'; } },
+    { key: 'cards', label: '배움 카드', icon: '📚',
+      val: (i) => slotSummary(i) ? collectedCards(i) : -1, fmt: (i) => slotSummary(i) ? `${collectedCards(i)}/${LEARN_CARDS.length}` : '—' },
+    { key: 'awards', label: '도전과제', icon: '☆',
+      val: (i) => slotSummary(i) ? countAchievements(i) : -1, fmt: (i) => slotSummary(i) ? `${countAchievements(i)}/${ACHIEVEMENTS.length}` : '—' },
+    { key: 'dex', label: '도감 수집', icon: '◆',
+      val: () => dexSeenCount(), fmt: () => `${dexSeenCount()}/${DEX_ORDER.length}`, shared: true },
+  ];
+  function openHof(ret) {
+    game.hof.ret = ret;
+    game.hof.cat = 0;
+    game.mode = 'hof';
+    Sound.select();
+  }
+  function closeHof() {
+    game.mode = game.hof.ret;
+    Sound.select();
+  }
+  function updateHof() {
+    const n = HOF_CATS.length;
+    if (justPressed('up')) { game.hof.cat = (game.hof.cat + n - 1) % n; Sound.blip(); }
+    if (justPressed('down')) { game.hof.cat = (game.hof.cat + 1) % n; Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeHof();
+  }
+  function drawHof() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText('🏆 명예의 전당', 24, 36);
+    ctx.fillStyle = '#888';
+    ctx.font = '12px monospace';
+    ctx.fillText('이 기기에서 함께한 학생들의 최고 기록이에요. ↑↓로 부문 선택.', 24, 56);
+
+    // 부문 목록(왼쪽) + 순위(오른쪽)
+    const listX = 24, listY = 84, rowH = 60;
+    for (let i = 0; i < HOF_CATS.length; i++) {
+      const cat = HOF_CATS[i];
+      const sel = i === game.hof.cat;
+      const y = listY + i * rowH;
+      if (sel) { utBox(listX - 4, y - 22, 200, 50, 6); }
+      ctx.textAlign = 'left';
+      ctx.font = '22px monospace';
+      ctx.fillStyle = sel ? '#fff' : '#666';
+      ctx.fillText(cat.icon, listX + 6, y + 8);
+      ctx.font = (sel ? 'bold ' : '') + '14px monospace';
+      ctx.fillStyle = sel ? themeAccent() : '#888';
+      ctx.fillText(cat.label, listX + 40, y + 4);
+    }
+
+    // 선택된 부문의 순위
+    const cat = HOF_CATS[game.hof.cat];
+    const panelX = 248, panelY = 84, panelW = canvas.width - panelX - 24;
+    utBox(panelX, panelY, panelW, 380, 8);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(`${cat.icon} ${cat.label}`, panelX + 20, panelY + 30);
+
+    if (cat.shared) {
+      ctx.fillStyle = warnColor();
+      ctx.font = 'bold 34px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(cat.fmt(0), panelX + panelW / 2, panelY + 130);
+      ctx.fillStyle = '#888';
+      ctx.font = '13px monospace';
+      ctx.fillText('(도감은 모두가 함께 채우는 공동 기록이에요)', panelX + panelW / 2, panelY + 170);
+      ctx.textAlign = 'left';
+    } else {
+      // 슬롯들을 점수로 정렬
+      const ranked = [];
+      for (let i = 0; i < SLOT_COUNT; i++) {
+        const sum = slotSummary(i);
+        ranked.push({ i, name: sum ? sum.name : null, v: cat.val(i), label: cat.fmt(i) });
+      }
+      ranked.sort((a, b) => b.v - a.v);
+      const medals = ['🥇', '🥈', '🥉'];
+      let ry = panelY + 70;
+      for (let r = 0; r < ranked.length; r++) {
+        const e = ranked[r];
+        const empty = e.name === null;       // 슬롯 자체가 비어 있음
+        const noRecord = !empty && e.v < 0;  // 학생은 있지만 이 부문 기록이 없음
+        const ranking = !empty && !noRecord; // 순위 매김 대상
+        ctx.font = '26px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(ranking ? (medals[r] || ' ') : '·', panelX + 20, ry + 8);
+        ctx.fillStyle = ranking ? '#fff' : '#666';
+        ctx.font = 'bold 17px monospace';
+        ctx.fillText(empty ? `슬롯 ${e.i + 1} — 비어 있음` : e.name, panelX + 64, ry);
+        if (!empty) {
+          ctx.fillStyle = ranking && r === 0 ? warnColor() : '#888';
+          ctx.font = 'bold 17px monospace';
+          ctx.textAlign = 'right';
+          ctx.fillText(noRecord ? '—' : e.label, panelX + panelW - 20, ry);
+          ctx.textAlign = 'left';
+        }
+        ry += 64;
+      }
+    }
+
+    ctx.fillStyle = '#777';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('↑↓ 부문 · Z 또는 X로 닫기', canvas.width / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -3668,8 +4072,9 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
-    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · K 꾸미기`, canvas.width / 2, 462);
-    ctx.fillText(`P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말 · M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, canvas.width / 2, 480);
+    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · K 꾸미기 · L 배움카드`, canvas.width / 2, 456);
+    ctx.fillText(`F 명예의전당 · N 수료증 · P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말`, canvas.width / 2, 472);
+    ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, canvas.width / 2, 488);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -4031,6 +4436,18 @@
         updateQuizEdit();
         drawQuizEdit();
         break;
+      case 'cards':
+        updateCards();
+        drawCards();
+        break;
+      case 'cert':
+        updateCert();
+        drawCert();
+        break;
+      case 'hof':
+        updateHof();
+        drawHof();
+        break;
     }
 
     const showHintBtn = game.mode === 'battle' && game.battle &&
@@ -4064,6 +4481,7 @@
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
+    collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
   };
   frame();
 })();

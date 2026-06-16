@@ -2580,18 +2580,23 @@ const DEX_ORDER = [
 // 보스의 HP가 절반으로 떨어지는 순간, 그 마음이 '폭주'하며 짧은 회피 구간이 펼쳐진다.
 // 맞아도 하트는 1 아래로는 줄지 않아(절대 게임오버 없음) 아이들도 부담 없이 즐긴다.
 //  pattern: 'rain'(위에서 쏟아짐) | 'sides'(양옆에서) | 'burst'(사방으로 퍼짐)
+//         | 'spiral'(중앙에서 회전하며 뿜음) | 'wall'(빈틈 있는 한 줄) | 'zigzag'(일렁이며 옆에서)
 const BOSS_ATTACKS = {
   hondonmon:    { pattern: 'rain',  dur: 300, color: '#9b5de5', taunt: '…내 마음이, 엉킨다…!' },
   meotdaeromon: { pattern: 'sides', dur: 300, color: '#f08a24', taunt: '멈출 수… 없어!' },
   tteonemgimon: { pattern: 'burst', dur: 300, color: '#5cb85c', taunt: '내 탓이… 아니야!' },
   hollimmon:    { pattern: 'rain',  dur: 320, color: '#9b5de5', taunt: '가지 마… 가지 마…' },
   finalboss:    { pattern: 'burst', dur: 360, color: '#d62828', taunt: '어둠이… 몰아친다!' },
-  girokmon:     { pattern: 'rain',  dur: 300, color: '#7bd1f0', taunt: '지워지지 않아… 전부 남아!' },
+  girokmon:     { pattern: 'zigzag', dur: 300, color: '#7bd1f0', taunt: '지워지지 않아… 전부 남아!' },
   saseomon:     { pattern: 'sides', dur: 300, color: '#d62828', taunt: '돌려줄 수 없어… 전부 내 거야!' },
-  mirrormon:    { pattern: 'burst', dur: 320, color: '#9aa0b0', taunt: '나는 너… 너는 나…!' },
+  mirrormon:    { pattern: 'spiral', dur: 320, color: '#9aa0b0', taunt: '나는 너… 너는 나…!' },
   soksagimon:   { pattern: 'rain',  dur: 320, color: '#3a2e4d', taunt: '…외로워… 외로워…' },
-  jogakmon:     { pattern: 'sides', dur: 300, color: '#7bd1f0', taunt: '흩어진다… 흩어진다…!' },
+  jogakmon:     { pattern: 'wall',  dur: 300, color: '#7bd1f0', taunt: '흩어진다… 흩어진다…!' },
   yeongi:       { pattern: 'burst', dur: 360, color: '#7bd1f0', taunt: '…마지막으로, 내 마음을 보여 줄게.' },
+  // 보너스 — AI 미래연구소 (새 패턴 시연)
+  hwangakmon:   { pattern: 'wall',   dur: 280, color: '#e07a5f', taunt: '사실인지… 아닌지… 헷갈려!' },
+  hapseongmon:  { pattern: 'zigzag', dur: 280, color: '#8d6cd6', taunt: '진짜와 가짜가… 뒤섞인다!' },
+  miraemon:     { pattern: 'spiral', dur: 320, color: '#46c4b0', taunt: '미래가… 소용돌이친다!' },
 };
 
 function getBossAttack(monId) {
