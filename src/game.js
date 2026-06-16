@@ -7,8 +7,15 @@
   const TS = TILE * SCALE; // 48px
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
-  const VIEW_W = Math.floor(canvas.width / TS); // 15
-  const VIEW_H = Math.floor(canvas.height / TS); // 11
+  // 논리 해상도(좌표계는 항상 720×528). 백킹 스토어는 기기 픽셀 밀도(DPR)만큼 키워
+  // 레티나·고DPI 화면에서도 글자가 또렷하게 보이게 한다.
+  const LW = 720, LH = 528;
+  const DPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  canvas.width = LW * DPR;
+  canvas.height = LH * DPR;
+  ctx.scale(DPR, DPR); // 이후 모든 그리기는 720×528 논리 좌표로 한다
+  const VIEW_W = Math.floor(LW / TS); // 15
+  const VIEW_H = Math.floor(LH / TS); // 11
   ctx.imageSmoothingEnabled = false;
 
   const SAVE_KEY = 'ai-ethics-adventure-v1';
@@ -1567,8 +1574,8 @@
     const boxW = 300, boxH = 170;
     b.dodge = {
       t: 0, dur: Math.round(atk.dur * (game.difficulty === 'easy' ? 0.75 : game.difficulty === 'hard' ? 1.2 : 1)),
-      box: { x: Math.round(canvas.width / 2 - boxW / 2), y: 150, w: boxW, h: boxH },
-      soul: { x: canvas.width / 2, y: 235 },
+      box: { x: Math.round(LW / 2 - boxW / 2), y: 150, w: boxW, h: boxH },
+      soul: { x: LW / 2, y: 235 },
       bullets: [],
       spawnTimer: 30,
       inv: 0,
@@ -1848,7 +1855,7 @@
   function drawDex() {
     const seen = getDexSeen();
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
 
     // 헤더
     ctx.textAlign = 'left';
@@ -1889,7 +1896,7 @@
     const id = DEX_ORDER[cur];
     const info = MONSTER_DEX[id];
     const isSeen = seen[id] && seen[id].seen;
-    const panelX = 330, panelW = canvas.width - panelX - 24;
+    const panelX = 330, panelW = LW - panelX - 24;
     utBox(panelX, 84, panelW, 400, 6);
 
     const cx = panelX + panelW / 2;
@@ -1943,7 +1950,7 @@
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓←→ 넘기기 · X 또는 A로 닫기', canvas.width / 2, 510);
+    ctx.fillText('↑↓←→ 넘기기 · X 또는 A로 닫기', LW / 2, 510);
     ctx.textAlign = 'left';
   }
 
@@ -2021,7 +2028,7 @@
 
   function drawReview() {
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     const r = game.review;
     const ids = r.ids;
 
@@ -2059,15 +2066,15 @@
           const firstLine = m ? m.q.split('\n')[0] : '???';
           ctx.fillText(firstLine, listX, y);
         }
-        if (start > 0) { ctx.fillStyle = '#888'; ctx.fillText('▲', canvas.width - 40, listY - 24); }
-        if (start + visible < ids.length) { ctx.fillStyle = '#888'; ctx.fillText('▼', canvas.width - 40, listY + visible * rowH); }
+        if (start > 0) { ctx.fillStyle = '#888'; ctx.fillText('▲', LW - 40, listY - 24); }
+        if (start + visible < ids.length) { ctx.fillStyle = '#888'; ctx.fillText('▼', LW - 40, listY + visible * rowH); }
       }
 
       ctx.fillStyle = '#777';
       ctx.font = '13px monospace';
       ctx.textAlign = 'center';
-      if (ids.length > 0) ctx.fillText('↑↓ 선택 · Z/스페이스로 다시 풀기 · X로 닫기', canvas.width / 2, 510);
-      else ctx.fillText('X 또는 Z로 닫기', canvas.width / 2, 510);
+      if (ids.length > 0) ctx.fillText('↑↓ 선택 · Z/스페이스로 다시 풀기 · X로 닫기', LW / 2, 510);
+      else ctx.fillText('X 또는 Z로 닫기', LW / 2, 510);
       ctx.textAlign = 'left';
       return;
     }
@@ -2077,28 +2084,28 @@
     ctx.font = fs(16);
     let boxH = game.largeText ? 280 : 238;
     if (r.phase === 'question' && m) {
-      const qMaxW = canvas.width - 24 - 56;
-      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      const qMaxW = LW - 24 - 56;
+      const cMaxW = LW - 24 - 38 - 28 - 16;
       const gap = game.largeText ? lh(16) : lh(14);
       let cl = 0;
       for (let i = 0; i < r.choiceOrder.length; i++) cl += measureWrap(`${i + 1}. ${m.a[r.choiceOrder[i]]}`, cMaxW);
       const needed = 30 + measureWrap(m.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + r.choiceOrder.length * gap + 16;
-      boxH = Math.min(Math.max(boxH, needed), canvas.height - 64 - 12);
+      boxH = Math.min(Math.max(boxH, needed), LH - 64 - 12);
     }
-    const boxY = canvas.height - boxH - 12;
+    const boxY = LH - boxH - 12;
     const hintY = boxY + boxH - 18;
 
     ctx.fillStyle = '#888';
     ctx.font = '14px monospace';
     ctx.fillText('★ 오답 복습', 24, 32);
 
-    utBox(12, boxY, canvas.width - 24, boxH, 8);
+    utBox(12, boxY, LW - 24, boxH, 8);
 
     if (r.phase === 'question') {
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      let ty = drawQuestionText(m.q, 34, boxY + 30, canvas.width - 24 - 56, lh(24)) + lh(10);
-      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      let ty = drawQuestionText(m.q, 34, boxY + 30, LW - 24 - 56, lh(24)) + lh(10);
+      const cMaxW = LW - 24 - 38 - 28 - 16;
       const gap = game.largeText ? lh(16) : lh(14);
       for (let i = 0; i < r.choiceOrder.length; i++) {
         ty += drawChoiceWrapped(`${i + 1}. ${m.a[r.choiceOrder[i]]}`, 38, ty, i === r.qCursor, cMaxW, lh(22)) + gap;
@@ -2110,11 +2117,11 @@
       ctx.fillText(f.correct ? '○ 정답! 잘 기억했어요!' : '× 다시 한번 살펴봐요.', 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), canvas.width - 24 - 44, lh(24));
+      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24));
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
-        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
+        ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
       }
     }
   }
@@ -2221,13 +2228,13 @@
   function drawPause() {
     drawWorld();
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
 
     const rowH = 34;
     const shown = Math.min(PAUSE_VISIBLE, PAUSE_ITEMS.length);
     const boxW = 340, boxH = 64 + shown * rowH;
-    const boxX = Math.round(canvas.width / 2 - boxW / 2);
-    const boxY = Math.round(canvas.height / 2 - boxH / 2);
+    const boxX = Math.round(LW / 2 - boxW / 2);
+    const boxY = Math.round(LH / 2 - boxH / 2);
     utBox(boxX, boxY, boxW, boxH, 8);
 
     ctx.textAlign = 'left';
@@ -2259,7 +2266,7 @@
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 선택 · Z 결정 · X 닫기', canvas.width / 2, boxY + boxH - 12);
+    ctx.fillText('↑↓ 선택 · Z 결정 · X 닫기', LW / 2, boxY + boxH - 12);
     ctx.textAlign = 'left';
   }
 
@@ -2331,7 +2338,7 @@
   const JOURNAL_VISIBLE = 8;
   function drawJournal() {
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     const slot = game.journal.slot;
     const s = buildLearningSummary(slot);
 
@@ -2345,7 +2352,7 @@
       ctx.fillStyle = themeAccent();
       ctx.font = 'bold 13px monospace';
       ctx.textAlign = 'right';
-      ctx.fillText(`「${title.name}」`, canvas.width - 24, 38);
+      ctx.fillText(`「${title.name}」`, LW - 24, 38);
       ctx.textAlign = 'left';
     }
 
@@ -2374,7 +2381,7 @@
       ctx.font = '15px monospace';
       ctx.fillText('아직 푼 문제가 없어요. 모험에서 퀴즈를 풀면 여기에 쌓여요!', 24, 150);
     } else {
-      const barX = 230, barW = canvas.width - barX - 90, rowH = 38;
+      const barX = 230, barW = LW - barX - 90, rowH = 38;
       const start = game.journal.scroll;
       for (let i = 0; i < JOURNAL_VISIBLE && start + i < s.rows.length; i++) {
         const r = s.rows[start + i];
@@ -2393,8 +2400,8 @@
         ctx.fillText(`${Math.round(r.rate * 100)}% (${r.correct}/${r.total})`, barX + barW + 8, y + 13);
       }
       // 스크롤 표시
-      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▲', canvas.width - 40, 132); }
-      if (start + JOURNAL_VISIBLE < s.rows.length) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▼', canvas.width - 40, 140 + JOURNAL_VISIBLE * rowH - 8); }
+      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▲', LW - 40, 132); }
+      if (start + JOURNAL_VISIBLE < s.rows.length) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▼', LW - 40, 140 + JOURNAL_VISIBLE * rowH - 8); }
     }
 
     // 약한 주제 안내
@@ -2410,7 +2417,7 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = ok ? okColor() : badColor();
       ctx.font = 'bold 15px monospace';
-      ctx.fillText(ok ? '✓ 학습 리포트를 클립보드에 복사했어요!' : '복사할 수 없는 환경이에요 (직접 화면을 보여 주세요)', canvas.width / 2, 490);
+      ctx.fillText(ok ? '✓ 학습 리포트를 클립보드에 복사했어요!' : '복사할 수 없는 환경이에요 (직접 화면을 보여 주세요)', LW / 2, 490);
       ctx.textAlign = 'left';
     }
 
@@ -2418,7 +2425,7 @@
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 스크롤 · Z 리포트 복사(교사용) · X 닫기', canvas.width / 2, 512);
+    ctx.fillText('↑↓ 스크롤 · Z 리포트 복사(교사용) · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -2541,7 +2548,7 @@
     const c = game.challenge;
     if (!c) return; // 같은 프레임에 닫혔을 수 있음
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
 
     if (c.phase === 'topic') {
       ctx.textAlign = 'left';
@@ -2557,7 +2564,7 @@
         ctx.fillStyle = themeAccent();
         ctx.font = 'bold 13px monospace';
         ctx.textAlign = 'right';
-        ctx.fillText(`🔥 연속 출석 ${meta.streak}일`, canvas.width - 24, 40);
+        ctx.fillText(`🔥 연속 출석 ${meta.streak}일`, LW - 24, 40);
         ctx.textAlign = 'left';
       }
 
@@ -2574,13 +2581,13 @@
         const idx = start + i;
         drawChoiceLine(items[idx], listX, listY + i * rowH, idx === c.sel);
       }
-      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▲', canvas.width - 50, listY - 8); }
-      if (start + visible < items.length) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▼', canvas.width - 50, listY + visible * rowH - 8); }
+      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▲', LW - 50, listY - 8); }
+      if (start + visible < items.length) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▼', LW - 50, listY + visible * rowH - 8); }
 
       ctx.fillStyle = '#777';
       ctx.font = '13px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('↑↓ 선택 · Z 시작 · X 닫기', canvas.width / 2, 512);
+      ctx.fillText('↑↓ 선택 · Z 시작 · X 닫기', LW / 2, 512);
       ctx.textAlign = 'left';
       return;
     }
@@ -2590,10 +2597,10 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = warnColor();
       ctx.font = 'bold 26px monospace';
-      ctx.fillText('★ 챌린지 완료!', canvas.width / 2, 150);
+      ctx.fillText('★ 챌린지 완료!', LW / 2, 150);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 40px monospace';
-      ctx.fillText(`${c.score} / ${total}`, canvas.width / 2, 220);
+      ctx.fillText(`${c.score} / ${total}`, LW / 2, 220);
       const rate = total ? c.score / total : 0;
       const msg = rate >= 0.9 ? '대단해요! 진정한 AI 윤리 수호자!'
         : rate >= 0.7 ? '잘했어요! 조금만 더 하면 완벽!'
@@ -2601,10 +2608,10 @@
         : '괜찮아요. 틀린 문제는 복습 노트에 모였어요!';
       ctx.fillStyle = '#aaa';
       ctx.font = '16px monospace';
-      ctx.fillText(msg, canvas.width / 2, 270);
+      ctx.fillText(msg, LW / 2, 270);
       ctx.fillStyle = '#777';
       ctx.font = '13px monospace';
-      ctx.fillText('Z 또는 X로 돌아가기', canvas.width / 2, 330);
+      ctx.fillText('Z 또는 X로 돌아가기', LW / 2, 330);
       ctx.textAlign = 'left';
       return;
     }
@@ -2616,33 +2623,33 @@
     ctx.font = '14px monospace';
     ctx.fillText(`문제 ${c.idx + 1} / ${c.questions.length}`, 24, 32);
     ctx.fillStyle = warnColor();
-    ctx.fillText(`점수 ${c.score}`, canvas.width - 110, 32);
+    ctx.fillText(`점수 ${c.score}`, LW - 110, 32);
     // 진행 막대
     ctx.fillStyle = '#222';
-    ctx.fillRect(24, 42, canvas.width - 48, 6);
+    ctx.fillRect(24, 42, LW - 48, 6);
     ctx.fillStyle = okColor();
-    ctx.fillRect(24, 42, Math.round((canvas.width - 48) * (c.idx / c.questions.length)), 6);
+    ctx.fillRect(24, 42, Math.round((LW - 48) * (c.idx / c.questions.length)), 6);
 
     ctx.font = fs(16);
     let boxH = game.largeText ? 300 : 260;
     if (c.phase === 'quiz') {
-      const qMaxW = canvas.width - 24 - 56;
-      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      const qMaxW = LW - 24 - 56;
+      const cMaxW = LW - 24 - 38 - 28 - 16;
       const gap = game.largeText ? lh(16) : lh(14);
       let cl = 0;
       for (let i = 0; i < c.choiceOrder.length; i++) cl += measureWrap(`${i + 1}. ${q.a[c.choiceOrder[i]]}`, cMaxW);
       const needed = 32 + measureWrap(q.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + c.choiceOrder.length * gap + 16;
-      boxH = Math.min(Math.max(boxH, needed), canvas.height - 64 - 16);
+      boxH = Math.min(Math.max(boxH, needed), LH - 64 - 16);
     }
-    const boxY = canvas.height - boxH - 16;
+    const boxY = LH - boxH - 16;
     const hintY = boxY + boxH - 18;
-    utBox(12, boxY, canvas.width - 24, boxH, 8);
+    utBox(12, boxY, LW - 24, boxH, 8);
 
     if (c.phase === 'quiz') {
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      let ty = drawQuestionText(q.q, 34, boxY + 32, canvas.width - 24 - 56, lh(24)) + lh(10);
-      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      let ty = drawQuestionText(q.q, 34, boxY + 32, LW - 24 - 56, lh(24)) + lh(10);
+      const cMaxW = LW - 24 - 38 - 28 - 16;
       const gap = game.largeText ? lh(16) : lh(14);
       for (let i = 0; i < c.choiceOrder.length; i++) {
         ty += drawChoiceWrapped(`${i + 1}. ${q.a[c.choiceOrder[i]]}`, 38, ty, i === c.cursor, cMaxW, lh(22)) + gap;
@@ -2654,11 +2661,11 @@
       ctx.fillText(f.correct ? '○ 정답!' : '× 아쉬워요!', 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), canvas.width - 24 - 44, lh(24));
+      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24));
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
-        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
+        ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
       }
     }
   }
@@ -2723,7 +2730,7 @@
   }
   function drawAwards() {
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     const slot = game.awards.slot;
     const actx = achievementCtx(slot);
     const got = ACHIEVEMENTS.filter((a) => a.check(actx)).length;
@@ -2736,7 +2743,7 @@
     ctx.font = 'bold 15px monospace';
     ctx.fillText(`달성 ${got} / ${ACHIEVEMENTS.length}`, 24, 62);
 
-    const colW = (canvas.width - 48) / 2, cellH = 66;
+    const colW = (LW - 48) / 2, cellH = 66;
     for (let i = 0; i < ACHIEVEMENTS.length; i++) {
       const a = ACHIEVEMENTS[i];
       const unlocked = a.check(actx);
@@ -2759,7 +2766,7 @@
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Z 또는 X로 닫기', canvas.width / 2, 512);
+    ctx.fillText('Z 또는 X로 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -2804,7 +2811,7 @@
   }
   function drawHelp() {
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
@@ -2822,7 +2829,7 @@
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Z 또는 X로 닫기', canvas.width / 2, 512);
+    ctx.fillText('Z 또는 X로 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -2870,7 +2877,7 @@
     const slot = cm.slot;
     const c = achievementCtx(slot);
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
@@ -2883,7 +2890,7 @@
 
     const cols = [{ label: '칭호', list: TITLES, row: cm.rowTitle, selId: getCosmetic(slot).title },
       { label: '테마', list: THEMES, row: cm.rowTheme, selId: getCosmetic(slot).theme }];
-    const colW = (canvas.width - 48) / 2;
+    const colW = (LW - 48) / 2;
     for (let ci = 0; ci < 2; ci++) {
       const col = cols[ci];
       const x = 24 + ci * colW;
@@ -2915,13 +2922,13 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = badColor();
       ctx.font = 'bold 14px monospace';
-      ctx.fillText('아직 잠긴 보상이에요. 조건을 채워 보세요!', canvas.width / 2, 490);
+      ctx.fillText('아직 잠긴 보상이에요. 조건을 채워 보세요!', LW / 2, 490);
       ctx.textAlign = 'left';
     }
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('←→ 칭호/테마 · ↑↓ 선택 · Z 적용 · X 닫기', canvas.width / 2, 512);
+    ctx.fillText('←→ 칭호/테마 · ↑↓ 선택 · Z 적용 · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -2948,7 +2955,7 @@
   function drawCards() {
     const cd = game.cards, slot = cd.slot;
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
@@ -2961,7 +2968,7 @@
     ctx.font = '11px monospace';
     ctx.fillText('각 주제에서 한 번이라도 정답을 맞히면 그 카드가 열려요.', 220, 58);
 
-    const cardH = 96, top = 74, w = canvas.width - 48;
+    const cardH = 96, top = 74, w = LW - 48;
     for (let k = 0; k < CARDS_VISIBLE; k++) {
       const i = cd.scroll + k;
       if (i >= LEARN_CARDS.length) break;
@@ -2986,13 +2993,13 @@
     }
     // 스크롤 표시
     ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.textAlign = 'center';
-    if (cd.scroll > 0) ctx.fillText('▲', canvas.width / 2, top - 2);
-    if (cd.scroll + CARDS_VISIBLE < LEARN_CARDS.length) ctx.fillText('▼', canvas.width / 2, top + CARDS_VISIBLE * (cardH + 6) + 2);
+    if (cd.scroll > 0) ctx.fillText('▲', LW / 2, top - 2);
+    if (cd.scroll + CARDS_VISIBLE < LEARN_CARDS.length) ctx.fillText('▼', LW / 2, top + CARDS_VISIBLE * (cardH + 6) + 2);
 
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 넘기기 · Z 또는 X로 닫기', canvas.width / 2, 514);
+    ctx.fillText('↑↓ 넘기기 · Z 또는 X로 닫기', LW / 2, 514);
     ctx.textAlign = 'left';
   }
 
@@ -3060,10 +3067,10 @@
   function drawCert() {
     const slot = game.cert.slot;
     ctx.fillStyle = '#1a1626';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     // 증서 카드
-    const cx = canvas.width / 2;
-    const bx = 90, by = 56, bw = canvas.width - 180, bh = 392;
+    const cx = LW / 2;
+    const bx = 90, by = 56, bw = LW - 180, bh = 392;
     ctx.fillStyle = '#fbf6e9';
     roundRect(bx, by, bw, bh, 10); ctx.fill();
     ctx.strokeStyle = themeAccent(); ctx.lineWidth = 4;
@@ -3157,7 +3164,7 @@
   }
   function drawHof() {
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
@@ -3184,7 +3191,7 @@
 
     // 선택된 부문의 순위
     const cat = HOF_CATS[game.hof.cat];
-    const panelX = 248, panelY = 84, panelW = canvas.width - panelX - 24;
+    const panelX = 248, panelY = 84, panelW = LW - panelX - 24;
     utBox(panelX, panelY, panelW, 380, 8);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
@@ -3235,7 +3242,7 @@
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 부문 · Z 또는 X로 닫기', canvas.width / 2, 512);
+    ctx.fillText('↑↓ 부문 · Z 또는 X로 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -3323,7 +3330,7 @@
   function drawBackup() {
     const b = game.backup;
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
@@ -3346,22 +3353,22 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = badColor();
       ctx.font = 'bold 15px monospace';
-      ctx.fillText('지금 기록을 덮어쓰고 복원할까요?', canvas.width / 2, 452);
+      ctx.fillText('지금 기록을 덮어쓰고 복원할까요?', LW / 2, 452);
       ctx.fillStyle = '#fff';
       ctx.font = '13px monospace';
-      ctx.fillText('Z: 파일 선택해서 복원   ·   X: 취소', canvas.width / 2, 474);
+      ctx.fillText('Z: 파일 선택해서 복원   ·   X: 취소', LW / 2, 474);
       ctx.textAlign = 'left';
     } else if (b.toast !== 0) {
       ctx.textAlign = 'center';
       ctx.fillStyle = b.toast > 0 ? okColor() : badColor();
       ctx.font = 'bold 15px monospace';
-      ctx.fillText(b.toast > 0 ? '✓ 완료했어요!' : '이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)', canvas.width / 2, 470);
+      ctx.fillText(b.toast > 0 ? '✓ 완료했어요!' : '이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)', LW / 2, 470);
       ctx.textAlign = 'left';
     }
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 선택 · Z 실행 · X 닫기', canvas.width / 2, 512);
+    ctx.fillText('↑↓ 선택 · Z 실행 · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -3381,7 +3388,7 @@
   }
   function drawDashboard() {
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
@@ -3390,7 +3397,7 @@
     ctx.font = '12px monospace';
     ctx.fillText('한 기기를 나눠 쓰는 세 학생(슬롯)의 학습 현황을 비교합니다.', 24, 56);
 
-    const colW = (canvas.width - 32) / SLOT_COUNT;
+    const colW = (LW - 32) / SLOT_COUNT;
     for (let i = 0; i < SLOT_COUNT; i++) {
       const x = 16 + i * colW;
       const y = 74, w = colW - 12, h = 410;
@@ -3448,7 +3455,7 @@
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Z 또는 X로 닫기 · (리포트 복사는 각 학생의 수호자 일지에서)', canvas.width / 2, 512);
+    ctx.fillText('Z 또는 X로 닫기 · (리포트 복사는 각 학생의 수호자 일지에서)', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -3530,7 +3537,7 @@
   function drawQuizEdit() {
     const q = game.quizedit;
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
@@ -3558,23 +3565,23 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = badColor();
       ctx.font = 'bold 15px monospace';
-      ctx.fillText(`커스텀 문제 ${getCustomQuizzes().length}개를 모두 지울까요?`, canvas.width / 2, 452);
+      ctx.fillText(`커스텀 문제 ${getCustomQuizzes().length}개를 모두 지울까요?`, LW / 2, 452);
       ctx.fillStyle = '#fff';
       ctx.font = '13px monospace';
-      ctx.fillText('Z: 모두 지우기   ·   X: 취소', canvas.width / 2, 474);
+      ctx.fillText('Z: 모두 지우기   ·   X: 취소', LW / 2, 474);
       ctx.textAlign = 'left';
     } else if (q.toast !== 0) {
       ctx.textAlign = 'center';
       if (q.toast < 0) { ctx.fillStyle = badColor(); ctx.font = 'bold 14px monospace';
-        ctx.fillText('가져올 수 없어요. 형식을 확인하거나 브라우저에서 시도해 주세요.', canvas.width / 2, 462); }
+        ctx.fillText('가져올 수 없어요. 형식을 확인하거나 브라우저에서 시도해 주세요.', LW / 2, 462); }
       else { ctx.fillStyle = okColor(); ctx.font = 'bold 14px monospace';
-        ctx.fillText(q.toast >= 1 ? `✓ 커스텀 문제 ${q.toast}개를 등록했어요!` : '✓ 완료했어요!', canvas.width / 2, 462); }
+        ctx.fillText(q.toast >= 1 ? `✓ 커스텀 문제 ${q.toast}개를 등록했어요!` : '✓ 완료했어요!', LW / 2, 462); }
       ctx.textAlign = 'left';
     }
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 선택 · Z 실행 · X 닫기', canvas.width / 2, 512);
+    ctx.fillText('↑↓ 선택 · Z 실행 · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -3617,12 +3624,12 @@
     const m = MAPS[game.map];
     const mw = m.tiles[0].length * TS;
     const mh = m.tiles.length * TS;
-    let cx = game.player.px + TS / 2 - canvas.width / 2;
-    let cy = game.player.py + TS / 2 - canvas.height / 2;
-    cx = Math.max(0, Math.min(cx, mw - canvas.width));
-    cy = Math.max(0, Math.min(cy, mh - canvas.height));
-    if (mw < canvas.width) cx = (mw - canvas.width) / 2;
-    if (mh < canvas.height) cy = (mh - canvas.height) / 2;
+    let cx = game.player.px + TS / 2 - LW / 2;
+    let cy = game.player.py + TS / 2 - LH / 2;
+    cx = Math.max(0, Math.min(cx, mw - LW));
+    cy = Math.max(0, Math.min(cy, mh - LH));
+    if (mw < LW) cx = (mw - LW) / 2;
+    if (mh < LH) cy = (mh - LH) / 2;
     return { cx, cy };
   }
 
@@ -3632,7 +3639,7 @@
     const frame = Math.floor(game.time / 30) % 2;
 
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
 
     const x0 = Math.floor(cx / TS), y0 = Math.floor(cy / TS);
     for (let y = y0; y <= y0 + VIEW_H + 1; y++) {
@@ -3691,13 +3698,13 @@
     ctx.font = fs(13, true);
     const tw = ctx.measureText(txt).width;
     const bw = tw + 28, bh = game.largeText ? 32 : 28;
-    const bx = Math.round(canvas.width / 2 - bw / 2), by = 70;
+    const bx = Math.round(LW / 2 - bw / 2), by = 70;
     const fade = Math.min(1, game.notice.t / 40);
     ctx.globalAlpha = fade;
     utBox(bx, by, bw, bh, 6);
     ctx.fillStyle = themeAccent();
     ctx.textAlign = 'center';
-    ctx.fillText(txt, canvas.width / 2, by + bh / 2 + 4);
+    ctx.fillText(txt, LW / 2, by + bh / 2 + 4);
     ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
   }
@@ -3733,12 +3740,12 @@
     ctx.font = fs(12, true);
     const tw = ctx.measureText(txt).width;
     const bw = tw + 28, bh = game.largeText ? 30 : 26;
-    const bx = Math.round(canvas.width / 2 - bw / 2);
-    const by = canvas.height - bh - (game.largeText ? 58 : 52);
+    const bx = Math.round(LW / 2 - bw / 2);
+    const by = LH - bh - (game.largeText ? 58 : 52);
     utBox(bx, by, bw, bh, 6);
     ctx.fillStyle = '#9fd0ff';
     ctx.textAlign = 'center';
-    ctx.fillText(txt, canvas.width / 2, by + bh / 2 + 4);
+    ctx.fillText(txt, LW / 2, by + bh / 2 + 4);
     ctx.textAlign = 'left';
   }
 
@@ -3794,8 +3801,8 @@
     const tw = ctx.measureText(label).width;
     const bh = game.largeText ? 36 : 30;
     const bw = tw + 56;
-    const bx = Math.round(canvas.width / 2 - bw / 2);
-    const by = canvas.height - bh - 10;
+    const bx = Math.round(LW / 2 - bw / 2);
+    const by = LH - bh - 10;
     utBox(bx, by, bw, bh, 6);
 
     // 방향 화살표 (배너 왼쪽, 살짝 둥실거려 눈에 띄게)
@@ -3839,7 +3846,7 @@
     // 마음의 증표 (하트 3개)
     const shards = ['forest', 'lake', 'cave'];
     for (let i = 0; i < 3; i++) {
-      const bx = canvas.width - 104 + i * 30;
+      const bx = LW - 104 + i * 30;
       ctx.font = '18px monospace';
       ctx.fillStyle = game.flags.badges[shards[i]] ? '#e0453a' : '#333';
       ctx.fillText('♥', bx, 30);
@@ -3850,16 +3857,16 @@
 
     // 안아 준 마음 (자비)
     if (game.flags.mercy > 0) {
-      utBox(canvas.width - 196, 12, 64, 28, 4);
+      utBox(LW - 196, 12, 64, 28, 4);
       ctx.fillStyle = '#e0453a';
       ctx.font = 'bold 14px monospace';
-      ctx.fillText(`♥ ${game.flags.mercy}`, canvas.width - 184, 31);
+      ctx.fillText(`♥ ${game.flags.mercy}`, LW - 184, 31);
     }
 
     if (Sound.muted) {
       ctx.fillStyle = '#aaa';
       ctx.font = '12px monospace';
-      ctx.fillText('♪ 꺼짐(M)', canvas.width - 110, 56);
+      ctx.fillText('♪ 꺼짐(M)', LW - 110, 56);
     }
   }
 
@@ -3895,9 +3902,9 @@
     const shown = line.slice(0, Math.floor(d.chars));
     const totalLines = line.split('\n').length + (d.speaker ? 1 : 0);
     const boxH = Math.max(120, 42 + totalLines * lh(24));
-    const y = canvas.height - boxH - 12;
+    const y = LH - boxH - 12;
 
-    utBox(12, y, canvas.width - 24, boxH, 8);
+    utBox(12, y, LW - 24, boxH, 8);
 
     let ty = y + 30;
     if (d.speaker) {
@@ -3914,7 +3921,7 @@
     }
     if (d.chars >= line.length && Math.floor(game.time / 20) % 2 === 0) {
       ctx.fillStyle = '#fff';
-      ctx.fillText('▼', canvas.width - 50, y + boxH - 16);
+      ctx.fillText('▼', LW - 50, y + boxH - 16);
     }
   }
 
@@ -3957,14 +3964,14 @@
   function drawBattle() {
     const b = game.battle;
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
     // 바닥 경계선
     ctx.strokeStyle = '#222';
     ctx.lineWidth = 1;
     for (let i = 1; i < 8; i++) {
       ctx.beginPath();
       ctx.moveTo(0, i * 70);
-      ctx.lineTo(canvas.width, i * 70);
+      ctx.lineTo(LW, i * 70);
       ctx.stroke();
     }
 
@@ -3972,7 +3979,7 @@
     const shakeX = b.shake > 0 ? Math.sin(b.shake * 2) * (game.reduceFx ? 2 : 6) : 0;
     const bob = Math.sin(game.time / 20) * 5;
     const monScale = 9;
-    const mx = Math.round(canvas.width - 16 * monScale - 60 + shakeX);
+    const mx = Math.round(LW - 16 * monScale - 60 + shakeX);
     const my = Math.round(56 + bob);
     const mcx = mx + 16 * monScale / 2;
     // 그림자 — 몬스터가 땅에 떠 있는 느낌을 줘 화면이 덜 휑하게
@@ -4019,7 +4026,7 @@
     // 빨간 플래시 (틀렸을 때/맞았을 때) — 화면 효과 줄이기에선 훨씬 옅게(광과민성 배려)
     if (b.flash > 0) {
       ctx.fillStyle = `rgba(224,69,58,${b.flash / (game.reduceFx ? 140 : 40)})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, LW, LH);
     }
 
     // 회피 미니게임
@@ -4031,25 +4038,25 @@
     if (b.phase === 'question') {
       const q = currentQuestion();
       const order = choiceOrder();
-      const qMaxW = canvas.width - 24 - 56;
-      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      const qMaxW = LW - 24 - 56;
+      const cMaxW = LW - 24 - 38 - 28 - 16;
       const gap = game.largeText ? lh(16) : lh(14);
       let cl = 0;
       for (let i = 0; i < order.length; i++) cl += measureWrap(`${i + 1}. ${q.a[order[i]]}`, cMaxW);
       const needed = 30 + measureWrap(q.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + order.length * gap + 16;
-      boxH = Math.min(Math.max(boxH, needed), canvas.height - 150 - 12); // 하트 HUD(150) 아래까지만
+      boxH = Math.min(Math.max(boxH, needed), LH - 150 - 12); // 하트 HUD(150) 아래까지만
     }
-    const boxY = canvas.height - boxH - 12;
+    const boxY = LH - boxH - 12;
     const hintY = boxY + boxH - 18;
-    utBox(12, boxY, canvas.width - 24, boxH, 8);
+    utBox(12, boxY, LW - 24, boxH, 8);
 
     if (b.phase === 'question') {
       const q = currentQuestion();
       const order = choiceOrder();
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      let ty = drawQuestionText(q.q, 34, boxY + 30, canvas.width - 24 - 56, lh(24)) + lh(10);
-      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      let ty = drawQuestionText(q.q, 34, boxY + 30, LW - 24 - 56, lh(24)) + lh(10);
+      const cMaxW = LW - 24 - 38 - 28 - 16;
       const gap = game.largeText ? lh(16) : lh(14);
       for (let i = 0; i < order.length; i++) {
         const label = `${i + 1}. ${q.a[order[i]]}`;
@@ -4072,7 +4079,7 @@
       if (!b.hintUsed && Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#888';
         ctx.font = fs(13);
-        ctx.fillText('H: 50:50 힌트', canvas.width - 134, hintY);
+        ctx.fillText('H: 50:50 힌트', LW - 134, hintY);
       }
     } else if (b.phase === 'feedback') {
       const f = b.feedback;
@@ -4081,11 +4088,11 @@
       ctx.fillText(f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.', 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), canvas.width - 24 - 44, lh(24));
+      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24));
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
-        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
+        ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
       }
     } else if (b.phase === 'mercy') {
       // 마음의 선택
@@ -4118,7 +4125,7 @@
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
-        ctx.fillText('▼ (Z/스페이스)', canvas.width - 150, hintY);
+        ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
       }
     }
   }
@@ -4129,10 +4136,10 @@
     // 보스의 외침
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 18px monospace';
-    ctx.fillText(b.attack.taunt, canvas.width / 2, d.box.y - 26);
+    ctx.fillText(b.attack.taunt, LW / 2, d.box.y - 26);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText('화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)', canvas.width / 2, d.box.y - 6);
+    ctx.fillText('화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)', LW / 2, d.box.y - 6);
     ctx.textAlign = 'left';
 
     // 박스
@@ -4167,12 +4174,12 @@
 
   function drawTitle() {
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
 
     // 배경 별
     for (let i = 0; i < 40; i++) {
-      const sx = (i * 173) % canvas.width;
-      const sy = (i * 97) % (canvas.height / 2);
+      const sx = (i * 173) % LW;
+      const sy = (i * 97) % (LH / 2);
       const tw = Math.sin(game.time / 30 + i) > 0.3 ? 1 : 0.4;
       ctx.fillStyle = `rgba(255,255,255,${tw * 0.7})`;
       ctx.fillRect(sx, sy, 2, 2);
@@ -4181,20 +4188,20 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 40px monospace';
-    ctx.fillText('AI 윤리 어드벤처', canvas.width / 2, 86);
+    ctx.fillText('AI 윤리 어드벤처', LW / 2, 86);
     ctx.fillStyle = '#888';
     ctx.font = '15px monospace';
-    ctx.fillText('10개의 스테이지 끝에서, 잊혀진 이야기와 만나라', canvas.width / 2, 114);
+    ctx.fillText('10개의 스테이지 끝에서, 잊혀진 이야기와 만나라', LW / 2, 114);
 
     // 몬스터들 둥실둥실 (한 줄)
     const parade = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'hollimmon', 'mirrormon', 'soksagimon', 'yeongi'];
     for (let i = 0; i < parade.length; i++) {
-      const bx = canvas.width / 2 - parade.length * 24 + i * 48;
+      const bx = LW / 2 - parade.length * 24 + i * 48;
       drawSprite(ctx, MONSTER_SPRITES[parade[i]], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
     }
 
     // 세이브 슬롯 3개
-    const boxW = 460, boxX = canvas.width / 2 - boxW / 2;
+    const boxW = 460, boxX = LW / 2 - boxW / 2;
     for (let i = 0; i < SLOT_COUNT; i++) {
       const y = 212 + i * 74, h = 64;
       const sel = i === game.slotCursor && game.titleScreen === 'slots';
@@ -4232,9 +4239,9 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
-    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · K 꾸미기 · L 배움카드`, canvas.width / 2, 456);
-    ctx.fillText(`F 명예의전당 · N 수료증 · P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말`, canvas.width / 2, 472);
-    ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, canvas.width / 2, 488);
+    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · K 꾸미기 · L 배움카드`, LW / 2, 456);
+    ctx.fillText(`F 명예의전당 · N 수료증 · P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말`, LW / 2, 472);
+    ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 488);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -4244,30 +4251,30 @@
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
     ctx.fillStyle = '#e0453a';
     ctx.font = '13px monospace';
-    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   도감 ${dexSeenCount()}/${DEX_ORDER.length}`, canvas.width / 2, 500);
+    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   도감 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 500);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
     if (!storageOk) {
       ctx.fillStyle = badColor();
       ctx.font = 'bold 12px monospace';
-      ctx.fillText('⚠ 진행이 저장되지 않는 환경이에요 — 메뉴의 데이터 백업을 이용하세요', canvas.width / 2, 520);
+      ctx.fillText('⚠ 진행이 저장되지 않는 환경이에요 — 메뉴의 데이터 백업을 이용하세요', LW / 2, 520);
     }
 
     // 삭제 확인
     if (game.titleScreen === 'delete') {
       ctx.fillStyle = 'rgba(0,0,0,.8)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, LW, LH);
       const sum = slotSummary(game.slotCursor);
-      utBox(canvas.width / 2 - 200, 200, 400, 130, 6);
+      utBox(LW / 2 - 200, 200, 400, 130, 6);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 18px monospace';
-      ctx.fillText(`슬롯 ${game.slotCursor + 1} "${sum ? sum.name : ''}"`, canvas.width / 2, 240);
+      ctx.fillText(`슬롯 ${game.slotCursor + 1} "${sum ? sum.name : ''}"`, LW / 2, 240);
       ctx.font = '15px monospace';
       ctx.fillStyle = '#e0453a';
-      ctx.fillText('정말 삭제할까요? (되돌릴 수 없어요)', canvas.width / 2, 270);
+      ctx.fillText('정말 삭제할까요? (되돌릴 수 없어요)', LW / 2, 270);
       ctx.fillStyle = '#888';
       ctx.font = '14px monospace';
-      ctx.fillText('Z: 삭제   ·   X: 취소', canvas.width / 2, 304);
+      ctx.fillText('Z: 삭제   ·   X: 취소', LW / 2, 304);
     }
     ctx.textAlign = 'left';
   }
@@ -4365,12 +4372,12 @@
   function drawEnding() {
     game.endingT += 1;
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LW, LH);
 
     // 별
     for (let i = 0; i < 60; i++) {
-      const sx = (i * 131) % canvas.width;
-      const sy = (i * 71) % canvas.height;
+      const sx = (i * 131) % LW;
+      const sy = (i * 71) % LH;
       ctx.fillStyle = `rgba(255,255,255,${Math.sin(game.time / 25 + i) > 0 ? 0.6 : 0.2})`;
       ctx.fillRect(sx, sy, 2, 2);
     }
@@ -4448,21 +4455,21 @@
       const e = ENDINGS[game.flags.endingId] || ENDINGS.farewell;
       ctx.fillStyle = e.color;
       ctx.font = 'bold 34px monospace';
-      ctx.fillText(e.title, canvas.width / 2, 110);
+      ctx.fillText(e.title, LW / 2, 110);
       ctx.font = '16px monospace';
       ctx.fillStyle = '#ccc';
       let ty = 160;
-      for (const l of e.lines) { ctx.fillText(l, canvas.width / 2, ty); ty += 26; }
+      for (const l of e.lines) { ctx.fillText(l, LW / 2, ty); ty += 26; }
       ctx.fillStyle = '#8a94c8';
-      ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, canvas.width / 2, ty + 10);
+      ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, LW / 2, ty + 10);
       if (e.yeongi) {
         const bob = Math.sin(game.time / 18) * 4;
-        drawSprite(ctx, MONSTER_SPRITES.yeongi, canvas.width / 2 - 32, 420 + bob, 4);
+        drawSprite(ctx, MONSTER_SPRITES.yeongi, LW / 2 - 32, 420 + bob, 4);
       }
       if (game.endingT > 150) {
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
         ctx.font = '15px monospace';
-        ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', canvas.width / 2, 510);
+        ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', LW / 2, 510);
         if (justPressed('action')) {
           game.mode = 'world';
           game.map = 'village';
@@ -4479,11 +4486,11 @@
     // 1차 엔딩 (스테이지 5 클리어)
     ctx.fillStyle = '#ffd644';
     ctx.font = 'bold 36px monospace';
-    ctx.fillText('축하합니다!', canvas.width / 2, 100);
+    ctx.fillText('축하합니다!', LW / 2, 100);
 
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
-    ctx.fillText('🏆 AI 윤리 수호자 인증서 🏆', canvas.width / 2, 155);
+    ctx.fillText('🏆 AI 윤리 수호자 인증서 🏆', LW / 2, 155);
 
     ctx.font = '16px monospace';
     ctx.fillStyle = '#ccc';
@@ -4498,12 +4505,12 @@
     ];
     let ty = 195;
     for (const l of lines) {
-      ctx.fillText(l, canvas.width / 2, ty);
+      ctx.fillText(l, LW / 2, ty);
       ty += 25;
     }
     ctx.fillStyle = '#8a94c8';
-    ctx.fillText('…그런데, 왕좌 뒤의 벽에서', canvas.width / 2, ty + 8);
-    ctx.fillText('낡은 신호가 아직도 깜빡이고 있다.', canvas.width / 2, ty + 32);
+    ctx.fillText('…그런데, 왕좌 뒤의 벽에서', LW / 2, ty + 8);
+    ctx.fillText('낡은 신호가 아직도 깜빡이고 있다.', LW / 2, ty + 32);
 
     // 친구가 된 몬스터들 (두 줄 퍼레이드)
     const ids = Object.keys(MONSTER_SPRITES);
@@ -4511,7 +4518,7 @@
       const row = i < 14 ? 0 : 1;
       const col = row === 0 ? i : i - 14;
       const perRow = row === 0 ? 14 : ids.length - 14;
-      const bx = canvas.width / 2 - perRow * 20 + col * 40;
+      const bx = LW / 2 - perRow * 20 + col * 40;
       const by = 428 + row * 38 + Math.sin(game.time / 15 + i) * 4;
       drawSprite(ctx, MONSTER_SPRITES[ids[i]], bx, by, 2);
     }
@@ -4519,7 +4526,7 @@
     if (game.endingT > 120) {
       ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
       ctx.font = '15px monospace';
-      ctx.fillText('Z·스페이스를 누르면 모험이 계속됩니다', canvas.width / 2, 516);
+      ctx.fillText('Z·스페이스를 누르면 모험이 계속됩니다', LW / 2, 516);
       if (justPressed('action')) {
         game.mode = 'world';
         Sound.playSong(MAPS[game.map].song);
@@ -4534,17 +4541,17 @@
   function drawCrash() {
     try {
       ctx.fillStyle = '#12101c';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, LW, LH);
       ctx.textAlign = 'center';
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 22px monospace';
-      ctx.fillText('이런! 잠깐 문제가 생겼어요', canvas.width / 2, 210);
+      ctx.fillText('이런! 잠깐 문제가 생겼어요', LW / 2, 210);
       ctx.fillStyle = '#cfc8e0';
       ctx.font = '14px monospace';
-      ctx.fillText('그동안의 진행 상황은 안전하게 저장되어 있어요.', canvas.width / 2, 248);
+      ctx.fillText('그동안의 진행 상황은 안전하게 저장되어 있어요.', LW / 2, 248);
       ctx.fillStyle = '#9a93b0';
       ctx.font = '14px monospace';
-      ctx.fillText('Z (또는 A): 마을로 돌아가기      X (또는 메뉴): 타이틀로', canvas.width / 2, 290);
+      ctx.fillText('Z (또는 A): 마을로 돌아가기      X (또는 메뉴): 타이틀로', LW / 2, 290);
       ctx.textAlign = 'left';
     } catch (e) { /* 그리기마저 실패하면 조용히 넘어간다 */ }
   }
