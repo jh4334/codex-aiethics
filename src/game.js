@@ -704,6 +704,9 @@
   window.addEventListener('keydown', (e) => {
     // 이름 입력 중에는 게임 키 매핑을 막지 않는다 (한글 IME 사용)
     if (game.mode === 'title' && game.titleScreen === 'name') return;
+    // 키를 꾹 누르고 있을 때(OS 자동 반복)는 토글·단축키가 연타되지 않게 막는다.
+    // 이동은 아래 held 집합으로 유지되므로 영향이 없다.
+    if (e.repeat) return;
     Sound.resume();
     if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
     if (e.key === 't' || e.key === 'T') { cycleTextSpeed(); return; }
@@ -4362,8 +4365,43 @@
   }
 
   // ---------- 메인 루프 ----------
+  // 어떤 예외가 나도 루프가 죽지 않도록(검은 화면 동결 방지) 한 프레임을 감싼다.
+  let crashed = false;
+  function drawCrash() {
+    try {
+      ctx.fillStyle = '#12101c';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 22px monospace';
+      ctx.fillText('이런! 잠깐 문제가 생겼어요', canvas.width / 2, 210);
+      ctx.fillStyle = '#cfc8e0';
+      ctx.font = '14px monospace';
+      ctx.fillText('그동안의 진행 상황은 안전하게 저장되어 있어요.', canvas.width / 2, 248);
+      ctx.fillStyle = '#9a93b0';
+      ctx.font = '14px monospace';
+      ctx.fillText('Z (또는 A): 마을로 돌아가기      X (또는 메뉴): 타이틀로', canvas.width / 2, 290);
+      ctx.textAlign = 'left';
+    } catch (e) { /* 그리기마저 실패하면 조용히 넘어간다 */ }
+  }
   function frame() {
-    game.time += 1;
+    try {
+      if (crashed) {
+        if (justPressed('action')) {
+          crashed = false;
+          game.battle = null; game.dialog = null;
+          game.mode = game.flags ? 'world' : 'title';
+          if (game.mode === 'title') game.titleScreen = 'slots';
+          else { try { Sound.playSong(MAPS[game.map] ? MAPS[game.map].song : 'village'); } catch (e) {} }
+        } else if (justPressed('cancel')) {
+          crashed = false;
+          game.mode = 'title'; game.titleScreen = 'slots';
+          try { Sound.playSong('title'); } catch (e) {}
+        }
+      }
+      if (crashed) { drawCrash(); return; }
+
+      game.time += 1;
 
     switch (game.mode) {
       case 'title':
@@ -4450,12 +4488,17 @@
         break;
     }
 
-    const showHintBtn = game.mode === 'battle' && game.battle &&
-      game.battle.phase === 'question' && !game.battle.hintUsed;
-    document.body.classList.toggle('battle-hint', showHintBtn);
-
-    pressed.clear();
-    requestAnimationFrame(frame);
+      const showHintBtn = game.mode === 'battle' && game.battle &&
+        game.battle.phase === 'question' && !game.battle.hintUsed;
+      document.body.classList.toggle('battle-hint', showHintBtn);
+    } catch (err) {
+      crashed = true;
+      try { console.error('[AI윤리어드벤처] 프레임 오류:', err); } catch (e) { /* 무시 */ }
+      drawCrash();
+    } finally {
+      pressed.clear();
+      requestAnimationFrame(frame);
+    }
   }
 
   // 타이틀 BGM은 첫 입력 후 시작 (브라우저 자동재생 정책)
@@ -4469,6 +4512,24 @@
   window.addEventListener('keydown', startTitleMusic);
   window.addEventListener('touchstart', startTitleMusic);
   window.addEventListener('mousedown', startTitleMusic);
+
+  // 탭/앱을 백그라운드로 보내면 BGM·읽어주기를 멈춰 배터리와 오디오 드리프트를 막고,
+  // 다시 돌아오면 오디오를 재개한 뒤 직전 곡을 복원한다.
+  let bgmBeforeHide = null;
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('visibilitychange', () => {
+      try {
+        if (document.hidden) {
+          bgmBeforeHide = Sound.songName;
+          Sound.stopSong();
+          Speech.stop();
+        } else {
+          Sound.resume();
+          if (bgmBeforeHide) { Sound.playSong(bgmBeforeHide); bgmBeforeHide = null; }
+        }
+      } catch (e) { /* 무시 */ }
+    });
+  }
 
   migrateOldSave();
   migrateLearningData(); // 이전 버전의 전역 학습 데이터를 슬롯 0으로 이전
