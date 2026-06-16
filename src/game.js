@@ -36,7 +36,7 @@
     awards: { ret: 'world', slot: 0, scroll: 0 },
     challenge: null, // { ret, slot, phase, topics, sel, questions, idx, cursor, choiceOrder, score, feedback }
     cosmetics: { ret: 'title', slot: 0, col: 0, rowTitle: 0, rowTheme: 0, toast: 0 },
-    backup: { ret: 'title', cursor: 0, toast: 0 },
+    backup: { ret: 'title', cursor: 0, toast: 0, confirm: false },
     notice: { text: '', t: 0 }, // 월드 상단 안내 토스트 (해금 알림 등)
     helpRet: 'title',
     pauseCursor: 0,
@@ -53,7 +53,7 @@
     tts: false,          // 읽어주기(TTS) 접근성
     reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
     dashboard: { ret: 'title', cursor: 0 }, // 교사용 대시보드
-    quizedit: { ret: 'title', cursor: 0, toast: 0 }, // 커스텀 퀴즈 편집·가져오기
+    quizedit: { ret: 'title', cursor: 0, toast: 0, confirm: false }, // 커스텀 퀴즈 편집·가져오기
     cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
     cert: { ret: 'title', slot: 0, toast: 0 },       // 수료증·진도 인증서
     hof: { ret: 'title', cat: 0 },                   // 명예의 전당(로컬 기록)
@@ -3235,6 +3235,7 @@
     game.backup.ret = ret;
     game.backup.cursor = 0;
     game.backup.toast = 0;
+    game.backup.confirm = false;
     game.mode = 'backup';
     Sound.select();
   }
@@ -3283,14 +3284,23 @@
     const b = game.backup;
     if (b.toast > 0) b.toast -= 1; else if (b.toast < 0) b.toast += 1;
     const n = BACKUP_ITEMS.length;
-    if (justPressed('up')) { b.cursor = (b.cursor + n - 1) % n; Sound.blip(); }
-    if (justPressed('down')) { b.cursor = (b.cursor + 1) % n; Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu')) { closeBackup(); return; }
+    if (justPressed('up')) { b.cursor = (b.cursor + n - 1) % n; b.confirm = false; Sound.blip(); }
+    if (justPressed('down')) { b.cursor = (b.cursor + 1) % n; b.confirm = false; Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu')) {
+      if (b.confirm) { b.confirm = false; Sound.blip(); return; } // 확인 단계만 취소
+      closeBackup();
+      return;
+    }
     if (justPressed('action')) {
       const item = BACKUP_ITEMS[b.cursor];
+      if (b.confirm) { // 가져오기 확인 후 실제 실행
+        b.confirm = false;
+        importBackupFile();
+        return;
+      }
       if (item === 'exportClip') { b.toast = copyTextToClipboard(buildBackupText()) ? 200 : -200; Sound.badge(); }
       else if (item === 'exportFile') { b.toast = downloadBackup() ? 200 : -200; Sound.badge(); }
-      else if (item === 'importFile') { importBackupFile(); }
+      else if (item === 'importFile') { b.confirm = true; Sound.blip(); } // 덮어쓰기 전 한 번 더 확인
       else if (item === 'close') { closeBackup(); }
     }
   }
@@ -3316,7 +3326,16 @@
     ctx.font = '12px monospace';
     ctx.fillText('※ 가져오기를 하면 지금 이 기기의 기록을 덮어씁니다.', 24, listY + BACKUP_ITEMS.length * rowH + 24);
 
-    if (b.toast !== 0) {
+    if (b.confirm) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = badColor();
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText('지금 기록을 덮어쓰고 복원할까요?', canvas.width / 2, 452);
+      ctx.fillStyle = '#fff';
+      ctx.font = '13px monospace';
+      ctx.fillText('Z: 파일 선택해서 복원   ·   X: 취소', canvas.width / 2, 474);
+      ctx.textAlign = 'left';
+    } else if (b.toast !== 0) {
       ctx.textAlign = 'center';
       ctx.fillStyle = b.toast > 0 ? okColor() : badColor();
       ctx.font = 'bold 15px monospace';
@@ -3430,6 +3449,7 @@
     game.quizedit.ret = ret;
     game.quizedit.cursor = 0;
     game.quizedit.toast = 0;
+    game.quizedit.confirm = false;
     game.mode = 'quizedit';
     Sound.select();
   }
@@ -3467,15 +3487,27 @@
     const q = game.quizedit;
     // q.toast: 0=없음, 음수=실패, 양수=성공(>=1이면 등록 개수). 다음 행동까지 유지.
     const n = QUIZEDIT_ITEMS.length;
-    if (justPressed('up')) { q.cursor = (q.cursor + n - 1) % n; Sound.blip(); }
-    if (justPressed('down')) { q.cursor = (q.cursor + 1) % n; Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu')) { closeQuizEdit(); return; }
+    if (justPressed('up')) { q.cursor = (q.cursor + n - 1) % n; q.confirm = false; Sound.blip(); }
+    if (justPressed('down')) { q.cursor = (q.cursor + 1) % n; q.confirm = false; Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu')) {
+      if (q.confirm) { q.confirm = false; Sound.blip(); return; }
+      closeQuizEdit();
+      return;
+    }
     if (justPressed('action')) {
       const item = QUIZEDIT_ITEMS[q.cursor];
+      if (q.confirm) { // 삭제 확인 후 실제 실행
+        q.confirm = false;
+        clearCustomQuizzes(); q.toast = 0.4; Sound.badge();
+        return;
+      }
       if (item === 'importFile') importQuizFile();
       else if (item === 'importClip') importQuizClip();
       else if (item === 'template') { q.toast = copyTextToClipboard(customQuizTemplate()) ? 0.5 : -1; Sound.badge(); }
-      else if (item === 'clear') { clearCustomQuizzes(); q.toast = 0.4; Sound.badge(); }
+      else if (item === 'clear') {
+        if (getCustomQuizzes().length === 0) { q.toast = -1; Sound.bump(); } // 지울 게 없음
+        else { q.confirm = true; Sound.blip(); }
+      }
       else if (item === 'close') closeQuizEdit();
     }
   }
@@ -3506,7 +3538,16 @@
     ctx.fillText('형식: [ {"q":"문제","a":["보기1","보기2","보기3"],"c":1,"why":"해설"}, … ]', 24, listY + QUIZEDIT_ITEMS.length * rowH + 18);
     ctx.fillText('또는 { "questions": [ … ] }  ·  c는 정답 번호(0~2)', 24, listY + QUIZEDIT_ITEMS.length * rowH + 36);
 
-    if (q.toast !== 0) {
+    if (q.confirm) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = badColor();
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(`커스텀 문제 ${getCustomQuizzes().length}개를 모두 지울까요?`, canvas.width / 2, 452);
+      ctx.fillStyle = '#fff';
+      ctx.font = '13px monospace';
+      ctx.fillText('Z: 모두 지우기   ·   X: 취소', canvas.width / 2, 474);
+      ctx.textAlign = 'left';
+    } else if (q.toast !== 0) {
       ctx.textAlign = 'center';
       if (q.toast < 0) { ctx.fillStyle = badColor(); ctx.font = 'bold 14px monospace';
         ctx.fillText('가져올 수 없어요. 형식을 확인하거나 브라우저에서 시도해 주세요.', canvas.width / 2, 462); }

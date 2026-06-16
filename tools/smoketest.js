@@ -799,4 +799,30 @@ check('복원됨', g.reduceFx === fxBefore);
 tap('x');
 check('메뉴 닫힘', g.mode === 'world');
 
+console.log('[52] 파괴적 동작 확인 절차');
+// 커스텀 퀴즈 모두 지우기 — 두 번 확인
+T.importCustomQuizzes(JSON.stringify([{ q: '문제', a: ['1', '2', '3'], c: 0, why: '해설' }]));
+g.mode = 'world';
+tap('e');
+check('퀴즈 편집 열림', g.mode === 'quizedit');
+while (g.quizedit.cursor !== 3) tap('ArrowDown'); // 'clear' 인덱스 3
+tap('z');
+check('한 번 누르면 확인 단계(보존)', g.quizedit.confirm === true && T.getCustomQuizzes().length === 1);
+tap('x');
+check('취소하면 그대로 보존', g.quizedit.confirm === false && T.getCustomQuizzes().length === 1);
+tap('z'); tap('z'); // 다시 진입 후 확정
+check('두 번째 Z로 삭제', T.getCustomQuizzes().length === 0);
+tap('x');
+check('퀴즈 편집 닫힘', g.mode === 'world');
+// 백업 가져오기 — 덮어쓰기 전 확인 (실제 파일 선택은 호출 안 함)
+tap('u');
+check('백업 화면 열림', g.mode === 'backup');
+while (g.backup.cursor !== 2) tap('ArrowDown'); // 'importFile' 인덱스 2
+tap('z');
+check('가져오기 전 확인 단계', g.backup.confirm === true);
+tap('x');
+check('확인만 취소(화면 유지)', g.backup.confirm === false && g.mode === 'backup');
+tap('x');
+check('백업 화면 닫힘', g.mode === 'world');
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
