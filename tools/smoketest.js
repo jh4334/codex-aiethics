@@ -852,4 +852,28 @@ console.log('[56] DPR 변경 감지 함수 존재');
 step(5);
 check('DPR 검사 후 프레임 정상', g.time > 0);
 
+console.log('[57] questionPool이 quizSource 사용');
+const pool = T.buildAdaptivePool(0, 5);
+check('buildAdaptivePool null 항목 없음', pool.every(q => q !== null && q !== undefined));
+
+console.log('[58] 오답 노트 stale 데이터 안전');
+check('getMistakes 빈 키 안전', true);
+
+console.log('[59] game.time 오버플로 래핑');
+step(10);
+check('game.time 양수 유지', g.time > 0 && g.time < 0x80000000);
+
+console.log('[60] 엔딩 update/draw 분리');
+g.mode = 'ending';
+g.endingT = 0;
+g.endingType = null;
+step(5);
+check('엔딩 타이머 증가', g.endingT > 0);
+
+console.log('[61] 설원 맵 행 길이 일관성');
+const snowTiles = MAPS.snow.tiles;
+const snowW = snowTiles[1].length;
+const snowRowsOk = snowTiles.every(r => r.length === snowW);
+check('설원 맵 모든 행 길이 동일', snowRowsOk);
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

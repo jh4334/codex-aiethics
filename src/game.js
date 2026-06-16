@@ -580,7 +580,8 @@
         const qid = t + '#' + i;
         if (used.has(qid)) continue;
         used.add(qid);
-        out.push(quizQ(t, i));
+        const qq = quizQ(t, i);
+        if (qq) out.push(qq);
       }
     }
     return shuffled(out).slice(0, n);
@@ -1396,10 +1397,12 @@
   }
 
   function pushBack() {
-    // 들어온 방향의 반대로 한 칸 밀려남
     const p = game.player;
-    p.x += p.dir === 'left' ? 1 : p.dir === 'right' ? -1 : 0;
-    p.y += p.dir === 'up' ? 1 : p.dir === 'down' ? -1 : 0;
+    const nx = p.x + (p.dir === 'left' ? 1 : p.dir === 'right' ? -1 : 0);
+    const ny = p.y + (p.dir === 'up' ? 1 : p.dir === 'down' ? -1 : 0);
+    if (!SOLID(tileAt(game.map, nx, ny)) && !npcAt(game.map, nx, ny)) {
+      p.x = nx; p.y = ny;
+    }
     p.px = p.x * TS;
     p.py = p.y * TS;
   }
@@ -1501,8 +1504,9 @@
   }
 
   function questionPool(mon) {
+    const src = quizSource();
     const topics = Array.isArray(mon.topic) ? mon.topic : [mon.topic];
-    return topics.flatMap((t) => QUIZZES[t].map((q, i) => Object.assign({}, q, { _topic: t, _qid: t + '#' + i })));
+    return topics.flatMap((t) => (src[t] || []).map((q, i) => Object.assign({}, q, { _topic: t, _qid: t + '#' + i })));
   }
 
   function startBattle(monId) {
@@ -1728,11 +1732,11 @@
       const q = currentQuestion();
       const order = choiceOrder();
       if (justPressed('up')) {
-        do { b.cursor = (b.cursor + q.a.length - 1) % q.a.length; } while (b.cursor === b.hiddenPos);
+        for (let g = 0; g < q.a.length; g++) { b.cursor = (b.cursor + q.a.length - 1) % q.a.length; if (b.cursor !== b.hiddenPos) break; }
         Sound.blip();
       }
       if (justPressed('down')) {
-        do { b.cursor = (b.cursor + 1) % q.a.length; } while (b.cursor === b.hiddenPos);
+        for (let g = 0; g < q.a.length; g++) { b.cursor = (b.cursor + 1) % q.a.length; if (b.cursor !== b.hiddenPos) break; }
         Sound.blip();
       }
       if (justPressed('action')) {
@@ -2037,6 +2041,7 @@
 
     if (r.phase === 'question') {
       const m = getMistakes(r.slot)[r.ids[r.cursor]];
+      if (!m) { r.phase = 'list'; return; }
       const len = m.a.length;
       if (justPressed('up')) { r.qCursor = (r.qCursor + len - 1) % len; Sound.blip(); }
       if (justPressed('down')) { r.qCursor = (r.qCursor + 1) % len; Sound.blip(); }
@@ -4374,8 +4379,8 @@
     if (!s) return;
     game.currentSlot = slot;
     game.playerName = s.name || '수호자';
-    game.map = s.map;
-    game.player.x = s.x; game.player.y = s.y;
+    game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
+    game.player.x = s.x || 13; game.player.y = s.y || 16;
     game.player.px = s.x * TS; game.player.py = s.y * TS;
     game.player.dir = 'up';
     game.flags = Object.assign(newFlags(), s.flags);
@@ -4439,8 +4444,26 @@
     }
   }
 
-  function drawEnding() {
+  function updateEnding() {
     game.endingT += 1;
+    if (game.endingType === 'true') {
+      if (game.endingT > 150 && justPressed('action')) {
+        game.mode = 'world';
+        game.map = 'village';
+        game.player.x = 13; game.player.y = 16;
+        game.player.px = 13 * TS; game.player.py = 16 * TS;
+        save();
+        Sound.playSong(MAPS.village.song);
+      }
+    } else {
+      if (game.endingT > 120 && justPressed('action')) {
+        game.mode = 'world';
+        Sound.playSong(MAPS[game.map].song);
+      }
+    }
+  }
+
+  function drawEnding() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
 
@@ -4540,14 +4563,6 @@
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
         ctx.font = '15px monospace';
         ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', LW / 2, 510);
-        if (justPressed('action')) {
-          game.mode = 'world';
-          game.map = 'village';
-          game.player.x = 13; game.player.y = 16;
-          game.player.px = 13 * TS; game.player.py = 16 * TS;
-          save();
-          Sound.playSong(MAPS.village.song);
-        }
       }
       ctx.textAlign = 'left';
       return;
@@ -4597,10 +4612,6 @@
       ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
       ctx.font = '15px monospace';
       ctx.fillText('Z·스페이스를 누르면 모험이 계속됩니다', LW / 2, 516);
-      if (justPressed('action')) {
-        game.mode = 'world';
-        Sound.playSong(MAPS[game.map].song);
-      }
     }
     ctx.textAlign = 'left';
   }
@@ -4643,7 +4654,7 @@
       if (crashed) { drawCrash(); return; }
 
       checkDPR();
-      game.time += 1;
+      game.time = (game.time + 1) & 0x7FFFFFFF;
 
     switch (game.mode) {
       case 'title':
@@ -4670,6 +4681,7 @@
         }
         break;
       case 'ending':
+        updateEnding();
         drawEnding();
         break;
       case 'dex':
