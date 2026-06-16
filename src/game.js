@@ -132,7 +132,7 @@
     const s = loadSlot(i);
     if (!s || !s.flags) return null;
     return {
-      name: s.name || '수호자',
+      name: sanitizeName(s.name),
       stage: getStage(s.flags),
       mercy: s.flags.mercy || 0,
       done: !!(s.flags.defeated && s.flags.defeated.yeongi),
@@ -252,8 +252,8 @@
   }
   function slotLearnName(slot) {
     const s = loadSlot(slot);
-    if (s && s.name) return s.name;
-    if (slot === game.currentSlot && game.playerName) return game.playerName;
+    if (s && s.name) return sanitizeName(s.name);
+    if (slot === game.currentSlot && game.playerName) return sanitizeName(game.playerName);
     return '수호자';
   }
   function slotFlags(slot) {
@@ -838,9 +838,17 @@
     if (nameInput && nameInput.blur) { try { nameInput.blur(); } catch (e) {} }
   }
 
+  // 이름 정제 — 제어문자·제로폭 문자 제거, 공백 정리, 최대 6글자, 비면 '수호자'
+  // (trim은 제로폭 문자 U+200B 등을 못 거르므로 별도로 제거한다)
+  function sanitizeName(v) {
+    return String(v == null ? "" : v)
+      .replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 6) || "수호자";
+  }
   function currentNameValue() {
-    const v = hasRealInput ? String(nameInput.value || '') : '';
-    return v.trim().slice(0, 6) || '수호자';
+    return sanitizeName(hasRealInput ? nameInput.value : '');
   }
 
   if (nameInput && nameInput.addEventListener) {
@@ -4599,6 +4607,7 @@
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
+    sanitizeName,
   };
   frame();
 })();

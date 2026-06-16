@@ -774,4 +774,13 @@ check('빈틈 벽 패턴 존재', patterns.includes('wall'));
 check('지그재그 패턴 존재', patterns.includes('zigzag'));
 check('보너스 몬스터도 회피 패턴 보유', BOSS_ATTACKS.miraemon && BOSS_ATTACKS.miraemon.pattern === 'spiral');
 
+console.log('[49] 이름 입력 정제');
+check('앞뒤 공백 제거', T.sanitizeName('  도도  ') === '도도');
+check('공백만 입력은 기본값', T.sanitizeName('     ') === '수호자');
+check('제로폭 문자만 입력은 기본값', T.sanitizeName('​‌﻿') === '수호자');
+check('제어문자 제거', T.sanitizeName('도 도\n') === '도도');
+check('최대 6글자', T.sanitizeName('일이삼사오육칠팔') === '일이삼사오육');
+check('연속 공백 1칸으로', T.sanitizeName('가   나') === '가 나');
+check('빈/널 입력은 기본값', T.sanitizeName('') === '수호자' && T.sanitizeName(null) === '수호자');
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
