@@ -2018,7 +2018,17 @@
 
     // question / feedback phase — 배틀 퀴즈 화면과 같은 형태로 표시
     const m = getMistakes(r.slot)[ids[r.cursor]];
-    const boxH = game.largeText ? 280 : 238;
+    ctx.font = fs(16);
+    let boxH = game.largeText ? 280 : 238;
+    if (r.phase === 'question' && m) {
+      const qMaxW = canvas.width - 24 - 56;
+      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      const gap = game.largeText ? lh(16) : lh(14);
+      let cl = 0;
+      for (let i = 0; i < r.choiceOrder.length; i++) cl += measureWrap(`${i + 1}. ${m.a[r.choiceOrder[i]]}`, cMaxW);
+      const needed = 30 + measureWrap(m.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + r.choiceOrder.length * gap + 16;
+      boxH = Math.min(Math.max(boxH, needed), canvas.height - 64 - 12);
+    }
     const boxY = canvas.height - boxH - 12;
     const hintY = boxY + boxH - 18;
 
@@ -2029,16 +2039,13 @@
     utBox(12, boxY, canvas.width - 24, boxH, 8);
 
     if (r.phase === 'question') {
-      const qLines = m.q.split('\n');
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      let ty = boxY + 30;
-      for (const part of qLines) { ctx.fillText(part, 34, ty); ty += lh(24); }
-      ty = boxY + 30 + qLines.length * lh(24) + lh(18);
-      const stepC = game.largeText ? 44 : 38;
+      let ty = drawQuestionText(m.q, 34, boxY + 30, canvas.width - 24 - 56, lh(24)) + lh(10);
+      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      const gap = game.largeText ? lh(16) : lh(14);
       for (let i = 0; i < r.choiceOrder.length; i++) {
-        drawChoiceLine(`${i + 1}. ${m.a[r.choiceOrder[i]]}`, 38, ty, i === r.qCursor);
-        ty += stepC;
+        ty += drawChoiceWrapped(`${i + 1}. ${m.a[r.choiceOrder[i]]}`, 38, ty, i === r.qCursor, cMaxW, lh(22)) + gap;
       }
     } else if (r.phase === 'feedback') {
       const f = r.feedback;
@@ -2047,8 +2054,7 @@
       ctx.fillText(f.correct ? '○ 정답! 잘 기억했어요!' : '× 다시 한번 살펴봐요.', 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      let ty = boxY + (game.largeText ? 86 : 78);
-      for (const part of f.why.split('\n')) { ctx.fillText(part, 34, ty); ty += lh(24); }
+      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), canvas.width - 24 - 44, lh(24));
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
@@ -2557,22 +2563,29 @@
     ctx.fillStyle = okColor();
     ctx.fillRect(24, 42, Math.round((canvas.width - 48) * (c.idx / c.questions.length)), 6);
 
-    const boxH = game.largeText ? 300 : 260;
+    ctx.font = fs(16);
+    let boxH = game.largeText ? 300 : 260;
+    if (c.phase === 'quiz') {
+      const qMaxW = canvas.width - 24 - 56;
+      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      const gap = game.largeText ? lh(16) : lh(14);
+      let cl = 0;
+      for (let i = 0; i < c.choiceOrder.length; i++) cl += measureWrap(`${i + 1}. ${q.a[c.choiceOrder[i]]}`, cMaxW);
+      const needed = 32 + measureWrap(q.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + c.choiceOrder.length * gap + 16;
+      boxH = Math.min(Math.max(boxH, needed), canvas.height - 64 - 16);
+    }
     const boxY = canvas.height - boxH - 16;
     const hintY = boxY + boxH - 18;
     utBox(12, boxY, canvas.width - 24, boxH, 8);
 
     if (c.phase === 'quiz') {
-      const qLines = q.q.split('\n');
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      let ty = boxY + 32;
-      for (const part of qLines) { ctx.fillText(part, 34, ty); ty += lh(24); }
-      ty = boxY + 32 + qLines.length * lh(24) + lh(18);
-      const stepC = game.largeText ? 44 : 38;
+      let ty = drawQuestionText(q.q, 34, boxY + 32, canvas.width - 24 - 56, lh(24)) + lh(10);
+      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      const gap = game.largeText ? lh(16) : lh(14);
       for (let i = 0; i < c.choiceOrder.length; i++) {
-        drawChoiceLine(`${i + 1}. ${q.a[c.choiceOrder[i]]}`, 38, ty, i === c.cursor);
-        ty += stepC;
+        ty += drawChoiceWrapped(`${i + 1}. ${q.a[c.choiceOrder[i]]}`, 38, ty, i === c.cursor, cMaxW, lh(22)) + gap;
       }
     } else if (c.phase === 'feedback') {
       const f = c.feedback;
@@ -2581,8 +2594,7 @@
       ctx.fillText(f.correct ? '○ 정답!' : '× 아쉬워요!', 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      let ty = boxY + (game.largeText ? 86 : 78);
-      for (const part of f.why.split('\n')) { ctx.fillText(part, 34, ty); ty += lh(24); }
+      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), canvas.width - 24 - 44, lh(24));
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
@@ -3482,6 +3494,23 @@
     return lines;
   }
 
+  // wrapText와 같은 규칙으로 줄 수만 센다(그리지 않음). 박스 높이를 미리 잡을 때 쓴다.
+  // 호출 전에 ctx.font을 실제 그릴 폰트로 맞춰 둘 것.
+  function measureWrap(text, maxW) {
+    let total = 0;
+    for (const part of String(text == null ? '' : text).split('\n')) {
+      const words = part.split(' ');
+      let line = '', n = 0;
+      for (const w of words) {
+        const test = line ? line + ' ' + w : w;
+        if (ctx.measureText(test).width > maxW && line) { n++; line = w; }
+        else line = test;
+      }
+      total += Math.max(1, n + (line ? 1 : 0));
+    }
+    return total;
+  }
+
   // ---------- 그리기 ----------
   function camera() {
     const m = MAPS[game.map];
@@ -3800,6 +3829,30 @@
     ctx.fillText(text, x + 28, y);
   }
 
+  // 문제/해설 텍스트를 박스 폭에 맞춰 그린다 — 기존 \n 줄바꿈을 존중하고,
+  // 줄이 길면(특히 선생님이 만든 커스텀 문제) 자동으로 더 접어 화면 밖으로 넘치지 않게 한다.
+  // 마지막으로 그린 줄의 다음 y를 반환.
+  function drawQuestionText(text, x, y, maxW, lineH) {
+    let ty = y;
+    for (const part of String(text == null ? '' : text).split('\n')) {
+      const n = Math.max(1, wrapText(part, x, ty, maxW, lineH));
+      ty += n * lineH;
+    }
+    return ty;
+  }
+  // 선택지 한 줄(자동 줄바꿈) — 사용한 세로 높이를 반환.
+  function drawChoiceWrapped(text, x, y, selected, maxW, lineH) {
+    if (selected) {
+      ctx.fillStyle = '#e0453a';
+      ctx.font = fs(15);
+      ctx.fillText('♥', x, y);
+    }
+    ctx.fillStyle = selected ? '#fff' : '#888';
+    ctx.font = fs(16);
+    const n = Math.max(1, wrapText(text, x + 28, y, maxW, lineH));
+    return n * lineH;
+  }
+
   function drawBattle() {
     const b = game.battle;
     ctx.fillStyle = '#000';
@@ -3871,8 +3924,20 @@
     // 회피 미니게임
     if (b.phase === 'dodge') { drawDodge(b); return; }
 
-    // 질문/피드백 박스 — 큰 글씨 모드에서는 더 크게 잡아 글자가 넘치지 않게 한다
-    const boxH = game.largeText ? 280 : 238;
+    // 질문/피드백 박스 — 큰 글씨·긴 문제(커스텀 포함)에서 글자가 넘치지 않게 높이를 맞춘다
+    ctx.font = fs(16);
+    let boxH = game.largeText ? 280 : 238;
+    if (b.phase === 'question') {
+      const q = currentQuestion();
+      const order = choiceOrder();
+      const qMaxW = canvas.width - 24 - 56;
+      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      const gap = game.largeText ? lh(16) : lh(14);
+      let cl = 0;
+      for (let i = 0; i < order.length; i++) cl += measureWrap(`${i + 1}. ${q.a[order[i]]}`, cMaxW);
+      const needed = 30 + measureWrap(q.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + order.length * gap + 16;
+      boxH = Math.min(Math.max(boxH, needed), canvas.height - 150 - 12); // 하트 HUD(150) 아래까지만
+    }
     const boxY = canvas.height - boxH - 12;
     const hintY = boxY + boxH - 18;
     utBox(12, boxY, canvas.width - 24, boxH, 8);
@@ -3880,33 +3945,28 @@
     if (b.phase === 'question') {
       const q = currentQuestion();
       const order = choiceOrder();
-      const qLines = q.q.split('\n');
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      let ty = boxY + 30;
-      for (const part of qLines) {
-        ctx.fillText(part, 34, ty);
-        ty += lh(24);
-      }
-      ty = boxY + 30 + qLines.length * lh(24) + lh(18);
-      const stepC = game.largeText ? 44 : 38;
+      let ty = drawQuestionText(q.q, 34, boxY + 30, canvas.width - 24 - 56, lh(24)) + lh(10);
+      const cMaxW = canvas.width - 24 - 38 - 28 - 16;
+      const gap = game.largeText ? lh(16) : lh(14);
       for (let i = 0; i < order.length; i++) {
+        const label = `${i + 1}. ${q.a[order[i]]}`;
         if (i === b.hiddenPos) {
           ctx.fillStyle = '#444';
           ctx.font = fs(16);
-          const label = `${i + 1}. ${q.a[order[i]]}`;
-          ctx.fillText(label, 38 + 28, ty);
-          const w = ctx.measureText(label).width;
+          const n = Math.max(1, wrapText(label, 38 + 28, ty, cMaxW, lh(22)));
+          const w = Math.min(cMaxW, ctx.measureText(label).width);
           ctx.strokeStyle = '#444';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(38 + 28, ty - 5);
           ctx.lineTo(38 + 28 + w, ty - 5);
           ctx.stroke();
+          ty += n * lh(22) + gap;
         } else {
-          drawChoiceLine(`${i + 1}. ${q.a[order[i]]}`, 38, ty, i === b.cursor);
+          ty += drawChoiceWrapped(label, 38, ty, i === b.cursor, cMaxW, lh(22)) + gap;
         }
-        ty += stepC;
       }
       if (!b.hintUsed && Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#888';
@@ -3920,11 +3980,7 @@
       ctx.fillText(f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.', 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      let ty = boxY + (game.largeText ? 86 : 78);
-      for (const part of f.why.split('\n')) {
-        ctx.fillText(part, 34, ty);
-        ty += lh(24);
-      }
+      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), canvas.width - 24 - 44, lh(24));
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
