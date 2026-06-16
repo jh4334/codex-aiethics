@@ -228,14 +228,28 @@
 
   // ---------- 읽어주기 (TTS) — Web Speech API ----------
   const Speech = {
+    _voice: null,
+    _voicePicked: false,
     supported() { try { return typeof window !== 'undefined' && 'speechSynthesis' in window; } catch (e) { return false; } },
+    // 한국어 음성을 고른다 (없으면 기본). getVoices는 비동기라 voiceschanged 이후에 채워진다.
+    pickVoice() {
+      if (!this.supported()) return;
+      try {
+        const vs = window.speechSynthesis.getVoices() || [];
+        this._voice = vs.find((v) => v.lang && v.lang.toLowerCase().indexOf('ko') === 0)
+          || vs.find((v) => /korean|한국/i.test(v.name || '')) || null;
+        if (vs.length > 0) this._voicePicked = true;
+      } catch (e) { /* 무시 */ }
+    },
     speak(text) {
       if (!game.tts || !this.supported() || !text) return;
       try {
+        if (!this._voicePicked) this.pickVoice();
         window.speechSynthesis.cancel();
         const u = new window.SpeechSynthesisUtterance(String(text).replace(/\n/g, ' ').replace(/[♥♪★☆◆◇○×▶◷◎✿⇄→]/g, ' '));
         u.lang = 'ko-KR';
         u.rate = 0.95;
+        if (this._voice) u.voice = this._voice;
         window.speechSynthesis.speak(u);
       } catch (e) { /* 미지원/차단 환경 무시 */ }
     },
@@ -1947,6 +1961,7 @@
 
   function closeReview() {
     game.mode = game.review.ret;
+    Speech.stop();
     Sound.select();
   }
 
@@ -2428,6 +2443,7 @@
     const ret = game.challenge ? game.challenge.ret : 'title';
     game.challenge = null;
     game.mode = ret;
+    Speech.stop();
     Sound.select();
   }
 
@@ -4680,6 +4696,15 @@
   }
 
   probeStorage(); // 저장 가능 여부 확인 (불가하면 타이틀에 경고 표시)
+  // 읽어주기 한국어 음성 준비 (목록이 비동기로 채워지면 다시 고른다)
+  try {
+    if (Speech.supported()) {
+      Speech.pickVoice();
+      if (window.speechSynthesis.addEventListener) {
+        window.speechSynthesis.addEventListener('voiceschanged', () => Speech.pickVoice());
+      }
+    }
+  } catch (e) { /* 무시 */ }
   migrateOldSave();
   migrateLearningData(); // 이전 버전의 전역 학습 데이터를 슬롯 0으로 이전
   Object.assign(game, loadSettings()); // 저장된 설정(자막 속도·큰 글씨·색약) 복원
