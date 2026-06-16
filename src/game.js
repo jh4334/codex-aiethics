@@ -51,6 +51,7 @@
     colorBlind: false,   // 색약 친화 팔레트(접근성) 모드
     difficulty: 'normal', // easy | normal | hard — 학년별 난이도
     tts: false,          // 읽어주기(TTS) 접근성
+    reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
     dashboard: { ret: 'title', cursor: 0 }, // 교사용 대시보드
     quizedit: { ret: 'title', cursor: 0, toast: 0 }, // 커스텀 퀴즈 편집·가져오기
     cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
@@ -182,6 +183,11 @@
   const TEXT_SPEED_LABEL = { normal: '보통', fast: '빠름', slow: '느림' };
   const DIFF_ORDER = ['easy', 'normal', 'hard'];
   const DIFF_LABEL = { easy: '저학년', normal: '기본', hard: '고학년' };
+  // OS의 "동작 줄이기" 선호를 기본값으로 삼는다 (광과민성·모션 민감 배려)
+  const prefersReduce = (() => {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+    catch (e) { return false; }
+  })();
   function loadSettings() {
     try {
       const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -190,16 +196,22 @@
       s.colorBlind = !!s.colorBlind;
       if (!DIFF_ORDER.includes(s.difficulty)) s.difficulty = 'normal';
       s.tts = !!s.tts;
+      s.reduceFx = ('reduceFx' in s) ? !!s.reduceFx : prefersReduce;
       return s;
-    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false }; }
+    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false, reduceFx: prefersReduce }; }
   }
   function saveSettings() {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         textSpeed: game.textSpeed, largeText: game.largeText, colorBlind: game.colorBlind,
-        difficulty: game.difficulty, tts: game.tts,
+        difficulty: game.difficulty, tts: game.tts, reduceFx: game.reduceFx,
       }));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
+  }
+  function toggleReduceFx() {
+    game.reduceFx = !game.reduceFx;
+    saveSettings();
+    Sound.blip();
   }
   function cycleDifficulty() {
     const i = DIFF_ORDER.indexOf(game.difficulty);
@@ -2096,7 +2108,7 @@
   // 터치 기기에는 키보드 단축키(J/Q/B/I 등)가 없으므로, 모든 기능을 메뉴로 연다.
   const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'dashboard', 'awards', 'cosmetics', 'cert',
     'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
-    'largetext', 'colorblind', 'mute', 'help', 'close'];
+    'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
   const PAUSE_LABELS = {
     journal: '◆ 수호자 일지',
     cards: '📚 배움 카드',
@@ -2115,6 +2127,7 @@
     tts: '읽어주기',
     largetext: '큰 글씨',
     colorblind: '색약 모드',
+    reducefx: '화면 효과 줄이기',
     mute: '소리',
     help: '? 도움말',
     close: '닫기',
@@ -2127,6 +2140,7 @@
     if (item === 'tts') return game.tts ? 'ON' : 'OFF';
     if (item === 'largetext') return game.largeText ? 'ON' : 'OFF';
     if (item === 'colorblind') return game.colorBlind ? 'ON' : 'OFF';
+    if (item === 'reducefx') return game.reduceFx ? 'ON' : 'OFF';
     if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
     if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
@@ -2182,6 +2196,7 @@
       else if (item === 'tts') toggleTTS();
       else if (item === 'largetext') toggleLargeText();
       else if (item === 'colorblind') toggleColorBlind();
+      else if (item === 'reducefx') toggleReduceFx();
       else if (item === 'mute') Sound.toggleMute();
       else if (item === 'help') openHelp('pause');
       else if (item === 'close') closePause();
@@ -3897,7 +3912,7 @@
     }
 
     // 몬스터 (오른쪽 위, 크게)
-    const shakeX = b.shake > 0 ? Math.sin(b.shake * 2) * 6 : 0;
+    const shakeX = b.shake > 0 ? Math.sin(b.shake * 2) * (game.reduceFx ? 2 : 6) : 0;
     const bob = Math.sin(game.time / 20) * 5;
     const monScale = 9;
     const mx = Math.round(canvas.width - 16 * monScale - 60 + shakeX);
@@ -3944,9 +3959,9 @@
       ctx.fillText('♥', 40 + i * 32, 132);
     }
 
-    // 빨간 플래시 (틀렸을 때/맞았을 때)
+    // 빨간 플래시 (틀렸을 때/맞았을 때) — 화면 효과 줄이기에선 훨씬 옅게(광과민성 배려)
     if (b.flash > 0) {
-      ctx.fillStyle = `rgba(224,69,58,${b.flash / 40})`;
+      ctx.fillStyle = `rgba(224,69,58,${b.flash / (game.reduceFx ? 140 : 40)})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 

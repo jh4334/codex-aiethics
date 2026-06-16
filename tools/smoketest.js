@@ -448,7 +448,7 @@ check('설정 메뉴 열림', g.mode === 'pause');
 check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
 const PAUSE_ORDER = ['journal', 'cards', 'halloffame', 'dashboard', 'awards', 'cosmetics', 'cert',
   'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
-  'largetext', 'colorblind', 'mute', 'help', 'close'];
+  'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
 const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
 while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
 tap('z');
@@ -785,5 +785,18 @@ check('빈/널 입력은 기본값', T.sanitizeName('') === '수호자' && T.san
 
 console.log('[50] 저장 가능 여부 프로브');
 check('정상 환경은 저장 가능 판정', T.probeStorage() === true && T.getStorageOk() === true);
+
+console.log('[51] 화면 효과 줄이기(광과민성) 토글');
+g.mode = 'world';
+const fxBefore = g.reduceFx;
+tap('x');
+while (g.pauseCursor !== pauseIdx('reducefx')) tap('ArrowDown');
+tap('z');
+check('화면 효과 줄이기 토글', g.reduceFx !== fxBefore);
+check('설정 저장됨', JSON.parse(storage.get('ai-ethics-adventure-settings')).reduceFx === g.reduceFx);
+tap('z'); // 복원
+check('복원됨', g.reduceFx === fxBefore);
+tap('x');
+check('메뉴 닫힘', g.mode === 'world');
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
