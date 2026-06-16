@@ -10,13 +10,27 @@
   // 논리 해상도(좌표계는 항상 720×528). 백킹 스토어는 기기 픽셀 밀도(DPR)만큼 키워
   // 레티나·고DPI 화면에서도 글자가 또렷하게 보이게 한다.
   const LW = 720, LH = 528;
-  const DPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
-  canvas.width = LW * DPR;
-  canvas.height = LH * DPR;
-  ctx.scale(DPR, DPR); // 이후 모든 그리기는 720×528 논리 좌표로 한다
+  let currentDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  canvas.width = LW * currentDPR;
+  canvas.height = LH * currentDPR;
+  ctx.scale(currentDPR, currentDPR);
+  function checkDPR() {
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+    if (dpr !== currentDPR) {
+      currentDPR = dpr;
+      canvas.width = LW * dpr;
+      canvas.height = LH * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      try { tileCache.clear(); } catch (e) {}
+    }
+  }
   const VIEW_W = Math.floor(LW / TS); // 15
   const VIEW_H = Math.floor(LH / TS); // 11
   ctx.imageSmoothingEnabled = false;
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('mousedown', () => { try { canvas.focus(); } catch (e) {} });
+  try { canvas.focus(); } catch (e) {}
 
   const SAVE_KEY = 'ai-ethics-adventure-v1';
 
@@ -146,8 +160,10 @@
     }
   }
 
+  const SAVE_VERSION = 2;
   function save() {
     writeSlot(game.currentSlot, {
+      v: SAVE_VERSION,
       name: game.playerName,
       map: game.map,
       x: game.player.x, y: game.player.y,
@@ -851,13 +867,35 @@
   // 터치 컨트롤
   if ('ontouchstart' in window) {
     document.body.classList.add('touch');
+    const touchIds = new Map();
     const bind = (id, key) => {
       const el = document.getElementById(id);
-      const down = (e) => { e.preventDefault(); Sound.resume(); if (!held.has(key)) pressed.add(key); held.add(key); };
-      const up = (e) => { e.preventDefault(); held.delete(key); };
+      const down = (e) => {
+        e.preventDefault(); Sound.resume();
+        for (const t of e.changedTouches) touchIds.set(t.identifier, { el, key });
+        if (!held.has(key)) pressed.add(key);
+        held.add(key);
+      };
+      const up = (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) touchIds.delete(t.identifier);
+        held.delete(key);
+      };
+      const move = (e) => {
+        for (const t of e.changedTouches) {
+          const info = touchIds.get(t.identifier);
+          if (!info || info.el !== el) continue;
+          const r = el.getBoundingClientRect();
+          if (t.clientX < r.left || t.clientX > r.right || t.clientY < r.top || t.clientY > r.bottom) {
+            held.delete(key);
+            touchIds.delete(t.identifier);
+          }
+        }
+      };
       el.addEventListener('touchstart', down);
       el.addEventListener('touchend', up);
       el.addEventListener('touchcancel', up);
+      el.addEventListener('touchmove', move);
     };
     bind('t-up', 'up'); bind('t-down', 'down');
     bind('t-left', 'left'); bind('t-right', 'right');
@@ -3586,11 +3624,33 @@
     ctx.textAlign = 'left';
   }
 
+  // 한 단어가 maxW보다 넓으면 글자 단위로 쪼개는 헬퍼
+  function charBreak(word, maxW) {
+    const parts = [];
+    let cur = '';
+    for (const ch of word) {
+      const test = cur + ch;
+      if (cur && ctx.measureText(test).width > maxW) { parts.push(cur); cur = ch; }
+      else cur = test;
+    }
+    if (cur) parts.push(cur);
+    return parts;
+  }
+
   // 텍스트 줄바꿈 그리기. 그린 줄 수를 반환.
   function wrapText(text, x, y, maxW, lineH) {
     const words = text.split(' ');
     let line = '', ly = y, lines = 0;
     for (const w of words) {
+      if (ctx.measureText(w).width > maxW) {
+        if (line) { ctx.fillText(line, x, ly); ly += lineH; lines++; line = ''; }
+        const parts = charBreak(w, maxW);
+        for (let i = 0; i < parts.length; i++) {
+          if (i < parts.length - 1) { ctx.fillText(parts[i], x, ly); ly += lineH; lines++; }
+          else line = parts[i];
+        }
+        continue;
+      }
       const test = line ? line + ' ' + w : w;
       if (ctx.measureText(test).width > maxW && line) {
         ctx.fillText(line, x, ly); ly += lineH; lines++;
@@ -3611,6 +3671,15 @@
       const words = part.split(' ');
       let line = '', n = 0;
       for (const w of words) {
+        if (ctx.measureText(w).width > maxW) {
+          if (line) { n++; line = ''; }
+          const parts = charBreak(w, maxW);
+          for (let i = 0; i < parts.length; i++) {
+            if (i < parts.length - 1) n++;
+            else line = parts[i];
+          }
+          continue;
+        }
         const test = line ? line + ' ' + w : w;
         if (ctx.measureText(test).width > maxW && line) { n++; line = w; }
         else line = test;
@@ -3901,8 +3970,11 @@
     const d = game.dialog;
     const line = d.lines[d.idx];
     const shown = line.slice(0, Math.floor(d.chars));
-    const totalLines = line.split('\n').length + (d.speaker ? 1 : 0);
-    const boxH = Math.max(120, 42 + totalLines * lh(24));
+    const dialogMaxW = LW - 24 - 48;
+
+    ctx.font = fs(16);
+    const wrappedLines = measureWrap(line, dialogMaxW) + (d.speaker ? 1 : 0);
+    const boxH = Math.max(120, 42 + wrappedLines * lh(24));
     const y = LH - boxH - 12;
 
     utBox(12, y, LW - 24, boxH, 8);
@@ -3916,10 +3988,7 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = fs(16);
-    for (const part of shown.split('\n')) {
-      ctx.fillText(part, 30, ty);
-      ty += lh(24);
-    }
+    drawQuestionText(shown, 30, ty, dialogMaxW, lh(24));
     if (d.chars >= line.length && Math.floor(game.time / 20) % 2 === 0) {
       ctx.fillStyle = '#fff';
       ctx.fillText('▼', LW - 50, y + boxH - 16);
@@ -4573,6 +4642,7 @@
       }
       if (crashed) { drawCrash(); return; }
 
+      checkDPR();
       game.time += 1;
 
     switch (game.mode) {

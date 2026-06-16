@@ -32,6 +32,7 @@
     image-rendering: crisp-edges;
     max-width: 100%;
     max-height: 100%;
+    outline: none;
   }
 
   /* ---- 터치 컨트롤 (모바일/태블릿) ---- */
@@ -166,7 +167,7 @@
 </head>
 <body>
 <div id="wrap">
-  <canvas id="game" width="720" height="528"></canvas>
+  <canvas id="game" width="720" height="528" tabindex="0"></canvas>
 </div>
 <div id="touch-ui">
   <div class="tbtn" id="t-up">▲</div>

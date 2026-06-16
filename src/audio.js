@@ -198,11 +198,18 @@ const Sound = {
     this.master = this.ctx.createGain();
     this.master.gain.value = 1;
     this.master.connect(this.ctx.destination);
+    this.ctx.addEventListener('statechange', () => {
+      if (this.ctx.state === 'interrupted') {
+        try { this.ctx.resume(); } catch (e) {}
+      }
+    });
   },
 
   resume() {
     this.init();
-    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.ctx && this.ctx.state === 'suspended') {
+      try { this.ctx.resume(); } catch (e) {}
+    }
   },
 
   toggleMute() {
@@ -250,7 +257,7 @@ const Sound = {
       loopLen = Math.max(loopLen, t - t0);
     }
     const timer = setTimeout(() => this._scheduleLoop(name), (loopLen - 0.05) * 1000);
-    this._timers.push(timer);
+    this._timers = [timer];
   },
 
   _tone(wave, freq, t, dur, vol) {
@@ -266,6 +273,7 @@ const Sound = {
     g.connect(this.master);
     osc.start(t);
     osc.stop(t + dur + 0.02);
+    osc.onended = () => { try { osc.disconnect(); g.disconnect(); } catch (e) {} };
   },
 
   _sfxTone(freqs, durEach, wave, vol) {
