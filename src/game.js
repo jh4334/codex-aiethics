@@ -4649,7 +4649,20 @@
       ctx.textAlign = 'left';
     } catch (e) { /* 그리기마저 실패하면 조용히 넘어간다 */ }
   }
+  // 프레임 속도 제한: 90·120·144Hz 등 고주사율 화면에서 게임 로직(타이머·연출)이
+  // 2배 빠르게 도는 것을 막아, 어떤 기기에서도 비슷한 속도로 진행되게 한다.
+  // (테스트 환경엔 performance가 없어 매 프레임 그대로 처리된다)
+  const perfNow = (typeof performance !== 'undefined' && performance.now)
+    ? () => performance.now() : null;
+  let lastFrameAt = -1e9;
+  const MIN_FRAME_MS = 1000 / 61; // 약 60fps 상한
   function frame() {
+    requestAnimationFrame(frame);
+    if (perfNow) {
+      const now = perfNow();
+      if (now - lastFrameAt < MIN_FRAME_MS) return;
+      lastFrameAt = now;
+    }
     try {
       if (crashed) {
         if (justPressed('action')) {
@@ -4764,7 +4777,6 @@
       drawCrash();
     } finally {
       pressed.clear();
-      requestAnimationFrame(frame);
     }
   }
 

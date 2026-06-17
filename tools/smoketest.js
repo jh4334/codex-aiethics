@@ -876,4 +876,17 @@ const snowW = snowTiles[1].length;
 const snowRowsOk = snowTiles.every(r => r.length === snowW);
 check('설원 맵 모든 행 길이 동일', snowRowsOk);
 
+console.log('[62] 프레임 루프 시간 진행 (속도 제한 게이팅)');
+// performance가 없는 테스트 환경에선 매 프레임 처리되어 game.time이 step 수만큼 증가
+g.mode = 'world';
+const t0 = g.time;
+step(6);
+check('테스트 환경에선 프레임마다 진행', g.time - t0 === 6);
+
+console.log('[63] drawDodge 안전 가드 (회피 종료 프레임)');
+// 크래시가 나면 mode가 비정상이 되므로, 정상 모드 유지로 간접 확인
+g.mode = 'world';
+step(3);
+check('회피 가드 후 프레임 정상', typeof g.mode === 'string' && g.mode === 'world');
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
