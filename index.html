@@ -163,11 +163,29 @@
     border: none; border-radius: 6px;
     padding: 12px 28px; cursor: pointer;
   }
+
+  /* ---- 첫 로딩 실패 안내 (스크립트가 안 받아졌을 때) ---- */
+  #boot-error {
+    display: none;
+    position: fixed; inset: 0;
+    background: #000; color: #fff;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px; text-align: center; padding: 24px;
+    z-index: 200; font-size: 18px;
+  }
+  #boot-error small { color: #999; font-size: 14px; line-height: 1.6; }
+  #boot-error button {
+    background: #fff; color: #000;
+    font-size: 16px; font-weight: bold;
+    border: none; border-radius: 6px;
+    padding: 12px 28px; cursor: pointer; margin-top: 6px;
+  }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <canvas id="game" width="720" height="528" tabindex="0"></canvas>
+  <canvas id="game" width="720" height="528" tabindex="0" role="application" aria-label="AI 윤리 어드벤처 게임 화면. 방향키로 이동, Z 또는 스페이스로 결정합니다."></canvas>
 </div>
 <div id="touch-ui">
   <div class="tbtn" id="t-up">▲</div>
@@ -193,11 +211,37 @@
     <div class="np-hint">Enter 또는 A 버튼으로 시작 · Esc로 취소</div>
   </div>
 </div>
+<div id="boot-error">
+  <div>게임을 불러오지 못했어요 😢</div>
+  <small>인터넷 연결을 확인한 뒤 다시 시도해 주세요.<br>처음 한 번만 연결되면, 이후에는 오프라인에서도 실행됩니다.</small>
+  <button onclick="location.reload()">다시 시도</button>
+</div>
 <script src="src/sprites.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/data.js"></script>
 <script src="src/game.js"></script>
 <script>
+  // 첫 로딩 감시: 게임이 일정 시간 안에 시작되지 않으면(스크립트 누락·네트워크 실패)
+  // 검은 화면 대신 안내와 '다시 시도' 버튼을 보여 준다.
+  (function () {
+    var t = setTimeout(function () {
+      if (!window.__game) {
+        var el = document.getElementById('boot-error');
+        if (el) el.style.display = 'flex';
+      }
+    }, 6000);
+    window.addEventListener('error', function () {
+      if (!window.__game) {
+        var el = document.getElementById('boot-error');
+        if (el) el.style.display = 'flex';
+      }
+    });
+    // 정상 시작되면 감시 해제
+    var iv = setInterval(function () {
+      if (window.__game) { clearTimeout(t); clearInterval(iv); }
+    }, 200);
+  })();
+
   // 오프라인 설치(PWA) — file:// 로 직접 열었을 때는 등록하지 않는다
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     window.addEventListener('load', () => {
