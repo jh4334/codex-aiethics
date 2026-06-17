@@ -4816,6 +4816,29 @@
     });
   }
 
+  // 모바일에서 세로로 돌리면 "가로로 돌려 주세요" 안내가 화면을 덮는다.
+  // 이때 보이지 않는 BGM이 계속 흐르지 않도록 멈추고, 가로로 돌아오면 복원한다.
+  try {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      const portraitMQ = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
+      let bgmBeforeRotate = null;
+      const onRotate = (mq) => {
+        try {
+          if (mq.matches) {
+            if (Sound.songName) { bgmBeforeRotate = Sound.songName; Sound.stopSong(); }
+            Speech.stop();
+          } else if (bgmBeforeRotate) {
+            Sound.resume();
+            Sound.playSong(bgmBeforeRotate);
+            bgmBeforeRotate = null;
+          }
+        } catch (e) { /* 무시 */ }
+      };
+      if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', onRotate);
+      else if (portraitMQ.addListener) portraitMQ.addListener(onRotate); // 구형 사파리
+    }
+  } catch (e) { /* 무시 */ }
+
   probeStorage(); // 저장 가능 여부 확인 (불가하면 타이틀에 경고 표시)
   // 읽어주기 한국어 음성 준비 (목록이 비동기로 채워지면 다시 고른다)
   try {
