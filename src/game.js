@@ -1549,6 +1549,12 @@
       b.qIdx = 0;
     }
     const q = b.questions[b.qIdx];
+    if (!q || !Array.isArray(q.a) || q.a.length === 0) {
+      // 출제할 문제가 없으면(데이터 이상) 배틀을 안전하게 종료해 크래시를 막는다
+      game.battle = null;
+      game.mode = 'world';
+      return;
+    }
     b.choiceOrder = shuffled(q.a.map((_, i) => i));
     b.correctPos = b.choiceOrder.indexOf(q.c);
     b.hintUsed = false;
