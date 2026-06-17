@@ -1582,6 +1582,7 @@
   function choiceOrder() {
     const b = game.battle;
     const q = currentQuestion();
+    if (!q || !Array.isArray(q.a)) return [];
     return b.choiceOrder && b.choiceOrder.length === q.a.length
       ? b.choiceOrder : q.a.map((_, i) => i);
   }
@@ -3327,7 +3328,8 @@
       const inp = document.createElement('input');
       inp.type = 'file';
       inp.accept = 'application/json,.json';
-      inp.addEventListener('change', () => {
+      const handler = () => {
+        inp.removeEventListener('change', handler);
         const file = inp.files && inp.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -3341,8 +3343,10 @@
           }
           Sound.badge();
         };
+        reader.onerror = () => { game.backup.toast = -200; Sound.badge(); };
         reader.readAsText(file);
-      });
+      };
+      inp.addEventListener('change', handler);
       inp.click();
       return true;
     } catch (e) { game.backup.toast = -200; return false; }
@@ -3533,20 +3537,28 @@
       const inp = document.createElement('input');
       inp.type = 'file';
       inp.accept = 'application/json,.json';
-      inp.addEventListener('change', () => {
+      const handler = () => {
+        inp.removeEventListener('change', handler);
         const file = inp.files && inp.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = () => setQuizToast(importCustomQuizzes(String(reader.result)));
+        reader.onerror = () => { game.quizedit.toast = -1; Sound.badge(); };
         reader.readAsText(file);
-      });
+      };
+      inp.addEventListener('change', handler);
       inp.click();
     } catch (e) { game.quizedit.toast = -1; }
   }
   function importQuizClip() {
     try {
       if (window.navigator && navigator.clipboard && navigator.clipboard.readText) {
-        navigator.clipboard.readText().then((t) => setQuizToast(importCustomQuizzes(t))).catch(() => { game.quizedit.toast = -1; });
+        let done = false;
+        const fail = () => { if (!done) { done = true; game.quizedit.toast = -1; Sound.badge(); } };
+        const timer = setTimeout(fail, 5000);
+        navigator.clipboard.readText()
+          .then((t) => { if (done) return; done = true; clearTimeout(timer); setQuizToast(importCustomQuizzes(t)); })
+          .catch(() => { clearTimeout(timer); fail(); });
       } else { game.quizedit.toast = -1; }
     } catch (e) { game.quizedit.toast = -1; }
   }
@@ -4207,6 +4219,7 @@
 
   function drawDodge(b) {
     const d = b.dodge;
+    if (!d || !b.attack) return;
     ctx.textAlign = 'center';
     // 보스의 외침
     ctx.fillStyle = '#fff';
