@@ -864,6 +864,9 @@
     const k = KEYMAP[e.key];
     if (k) held.delete(k);
   });
+  // 창 포커스를 잃으면(다른 탭·앱으로 전환) keyup이 안 와서 키가 '눌린 채' 남아
+  // 돌아왔을 때 캐릭터가 계속 걷는 문제를 막는다.
+  window.addEventListener('blur', () => { held.clear(); pressed.clear(); });
 
   // 터치 컨트롤
   if ('ontouchstart' in window) {
