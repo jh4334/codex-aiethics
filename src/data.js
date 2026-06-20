@@ -204,9 +204,9 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 2 ----
+  // ---- 스테이지 2: 햇살초원 거점 (허브) + 서브맵 2 + 보스 아레나 ----
   meadow: {
-    name: '햇살초원 (스테이지 2)',
+    name: '햇살초원 거점 (스테이지 2)',
     song: 'field',
     tiles: [
       'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
@@ -216,70 +216,192 @@ const MAPS = {
       'TGGTTGGGGGGGGPPGGGGGGGGTTGGT',
       'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
       'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
-      'TGFGGGGGGGGGGPPGGGGGGGGFGGGT',
+      'TGFGGGGGGGGGGPPGGGGGFGGGGGGT',
       'TGGGGGGWWWGGGPPGGGWWWGGGGGGT',
       'TGGGGGGWWWGGGPPGGGWWWGGGGGGT',
-      'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
+      'PGGGGGGGGGGGGPPGGGGGGGGGGGGP',
       'TGGGGGGGGGGGGPPYGGGGGGGGGGGT',
       'TGFGGGGGGGGGGPPGGGGGGGGGGFGT',
       'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
       'TGGTTGGGGGGGGPPGGGGGGGGTTGGT',
       'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGPPGGGGG1GGGGGGT',
       'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
-      'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
-      'TGFGGGGGGGGGGPPGGGGGGGGGFGGT',
+      'TGGFGGGGGGGGGPPGGGGGGGGGFGGT',
       'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
     ],
     warps: [
       { x: 13, y: 0, to: 'village', tx: 13, ty: 18 },
       { x: 14, y: 0, to: 'village', tx: 14, ty: 18 },
+      { x: 0, y: 10, to: 'windhill', tx: 1, ty: 10 },
+      { x: 27, y: 10, to: 'fogswamp', tx: 26, ty: 10 },
+      { x: 20, y: 16, to: 'signaltower2', tx: 8, ty: 12,
+        needAllDefeated: ['somunmon', 'musimon'],
+        lockText: '탑터의 문이 굳게 닫혀 있다.\n바람 언덕과 안개 습지의\n수호자를 먼저 깨우쳐야 한다.' },
       { x: 13, y: 19, to: 'desert', tx: 13, ty: 1, needBoss: 'meotdaeromon',
         lockText: '남쪽 길을 멋대로몬의 부하들이\n막고 있다. 이 초원의 보스\n멋대로몬을 깨우쳐야 한다!' },
       { x: 14, y: 19, to: 'desert', tx: 14, ty: 1, needBoss: 'meotdaeromon',
         lockText: '남쪽 길을 멋대로몬의 부하들이\n막고 있다. 이 초원의 보스\n멋대로몬을 깨우쳐야 한다!' },
     ],
     npcs: [
-      { id: 'traveler', x: 17, y: 5, pal: 'traveler', name: '여행자' },
+      { id: 'traveler', x: 17, y: 7, pal: 'traveler', name: '여행자' },
+      { id: 'meadow_scout', x: 5, y: 7, pal: 'kid', name: '정찰대 아이' },
     ],
     signs: [
-      { x: 15, y: 11, text: '≪햇살초원≫ 스테이지 2\n남쪽으로 가려면 이곳의 보스\n멋대로몬을 깨우쳐야 합니다.' },
+      { x: 15, y: 11, text: '≪햇살초원 거점≫ 스테이지 2\n서쪽 바람 언덕, 동쪽 안개 습지를\n탐험해 두 수호자를 깨우치세요!' },
+    ],
+    monsters: [],
+  },
+
+  // 스테이지 2 서브맵 A: 바람 언덕
+  windhill: {
+    name: '바람 언덕',
+    song: 'field',
+    tiles: [
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGTTGGGGGGGFGGGGGGGGGGGGGGT',
+      'TGGTGGGGGGGGGGGGGGGGTTGGGGGT',
+      'TGFGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGTTGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGWWWGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGWWWGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGFGGGGGTTGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'PGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGFGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGFGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGP',
+      'TGGGGGTTGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGTTGGGGGGGT',
+      'TGGGGFGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGYGGGGGGGGGGGGGGGGFGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+    ],
+    warps: [
+      { x: 0, y: 10, to: 'meadow', tx: 1, ty: 10 },
+      { x: 27, y: 13, to: 'fogswamp', tx: 1, ty: 13 },
+    ],
+    npcs: [
+      { id: 'windhill_hermit', x: 5, y: 3, pal: 'traveler', name: '언덕 은둔자' },
+    ],
+    signs: [
+      { x: 3, y: 17, text: '≪바람 언덕≫\n바람이 세차서 소문이 금방\n퍼지는 곳이래요. 확인부터!' },
     ],
     monsters: [
-      { id: 'akpeulmon', x: 7, y: 6 },
-      { id: 'gatimmon', x: 20, y: 12 },
-      { id: 'meotdaeromon', x: 13, y: 16 },
+      { id: 'akpeulmon', x: 8, y: 4 },
+      { id: 'somunmon', x: 20, y: 11 },
     ],
   },
 
-  // ---- 스테이지 3 ----
+  // 스테이지 2 서브맵 B: 안개 습지
+  fogswamp: {
+    name: '안개 습지',
+    song: 'field',
+    tiles: [
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGFGGGGGGGGGGGGGGGGT',
+      'TGGGWWGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGWGGGGGGGGGGGGGGGGWWGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGWGGGGT',
+      'TGGGGGGGGGGGGGGGFGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGWGGGGGGGGGGGGGGGGGGGGGGGT',
+      'PGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGFGGGGGGGGGGGGGGGGGWGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'PGGGGGGGGGGGGGGGGGGGGGFGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGWWGGGGGGGGGGGWWGGGGGT',
+      'TGGGGGGGGGGGGGFGGGGGGGGGGGGT',
+      'TGYGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+    ],
+    warps: [
+      { x: 0, y: 10, to: 'meadow', tx: 26, ty: 10 },
+      { x: 0, y: 13, to: 'windhill', tx: 26, ty: 13 },
+    ],
+    npcs: [
+      { id: 'fogswamp_frog', x: 15, y: 6, pal: 'kid', name: '습지 관찰자' },
+    ],
+    signs: [
+      { x: 2, y: 17, text: '≪안개 습지≫\n안개가 짙어 한쪽 소리만\n들리기 쉬워요. 골고루 들어요.' },
+    ],
+    monsters: [
+      { id: 'gatimmon', x: 8, y: 7 },
+      { id: 'musimon', x: 20, y: 12 },
+    ],
+  },
+
+  // 스테이지 2 보스 아레나: 신호 탑터
+  signaltower2: {
+    name: '신호 탑터',
+    song: 'cave',
+    tiles: [
+      'NNNNNNNNNNNNNNNNNN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMNMMMMMMMMMMNMMN',
+      'NMMNMMMMMMMMMMNMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMNMMMMMMMMMMNMMN',
+      'NMMNMMMMMMMMMMNMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NNNNNNNNMMNNNNNNNN',
+    ],
+    warps: [
+      { x: 8, y: 13, to: 'meadow', tx: 20, ty: 15 },
+      { x: 9, y: 13, to: 'meadow', tx: 20, ty: 15 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [
+      { id: 'meotdaeromon', x: 8, y: 3 },
+    ],
+  },
+
+  // ---- 스테이지 3: 재깍사막 거점 (허브) + 서브맵 2 + 보스 아레나 ----
   desert: {
-    name: '재깍사막 (스테이지 3)',
+    name: '재깍사막 거점 (스테이지 3)',
     song: 'desert',
     tiles: [
       'RRRRRRRRRRRRRSSRRRRRRRRRRRRR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
-      'RSSXSSSSSSSSSSSSSSSSSSXSSSSR',
+      'RSSXSSSSSSSSSSSSSSSSSSSSXSSR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
-      'RSSSSRRSSSSSSSSSSSSSRRSSSSSR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSSSSSSSSSSXSSSSSSSSSSSSSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSXSSSSSSSSSSSSSSSSSSSSXSSR',
+      'SSSSSSSSSSSSSSSSSSSSSSSSSSSS',
+      'RSSSSSRSSRSSSSSSSSRSSRSSSSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSYSSSSSSSSSSSSXSSSSSSSSSSSR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
       'RSSXSSSSSSSSSSSSSSSSSSSSXSSR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
-      'RSSSSSSRRRSSSSSSSRRRSSSSSSSR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
-      'RSYSSSSSSSSSSSSSSSSSSSSSSSSR',
-      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
-      'RSSSSXSSSSSSSSSSSSSSSSXSSSSR',
-      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
-      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
-      'RSSSSRRSSSSSSSSSSSSSRRSSSSSR',
-      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSSSSRSSSSSSSSS1SSSSRSSSSSR',
+      'RSSXSSSSSSSSSSSSSSSSSSSSXSSR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
       'RRRRRRRRRRRRRSSRRRRRRRRRRRRR',
     ],
     warps: [
       { x: 13, y: 0, to: 'meadow', tx: 13, ty: 18 },
       { x: 14, y: 0, to: 'meadow', tx: 14, ty: 18 },
+      { x: 0, y: 8, to: 'ruins', tx: 1, ty: 10 },
+      { x: 27, y: 8, to: 'oasis', tx: 1, ty: 10 },
+      { x: 16, y: 16, to: 'temple', tx: 8, ty: 12,
+        needAllDefeated: ['nangbimon', 'pinggyemon'],
+        lockText: '신전의 문이 굳게 닫혀 있다.\n열사의 폐허와 오아시스의\n수호자를 먼저 깨우쳐야 한다.' },
       { x: 13, y: 19, to: 'snow', tx: 13, ty: 1, needBoss: 'tteonemgimon',
         lockText: '모래폭풍이 길을 막고 있다.\n이 사막의 보스 떠넘기몬을\n깨우치면 가라앉을 것이다!' },
       { x: 14, y: 19, to: 'snow', tx: 14, ty: 1, needBoss: 'tteonemgimon',
@@ -287,16 +409,127 @@ const MAPS = {
     ],
     npcs: [
       { id: 'merchant', x: 18, y: 12, pal: 'merchant', name: '사막 상인' },
+      { id: 'desert_nomad', x: 6, y: 6, pal: 'traveler', name: '사막 유목민' },
     ],
     signs: [
-      { x: 2, y: 11, text: '≪재깍사막≫ 스테이지 3\n데이터센터의 열기로 뜨거워진 사막.\n전기를 펑펑 쓰는 몬스터가 산다…' },
+      { x: 2, y: 11, text: '≪재깍사막 거점≫ 스테이지 3\n서쪽 열사의 폐허, 동쪽 오아시스를\n탐험해 두 수호자를 깨우치세요!' },
+    ],
+    monsters: [],
+  },
+
+  // 스테이지 3 서브맵 A: 열사의 폐허
+  ruins: {
+    name: '열사의 폐허',
+    song: 'desert',
+    tiles: [
+      'RRRRRRRRRRRRRRRRRRRRRRRRRRRR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSXSSSSSSSSSSSSSSSSSSSSXSSR',
+      'RSSSRRSSSSSSSSSSSSSSRRSSSSSR',
+      'RSSSRSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSSSSSSSSSSRSSSSSSSSSSSSSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSSSSSSRRSSSSSSSSSSSSSSSSSR',
+      'RSSSSSSSSSSSSSSSSSRSSSSSSSSR',
+      'RSSSSSSSSSSSXSSSSSSSSSSSSSSR',
+      'SSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSSSSSSSSSSSSSRSSSSSSSSSYSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSSSSRRSSSSSSSSSSSSRRSSSSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSXSSSSSSSSSSSSSSSSSSSSXSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RRRRRRRRRRRRRRRRRRRRRRRRRRRR',
+    ],
+    warps: [
+      { x: 0, y: 10, to: 'desert', tx: 1, ty: 8 },
+    ],
+    npcs: [
+      { id: 'ruins_explorer', x: 10, y: 5, pal: 'guard', name: '폐허 탐험가' },
+    ],
+    signs: [
+      { x: 25, y: 11, text: '≪열사의 폐허≫\n낡은 데이터센터의 잔해…\n에너지를 마구 쓴 흔적이다.' },
     ],
     monsters: [
-      { id: 'pungpungmon', x: 6, y: 5 },
-      { id: 'kkamkkammon', x: 21, y: 8 },
-      { id: 'tteonemgimon', x: 13, y: 15 },
+      { id: 'pungpungmon', x: 8, y: 5 },
+      { id: 'nangbimon', x: 20, y: 13 },
     ],
   },
+
+  // 스테이지 3 서브맵 B: 오아시스
+  oasis: {
+    name: '오아시스',
+    song: 'desert',
+    tiles: [
+      'RRRRRRRRRRRRRRRRRRRRRRRRRRRR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSFSSSSSSSSSSSSSSSSSSSSFSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSSXSSSSSSSSSSSSSSSSSSXSSSR',
+      'RSSSSSSSSSWWWWWWWWSSSSSSSSSR',
+      'RSSSSSSSSSWGGGGGGWSSSSSSSSSR',
+      'RSSSSSSSSSWGGGGGGWSSSSSSSSSR',
+      'RSSSSSSSSSWGGFGGGWSSSSSSSSSR',
+      'RSSSSSSSSSGGGGGGGWSSSSSSSSSR',
+      'SSSSSSSSSSGGGGGGGWSSSSSSSSSR',
+      'RSSSSSSSSSWGGGFGGWSSSSSSSSSR',
+      'RSSSSSSSSSWGGYGGGWSSSSSSSSSR',
+      'RSSSSSSSSSWGGGGGGWSSSSSSSSSR',
+      'RSSSSSSSSSWWWWWWWWSSSSSSSSSR',
+      'RSSSXSSSSSSSSSSSSSSSSSSXSSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RSSFSSSSSSSSSSSSSSSSSSSSFSSR',
+      'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
+      'RRRRRRRRRRRRRRRRRRRRRRRRRRRR',
+    ],
+    warps: [
+      { x: 0, y: 10, to: 'desert', tx: 26, ty: 8 },
+    ],
+    npcs: [
+      { id: 'oasis_traveler', x: 12, y: 9, pal: 'merchant', name: '오아시스 여행자' },
+    ],
+    signs: [
+      { x: 13, y: 12, text: '≪오아시스≫\n사막 한가운데 맑은 물.\n핑계 대지 않고 책임지는 자만\n이 물을 마실 수 있대요.' },
+    ],
+    monsters: [
+      { id: 'kkamkkammon', x: 12, y: 7 },
+      { id: 'pinggyemon', x: 14, y: 11 },
+    ],
+  },
+
+  // 스테이지 3 보스 아레나: 심판의 신전
+  temple: {
+    name: '심판의 신전',
+    song: 'cave',
+    tiles: [
+      'NNNNNNNNNNNNNNNNNN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMNMMMMMMMMMMNMMN',
+      'NMMNMMMMMMMMMMNMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMNMMMMMMMMMMNMMN',
+      'NMMNMMMMMMMMMMNMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMMMMMN',
+      'NNNNNNNNMMNNNNNNNN',
+    ],
+    warps: [
+      { x: 8, y: 13, to: 'desert', tx: 16, ty: 15 },
+      { x: 9, y: 13, to: 'desert', tx: 16, ty: 15 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [
+      { id: 'tteonemgimon', x: 8, y: 3 },
+    ],
+  },
+
 
   // ---- 스테이지 4 ----
   snow: {
@@ -840,6 +1073,44 @@ const MONSTERS = {
       ],
     },
   },
+  somunmon: {
+    name: '소문몬',
+    topic: 'fake',
+    hp: 3,
+    intro: '들었어? 들었어?\n누가 그랬대, 누가 그랬대!\n…확인은 안 했지만,\n재미있으니까 괜찮잖아?',
+    win: '…확인 없이 퍼뜨린 말이\n누군가를 울리고 있었구나.\n…다음부턴, 먼저 물어볼게.',
+    badge: null,
+    mercy: {
+      prompt: '소문몬이 입을 꾹 다문 채\n주위를 두리번거리고 있다.',
+      options: [
+        { label: '"사실을 확인하고 말하자" (함께 앉는다)', kind: 'mercy',
+          reply: '…확인부터 하는 거구나.\n…그게 소문이 아니라\n"진짜 이야기"가 되는 방법이야?' },
+        { label: '"근거 없는 말은 하지 마"', kind: 'neutral',
+          reply: '…알았어.\n입보다 귀를 먼저\n열어 볼게.' },
+        { label: '입을 막아 버린다', kind: 'harsh',
+          reply: '…으으.\n…이렇게까지\n안 해도 되는데.' },
+      ],
+    },
+  },
+  musimon: {
+    name: '무시몬',
+    topic: 'bias',
+    hp: 3,
+    intro: '…그건 네 생각이고.\n내 생각은 달라.\n…아니, 네 생각은\n듣고 싶지도 않아.',
+    win: '…듣기 싫은 말 속에도\n배울 게 있었구나.\n…귀를 막으면, 결국\n나만 좁아지는 거였어.',
+    badge: null,
+    mercy: {
+      prompt: '무시몬이 처음으로\n고개를 돌려 너를 바라본다.',
+      options: [
+        { label: '"네 이야기도 들을게" (귀를 기울인다)', kind: 'mercy',
+          reply: '…내 이야기를?\n…아무도 들어 준 적 없는데.\n…고마워. 나도\n네 이야기를 들어 볼게.' },
+        { label: '"서로 들어 보는 거야"', kind: 'neutral',
+          reply: '…서로.\n…그 말, 처음 들어 봐.' },
+        { label: '무시하고 지나간다', kind: 'harsh',
+          reply: '…….\n(무시몬이 다시\n등을 돌렸다.)' },
+      ],
+    },
+  },
 
   // ---- 스테이지 3: 재깍사막 ----
   pungpungmon: {
@@ -897,6 +1168,44 @@ const MONSTERS = {
           reply: '…응.\n"내가 그랬어"부터.' },
         { label: '손가락질을 그대로 돌려준다', kind: 'harsh',
           reply: '…그래.\n이 기분이었구나,\n다들.' },
+      ],
+    },
+  },
+  nangbimon: {
+    name: '낭비몬',
+    topic: 'environment',
+    hp: 3,
+    intro: '뭘 아끼냐구?\n데이터도 전기도 무한한 거잖아!\n…쓰고 또 쓰고, 쓰고 또 쓰고,\n그게 뭐가 문제야?',
+    win: '…무한한 줄 알았는데,\n어딘가에서 누군가가\n그 값을 치르고 있었구나.\n…미안해, 지구야.',
+    badge: null,
+    mercy: {
+      prompt: '낭비몬이 꺼져 가는 불빛을\n멍하니 바라보고 있다.',
+      options: [
+        { label: '"같이 아껴 쓰는 법을 찾자" (손을 내민다)', kind: 'mercy',
+          reply: '…같이?\n아끼는 것도 둘이 하면\n덜 어려울까?\n…해 볼게. 같이.' },
+        { label: '"필요한 만큼만 쓰는 거야"', kind: 'neutral',
+          reply: '…필요한 만큼.\n…그게 얼마인지부터\n배워야겠다.' },
+        { label: '전원을 강제로 끈다', kind: 'harsh',
+          reply: '…아.\n…좀 갑작스럽잖아.\n(낭비몬이 어둠 속에서\n작게 웅크린다.)' },
+      ],
+    },
+  },
+  pinggyemon: {
+    name: '핑계몬',
+    topic: 'responsibility',
+    hp: 3,
+    intro: '내가 한 게 아니야!\nAI가 시킨 거야!\n…누가 그러라고 했냐구?\n…다들 그러잖아!',
+    win: '…핑계를 대면 댈수록\n마음이 무거워지더라.\n…"내가 했어"라고 말하니까,\n이상하게 가벼워졌어.',
+    badge: null,
+    mercy: {
+      prompt: '핑계몬이 가리키던 손가락을\n천천히 내리고 있다.',
+      options: [
+        { label: '"솔직한 네가 더 멋져" (웃어 준다)', kind: 'mercy',
+          reply: '…멋지다고?\n핑계 대지 않는 게?\n…그 말, 처음 들었어.\n…고마워.' },
+        { label: '"핑계보다 사과가 먼저야"', kind: 'neutral',
+          reply: '…사과.\n…"미안해"부터 연습할게.' },
+        { label: '가리키는 방향을 되돌린다', kind: 'harsh',
+          reply: '…그래.\n이 느낌이었구나,\n남 탓 들은 사람은.' },
       ],
     },
   },
@@ -2379,6 +2688,37 @@ function getNpcDialog(npcId, flags) {
         '화면 너머에도 사람이 있다는 것,\n그리고 다양한 이야기를 골고루\n듣는 게 중요하다는 걸 알려주세요!',
       ];
 
+    case 'meadow_scout':
+      if (flags.defeated.meotdaeromon) {
+        return ['초원의 보스가 착해졌대요!\n수호자님 덕분이에요!'];
+      }
+      if (flags.defeated.somunmon && flags.defeated.musimon) {
+        return ['바람 언덕과 안개 습지를\n모두 탐험했군요!\n중앙의 탑터 문이 열렸어요!'];
+      }
+      return [
+        '서쪽 바람 언덕에는 소문을 퍼뜨리는\n소문몬이 나타났대요!',
+        '동쪽 안개 습지에는 남의 말을\n무시하는 무시몬이 있다던데…',
+        '두 곳의 수호자를 깨우치면\n초원 중앙 탑터의 문이 열린대요!',
+      ];
+
+    case 'windhill_hermit':
+      if (flags.defeated.somunmon) {
+        return ['바람 언덕이 다시 조용해졌군요.\n확인 없이 퍼지던 소문도\n잦아들었어요.'];
+      }
+      return [
+        '이 언덕은 바람이 세차서\n소문이 금방 퍼지는 곳이에요.',
+        '확인하지 않은 이야기는\n바람처럼 빨리 퍼지지만,\n진실은 천천히 걸어온다네요.',
+      ];
+
+    case 'fogswamp_frog':
+      if (flags.defeated.musimon) {
+        return ['안개가 좀 걷혔네요!\n무시몬이 귀를 열기 시작했나 봐요.'];
+      }
+      return [
+        '이 습지는 안개가 짙어서\n한쪽 소리만 들리기 쉬운 곳이에요.',
+        '무시몬이 다른 의견을 듣지\n않으려 해요. 다양한 소리를\n골고루 들어 보라고 해 주세요!',
+      ];
+
     case 'merchant':
       if (flags.defeated.tteonemgimon) {
         return ['모래폭풍이 멎었군요!\n남쪽 정지된 설원은 추우니\n따뜻하게 입고 가세요!'];
@@ -2387,6 +2727,37 @@ function getNpcDialog(npcId, flags) {
         '이 사막은 거대한 데이터센터의\n열기로 점점 뜨거워지고 있어요.',
         'AI도 전기와 물을 먹고 산답니다.\n아껴 쓰는 사람이 지구를 지켜요!',
         '아, 그리고 깜깜몬을 만나면\n"왜?"라고 물어보세요. 설명을\n요구하는 건 우리의 권리예요!',
+      ];
+
+    case 'desert_nomad':
+      if (flags.defeated.tteonemgimon) {
+        return ['사막에 평화가 찾아왔군요.\n모래폭풍 없는 하늘은\n정말 아름다워요.'];
+      }
+      if (flags.defeated.nangbimon && flags.defeated.pinggyemon) {
+        return ['폐허와 오아시스를 모두\n탐험했군요! 중앙 신전의\n문이 열렸어요.'];
+      }
+      return [
+        '서쪽 열사의 폐허에는 에너지를\n마구 쓰는 낭비몬이 나타났대요.',
+        '동쪽 오아시스에는 핑계만 대는\n핑계몬이 있다고 해요.',
+        '두 수호자를 깨우치면 사막 중앙\n심판의 신전 문이 열린대요!',
+      ];
+
+    case 'ruins_explorer':
+      if (flags.defeated.nangbimon) {
+        return ['낭비몬이 절전 모드에 들어갔군요!\n폐허의 열기도 조금 식었어요.'];
+      }
+      return [
+        '이 폐허는 옛날 데이터센터의\n잔해예요. 에너지를 마구 쓴\n흔적이 곳곳에 남아 있어요.',
+        '낭비몬이 아직도 전기를\n펑펑 쓰고 있대요. 조심하세요!',
+      ];
+
+    case 'oasis_traveler':
+      if (flags.defeated.pinggyemon) {
+        return ['핑계몬이 솔직해졌군요!\n오아시스의 물이 더\n맑아진 것 같아요.'];
+      }
+      return [
+        '이 오아시스는 사막에서 유일하게\n맑은 물이 있는 곳이에요.',
+        '그런데 핑계몬이 여기서\n"내 탓이 아니야"를 외치며\n물을 흐리게 하고 있대요.',
       ];
 
     case 'mittens':
@@ -2541,9 +2912,13 @@ const MONSTER_DEX = {
   akpeulmon:     { stage: 2, theme: '챗봇 예절 · 고운 말', learn: '화면 너머에도 사람의 마음이 있어요. 쓰기 전에 한 번 더 생각해요.' },
   gatimmon:      { stage: 2, theme: '추천 알고리즘 · 필터버블', learn: '좋아하는 것만 보면 생각이 좁아져요. 가끔은 바깥세상도 보아요.' },
   meotdaeromon:  { stage: 2, theme: 'AI 안전 · 사람의 확인', learn: '중요한 일은 꼭 사람과 함께 확인. 빠른 것보다 안전한 것이 먼저예요.' },
+  somunmon:      { stage: 2, theme: '소문 · 사실 확인', learn: '확인 없이 퍼뜨린 말은 누군가를 다치게 해요. 사실을 먼저 확인해요.' },
+  musimon:       { stage: 2, theme: '경청 · 다양한 의견', learn: '다른 의견도 들어 보면 세상이 넓어져요. 귀를 막으면 나만 좁아져요.' },
   pungpungmon:   { stage: 3, theme: 'AI와 환경 · 에너지', learn: 'AI도 전기와 물을 써요. 꼭 필요할 때 아껴서 똑똑하게.' },
   kkamkkammon:   { stage: 3, theme: '투명성 · 설명 가능성', learn: '"왜?"라고 물을 수 있어요. 이유를 설명해 주는 AI가 믿음직해요.' },
   tteonemgimon:  { stage: 3, theme: '책임', learn: 'AI를 쓴 사람에게 책임이 있어요. 내 행동은 내가 책임져요.' },
+  nangbimon:     { stage: 3, theme: '에너지 낭비 · 절약', learn: '무한해 보여도 누군가가 그 값을 치러요. 아끼는 습관이 지구를 지켜요.' },
+  pinggyemon:    { stage: 3, theme: '핑계 · 정직한 책임', learn: '핑계보다 솔직한 사과가 마음을 가볍게 해요. 내 행동은 내가 책임져요.' },
   sideulmon:     { stage: 4, theme: '창의성 · 노력의 가치', learn: '내 마음이 담긴 작품은 세상에 하나뿐. 서툴러도 소중해요.' },
   ppaeatmon:     { stage: 4, theme: 'AI와 일자리 · 협력', learn: 'AI는 빼앗는 게 아니라 돕는 것. 함께하면 더 멋진 일을 해요.' },
   hollimmon:     { stage: 4, theme: 'AI와 사람의 관계', learn: '진짜 마음은 사람과 나눠요. AI는 좋은 도구일 뿐이에요.' },
@@ -2569,7 +2944,8 @@ const MONSTER_DEX = {
 // 도감/타이틀 표시용 몬스터 순서
 const DEX_ORDER = [
   'bekkyeomon', 'mollaemon', 'jungdokmon', 'geojitmon', 'pyeonhyangmon', 'hondonmon',
-  'akpeulmon', 'gatimmon', 'meotdaeromon', 'pungpungmon', 'kkamkkammon', 'tteonemgimon',
+  'akpeulmon', 'gatimmon', 'somunmon', 'musimon', 'meotdaeromon',
+  'pungpungmon', 'kkamkkammon', 'nangbimon', 'pinggyemon', 'tteonemgimon',
   'sideulmon', 'ppaeatmon', 'hollimmon', 'maearimon', 'geurimjamon', 'finalboss',
   'tturimmon', 'girokmon', 'sujipmon', 'saseomon', 'piltermon', 'mirrormon',
   'yuhokmon', 'soksagimon', 'jogakmon', 'yeongi',

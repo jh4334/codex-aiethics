@@ -801,6 +801,84 @@ MONSTER_SPRITES.miraemon = [
   '................',
 ];
 
+// ---- 스테이지 2~3 서브맵 신규 몬스터 ----
+// 소문몬: 소문을 퍼뜨리는 확성기 입 몬스터 (주황)
+MONSTER_SPRITES.somunmon = [
+  '................',
+  '....ooooooo.....',
+  '...ooooooooo....',
+  '..oowoooooooo...',
+  '..oooooooooooo..',
+  '..ookwooookwoo..',
+  '..oooeooooeooo..',
+  '..oooooooooooo..',
+  '..ookkkkkkkkoo..',
+  '..okwwwwwwwwko..',
+  '..ookkkkkkkkoo..',
+  '..oooooooooooo..',
+  '...oooooooood...',
+  '....oo.oo.oo....',
+  '....oo.oo.dd....',
+  '................',
+];
+// 무시몬: 귀를 막고 외면하는 파란 몬스터
+MONSTER_SPRITES.musimon = [
+  '................',
+  '.....llllll.....',
+  '....llllllll....',
+  '...llllllllll...',
+  '..xlllllllllx...',
+  '..xxlllllllxx...',
+  '..xllleeeelllx..',
+  '..llllllllllll..',
+  '..lllkkkkkklll..',
+  '..llllllllllll..',
+  '..iillllllllii..',
+  '..llllllllllli..',
+  '...llllllllll...',
+  '....ll.ll.ll....',
+  '....ii.ll.ii....',
+  '................',
+];
+// 낭비몬: 전기를 펑펑 쓰는 노랑 몬스터 (번개·꺼지는 불빛)
+MONSTER_SPRITES.nangbimon = [
+  '..w.........w...',
+  '....yyyyyy......',
+  '...yyyyyyyy.....',
+  '..yyyyyyyyyy....',
+  '..yykyyyykyy.w..',
+  '..yywyyyywyyy...',
+  '..yyyyyyyyyyy...',
+  '..yyyqyyqyyyy...',
+  '..yyyyqqyyyyy...',
+  '..yyyqqyqqyyy...',
+  '..yyyyyyyqyyy...',
+  '..oyyyyyyyoyo...',
+  '...oyyyyyyoo....',
+  '....yy.yy.yy....',
+  'w...yy.yy.yy..w.',
+  '................',
+];
+// 핑계몬: 남을 가리키는 긴 팔의 초록 몬스터
+MONSTER_SPRITES.pinggyemon = [
+  '................',
+  '.....gggggg.....',
+  '....gggggggg....',
+  '...gggggggggg...',
+  '..ggwgggggwggg..',
+  '..ggegggggeggg..',
+  '..gggggggggggg..',
+  '..ggggkkkgggggg.',
+  '..ggggggggggffff',
+  '..gggggggggggggg',
+  '..ggggggggggffff',
+  '..gggggggggggg..',
+  '...gggggggggg...',
+  '....gg.gg.gg....',
+  '...gg..gg..gg...',
+  '................',
+];
+
 // 스프라이트 렌더 캐시
 const _spriteCache = new Map();
 
