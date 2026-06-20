@@ -120,6 +120,7 @@
         yuhokmon: false, soksagimon: false, jogakmon: false,
         yeongi: false,
         hwangakmon: false, hapseongmon: false, miraemon: false,
+        somunmon: false, musimon: false, nangbimon: false, pinggyemon: false,
       },
       mercy: 0,        // 마음을 안아준 횟수 (스테이지 6~)
       visited: {},     // 맵 인트로 연출 1회 표시용
@@ -1418,6 +1419,12 @@
       pushBack();
       Sound.bump();
       startDialog([`신호탑의 문이 굳게 닫혀 있다.\n마음의 증표 ${w.needBadges}개가 필요하다.\n(지금 ${countBadges(game.flags)}개)`]);
+      return;
+    }
+    if (w.needAllDefeated && !w.needAllDefeated.every((id) => game.flags.defeated[id])) {
+      pushBack();
+      Sound.bump();
+      startDialog([w.lockText || '길이 막혀 있다.']);
       return;
     }
     if (w.needBoss && !game.flags.defeated[w.needBoss]) {
