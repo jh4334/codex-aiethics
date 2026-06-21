@@ -45,9 +45,9 @@
 |---|---|
 | ![배움카드](shots/19-cards.png) | ![수료증](shots/20-cert.png) |
 
-| 명예의 전당 | |
+| 명예의 전당 | 수업 모드 (스테이지 바로 시작) |
 |---|---|
-| ![명예의전당](shots/21-hof.png) | |
+| ![명예의전당](shots/21-hof.png) | ![수업모드](shots/22-classmode.png) |
 
 > 스크린샷은 `node tools/shots.js`로 실제 게임을 렌더해 자동 생성됩니다.
 > (개발용 도구이며 `npm i`로 `canvas`를 한 번 설치해야 동작합니다.)

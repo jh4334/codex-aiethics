@@ -280,4 +280,10 @@ g.hof = { ret: 'title', cat: 0 };
 g.time = 20;
 shot('21-hof.png');
 
-console.log('완료. shots/ 폴더에 21장 생성.');
+// 22) 수업 모드 (스테이지 바로 시작)
+g.mode = 'classmode';
+g.classmode = { ret: 'world', sel: 3, confirm: false, toast: 0 };
+g.time = 20;
+shot('22-classmode.png');
+
+console.log('완료. shots/ 폴더에 22장 생성.');
