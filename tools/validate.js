@@ -19,8 +19,8 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js']) {
 }
 
 const { MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL,
-  MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, getObjectiveTarget } =
-  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, getObjectiveTarget })', ctx);
+  MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, TOPIC_LABEL, getObjectiveTarget } =
+  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, TOPIC_LABEL, getObjectiveTarget })', ctx);
 
 let errors = 0;
 const err = (msg) => { console.error('ERROR: ' + msg); errors++; };
@@ -127,6 +127,10 @@ for (const [name, song] of Object.entries(SONGS)) {
 
 // 7. 퀴즈 스키마 검사 (q:문자열, a:문자열 3개, c:정수 0~2, why:문자열)
 const isStr = (v) => typeof v === 'string' && v.trim().length > 0;
+// 모든 퀴즈 주제에 한글 라벨이 있어야 한다 (일지·문서·챌린지 표기 누락 방지)
+for (const topic of Object.keys(QUIZZES)) {
+  if (!isStr(TOPIC_LABEL[topic])) err(`주제 라벨 누락: TOPIC_LABEL['${topic}']`);
+}
 for (const [topic, list] of Object.entries(QUIZZES)) {
   if (!Array.isArray(list)) { err(`퀴즈 주제 ${topic}: 배열이 아님`); continue; }
   list.forEach((q, i) => {

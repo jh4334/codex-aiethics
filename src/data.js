@@ -1565,6 +1565,23 @@ const MONSTERS = {
   },
 };
 
+// ---- 주제 라벨 (단일 출처) ----
+// 주제 키 → 짧은 한글 라벨. 게임(일지·리포트·챌린지)·교사용 문서·검증이 함께 쓴다.
+const TOPIC_LABEL = {
+  privacy: '개인정보 보호', copyright: '저작권 · 출처', fake: '가짜 정보 분별',
+  bias: '편향 · 공정함', balance: '절제 · 균형', boss: '1스테이지 종합',
+  manners: '챗봇 예절 · 고운 말', filterbubble: '추천 · 필터버블', safety: 'AI 안전 · 사람 확인',
+  environment: 'AI와 환경 · 에너지', transparency: '투명성 · 설명가능성', responsibility: '책임',
+  creativity: '창의성 · 노력의 가치', jobs: 'AI와 일자리 · 협력', emotion: 'AI와 사람의 관계',
+  finale: '전체 종합', security: '계정 보안 · 피싱', footprint: '디지털 발자국',
+  consent: '데이터 수집과 동의', identity: '사칭 · 신원', persuasion: '다크패턴 · 설득',
+  core: '존재의 가치 · 책임',
+  genai: '생성형 AI · 환각', deepfake: '딥페이크 분별',
+  rumor: '소문 · 사실 확인', listen: '경청 · 다양한 의견',
+  saving: '에너지 절약', excuse: '핑계 · 정직한 책임',
+  custom: '커스텀 · 선생님 문제',
+};
+
 // ---- 퀴즈 ----
 // { q: 문제, a: 보기 3개, c: 정답 번호(0~2), why: 해설 }
 const QUIZZES = {
