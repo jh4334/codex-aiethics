@@ -758,6 +758,20 @@ check('챌린지 주제에 커스텀 등장', T.challengeTopics().some((t) => t.
 check('빈 목록 가져오기 거부', T.importCustomQuizzes('[]').ok === false);
 check('깨진 JSON 거부', T.importCustomQuizzes('nope').ok === false);
 check('양식 템플릿 생성', /questions/.test(T.customQuizTemplate()));
+// 입력 한도: 긴 텍스트는 잘리고, 과도한 문항 수는 50개로 제한
+const longQ = 'ㄱ'.repeat(500), longWhy = 'ㄴ'.repeat(500);
+T.importCustomQuizzes(JSON.stringify([{ q: longQ, a: ['ㄷ'.repeat(200), '보기2', '보기3'], c: 0, why: longWhy }]));
+const clamped = T.getCustomQuizzes()[0];
+check('긴 질문 글자수 제한(≤140)', clamped.q.length <= 140);
+check('긴 보기 글자수 제한(≤40)', clamped.a[0].length <= 40);
+check('긴 해설 글자수 제한(≤200)', clamped.why.length <= 200);
+const many = Array.from({ length: 120 }, (_, i) => ({ q: '문제' + i, a: ['1', '2', '3'], c: 0, why: '해설' }));
+const manyRes = T.importCustomQuizzes(JSON.stringify(many));
+check('과도한 문항 수 50개로 제한', manyRes.ok === true && manyRes.count === 50);
+// 제어문자가 섞여도 정리되어 저장
+const ctrlText = '\uc548\ub155' + String.fromCharCode(1, 7, 0) + '\ud558\uc138\uc694';
+T.importCustomQuizzes(JSON.stringify([{ q: ctrlText, a: ['1', '2', '3'], c: 0, why: '\ud574\uc124' }]));
+check('\uc81c\uc5b4\ubb38\uc790 \uc81c\uac70', !/[\u0000-\u001f]/.test(T.getCustomQuizzes()[0].q));
 T.clearCustomQuizzes();
 check('커스텀 문제 모두 삭제', T.getCustomQuizzes().length === 0);
 check('삭제 후 챌린지에서 커스텀 사라짐', !T.challengeTopics().some((t) => t.key === 'custom'));

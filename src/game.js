@@ -513,13 +513,25 @@
       typeof q.why === 'string' && q.why.trim();
   }
   // 가져온 텍스트(JSON)를 검사해 커스텀 문제로 저장. { ok, count, error } 반환.
+  // 커스텀 퀴즈 입력 한도 — 화면 깨짐·저장소 남용을 막는다.
+  const CUSTOM_MAX = 50;            // 최대 문항 수
+  const Q_MAX = 140, A_MAX = 40, WHY_MAX = 200; // 항목별 글자 수 상한
+  // 외부 입력 문자열 정리: 제어문자 제거, 공백 정리, 길이 제한
+  function clampQuizStr(s, n) {
+    return String(s).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
+  }
   function importCustomQuizzes(text) {
     let obj;
     try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
     // 허용 형식: 배열 [ {q,a,c,why}, ... ] 또는 { questions: [...] }
     const list = Array.isArray(obj) ? obj : (obj && Array.isArray(obj.questions) ? obj.questions : null);
     if (!list) return { ok: false, error: 'format' };
-    const clean = list.filter(validQuizItem).map((q) => ({ q: q.q, a: q.a.slice(0, 3), c: q.c, why: q.why }));
+    const clean = list.filter(validQuizItem).slice(0, CUSTOM_MAX).map((q) => ({
+      q: clampQuizStr(q.q, Q_MAX),
+      a: q.a.slice(0, 3).map((x) => clampQuizStr(x, A_MAX)),
+      c: q.c,
+      why: clampQuizStr(q.why, WHY_MAX),
+    })).filter((q) => q.q && q.a.every((x) => x) && q.why); // 정리 후 빈 항목 제거
     if (clean.length === 0) return { ok: false, error: 'empty' };
     try { localStorage.setItem(CUSTOM_QUIZ_KEY, JSON.stringify(clean)); } catch (e) { return { ok: false, error: 'save' }; }
     return { ok: true, count: clean.length };
