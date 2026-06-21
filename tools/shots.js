@@ -11,6 +11,13 @@ fs.mkdirSync(OUT, { recursive: true });
 
 // ---- DOM/환경 스텁 (node-canvas 백엔드) ----
 const mainCanvas = createCanvas(720, 528);
+// game.js가 캔버스에 이벤트 리스너·포커스를 거는데, node-canvas엔 없으므로 스텁을 단다.
+mainCanvas.addEventListener = () => {};
+mainCanvas.removeEventListener = () => {};
+mainCanvas.focus = () => {};
+mainCanvas.blur = () => {};
+mainCanvas.setAttribute = () => {};
+mainCanvas.style = mainCanvas.style || {};
 function stubEl() {
   return { style: {}, value: '', addEventListener() {}, removeEventListener() {},
     focus() {}, blur() {}, classList: { add() {}, remove() {} } };

@@ -2864,8 +2864,16 @@ function getObjective(flags) {
     if (!flags.badges.cave) left.push('동굴');
     return `${left.join('·')}의 수호자 깨우치기 (증표 ${badges}/3)`;
   }
-  if (!d.meotdaeromon) return '햇살초원의 보스 멋대로몬 깨우치기 (마을 남쪽)';
-  if (!d.tteonemgimon) return '재깍사막의 보스 떠넘기몬 깨우치기 (초원 남쪽)';
+  if (!d.meotdaeromon) {
+    if (!d.somunmon) return '바람 언덕의 소문몬 깨우치기 (초원 거점 서쪽)';
+    if (!d.musimon) return '안개 습지의 무시몬 깨우치기 (초원 거점 동쪽)';
+    return '신호 탑터의 멋대로몬 깨우치기 (초원 거점 가운데)';
+  }
+  if (!d.tteonemgimon) {
+    if (!d.nangbimon) return '열사의 폐허의 낭비몬 깨우치기 (사막 거점 서쪽)';
+    if (!d.pinggyemon) return '오아시스의 핑계몬 깨우치기 (사막 거점 동쪽)';
+    return '심판의 신전의 떠넘기몬 깨우치기 (사막 거점 가운데)';
+  }
   if (!d.hollimmon) return '정지된 설원의 보스 홀림몬 깨우치기 (사막 남쪽)';
   if (!d.finalboss) return '그림자성의 어둠대왕몬 깨우치기 (정지된 설원 남쪽)';
   if (!d.girokmon) return '왕좌 뒤의 신호를 따라가기 — 잊혀진 서버실';
@@ -2889,8 +2897,16 @@ function getObjectiveTarget(flags) {
     if (!flags.badges.lake) return { map: 'lake', x: 15, y: 5, label: '호수의 수호자' };
     return { map: 'cave', x: 4, y: 4, label: '동굴의 수호자' };
   }
-  if (!d.meotdaeromon) return { map: 'meadow', x: 13, y: 16, label: '멋대로몬' };
-  if (!d.tteonemgimon) return { map: 'desert', x: 13, y: 15, label: '떠넘기몬' };
+  if (!d.meotdaeromon) {
+    if (!d.somunmon) return { map: 'windhill', x: 20, y: 11, label: '소문몬' };
+    if (!d.musimon) return { map: 'fogswamp', x: 20, y: 12, label: '무시몬' };
+    return { map: 'signaltower2', x: 8, y: 3, label: '멋대로몬' };
+  }
+  if (!d.tteonemgimon) {
+    if (!d.nangbimon) return { map: 'ruins', x: 20, y: 13, label: '낭비몬' };
+    if (!d.pinggyemon) return { map: 'oasis', x: 14, y: 11, label: '핑계몬' };
+    return { map: 'temple', x: 8, y: 3, label: '떠넘기몬' };
+  }
   if (!d.hollimmon) return { map: 'snow', x: 13, y: 15, label: '홀림몬' };
   if (!d.finalboss) return { map: 'castle', x: 9, y: 2, label: '어둠대왕몬' };
   if (!d.girokmon) return { map: 'serverroom', x: 13, y: 2, label: '기록몬' };

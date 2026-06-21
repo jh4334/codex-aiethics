@@ -19,8 +19,8 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js']) {
 }
 
 const { MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL,
-  MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS } =
-  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS })', ctx);
+  MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, getObjectiveTarget } =
+  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, getObjectiveTarget })', ctx);
 
 let errors = 0;
 const err = (msg) => { console.error('ERROR: ' + msg); errors++; };
@@ -198,6 +198,34 @@ for (const [mapId, props] of Object.entries(MAP_PROPS)) {
     });
     if (!faceable) err(`조사 ${mapId} (${p.x},${p.y}): 마주 볼 수 있는 칸이 없음`);
   }
+}
+
+// 11. 목표 안내 일관성: 진행 순서대로 defeated 플래그를 채워 가며,
+//     getObjectiveTarget가 가리키는 맵에 그 라벨의 몬스터가 실제로 있는지 검사한다.
+//     (스테이지 재구성 후 안내 화살표가 빈 타일을 가리키는 회귀를 막는다.)
+if (typeof getObjectiveTarget === 'function') {
+  const nameToId = {};
+  for (const [id, mon] of Object.entries(MONSTERS)) nameToId[mon.name] = id;
+  // getObjective가 검사하는 자연스러운 처치 순서
+  const order = ['bekkyeomon', 'mollaemon', 'jungdokmon', 'geojitmon', 'pyeonhyangmon', 'hondonmon',
+    'somunmon', 'musimon', 'meotdaeromon', 'nangbimon', 'pinggyemon', 'tteonemgimon',
+    'sideulmon', 'ppaeatmon', 'hollimmon', 'maearimon', 'geurimjamon', 'finalboss',
+    'tturimmon', 'girokmon', 'sujipmon', 'saseomon', 'piltermon', 'mirrormon',
+    'yuhokmon', 'soksagimon', 'jogakmon', 'yeongi'];
+  const flags = { talkedProf: true, badges: { forest: true, lake: true, cave: true }, defeated: {}, mercy: 0, trueEnding: false };
+  const checkTarget = () => {
+    const t = getObjectiveTarget(flags);
+    if (!t || !t.label) return;
+    const monId = nameToId[t.label];
+    if (!monId) return; // 박사님/영이/??? 등 몬스터 아님
+    const m = MAPS[t.map];
+    if (!m) { err(`목표 안내: 맵 '${t.map}' 없음`); return; }
+    if (!m.monsters.some((mo) => mo.id === monId)) {
+      err(`목표 안내: '${t.label}'를 ${t.map}로 안내하지만 그 맵에 해당 몬스터가 없음`);
+    }
+  };
+  checkTarget();
+  for (const id of order) { flags.defeated[id] = true; checkTarget(); }
 }
 
 // 맵 출력 (눈으로 확인용)
