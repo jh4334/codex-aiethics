@@ -254,5 +254,25 @@ if (process.argv.includes('--print')) {
   }
 })();
 
+// 커스텀 퀴즈 편집기(tools/editor.html)의 입력 한도가 게임(src/game.js)과 같은지 점검
+// (한쪽만 바뀌면, 편집기에서 통과한 문제가 게임에서 잘리는 혼란을 막는다)
+(() => {
+  const gj = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  const ed = path.join(__dirname, 'editor.html');
+  if (!fs.existsSync(ed)) return;
+  const eh = fs.readFileSync(ed, 'utf8');
+  const num = (re, src) => { const m = src.match(re); return m ? Number(m[1]) : null; };
+  const game = {
+    q: num(/Q_MAX\s*=\s*(\d+)/, gj), a: num(/A_MAX\s*=\s*(\d+)/, gj),
+    why: num(/WHY_MAX\s*=\s*(\d+)/, gj), max: num(/CUSTOM_MAX\s*=\s*(\d+)/, gj),
+  };
+  const m = eh.match(/LIMITS\s*=\s*\{\s*q:\s*(\d+),\s*a:\s*(\d+),\s*why:\s*(\d+),\s*max:\s*(\d+)/);
+  const edl = m ? { q: +m[1], a: +m[2], why: +m[3], max: +m[4] } : null;
+  if (!edl) { err('editor.html에서 LIMITS를 찾지 못함'); return; }
+  for (const k of ['q', 'a', 'why', 'max']) {
+    if (game[k] !== edl[k]) err(`커스텀 퀴즈 한도 불일치(${k}): 게임 ${game[k]} vs 편집기 ${edl[k]}`);
+  }
+})();
+
 if (errors === 0) console.log('✔ 모든 검사 통과');
 else { console.error(`✘ 오류 ${errors}개`); process.exit(1); }
