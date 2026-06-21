@@ -125,15 +125,38 @@ for (const [name, song] of Object.entries(SONGS)) {
   if (new Set(lens).size > 1) err(`곡 ${name}: 트랙 길이 불일치 ${lens.join(', ')}`);
 }
 
-// 7. 퀴즈 검사
+// 7. 퀴즈 스키마 검사 (q:문자열, a:문자열 3개, c:정수 0~2, why:문자열)
+const isStr = (v) => typeof v === 'string' && v.trim().length > 0;
 for (const [topic, list] of Object.entries(QUIZZES)) {
+  if (!Array.isArray(list)) { err(`퀴즈 주제 ${topic}: 배열이 아님`); continue; }
   list.forEach((q, i) => {
-    if (q.a.length !== 3) err(`퀴즈 ${topic}[${i}]: 보기 ${q.a.length}개 (3개 필요)`);
-    if (q.c < 0 || q.c >= q.a.length) err(`퀴즈 ${topic}[${i}]: 정답 번호 ${q.c} 범위 밖`);
-    if (!q.why) err(`퀴즈 ${topic}[${i}]: 해설 없음`);
+    const at = `퀴즈 ${topic}[${i}]`;
+    if (!q || typeof q !== 'object') { err(`${at}: 객체가 아님`); return; }
+    if (!isStr(q.q)) err(`${at}: 문제(q)가 비어 있거나 문자열이 아님`);
+    if (!Array.isArray(q.a)) { err(`${at}: 보기(a)가 배열이 아님`); }
+    else {
+      if (q.a.length !== 3) err(`${at}: 보기 ${q.a.length}개 (3개 필요)`);
+      q.a.forEach((opt, j) => { if (!isStr(opt)) err(`${at}: 보기 ${j + 1}이 비었거나 문자열이 아님`); });
+      // 같은 보기가 둘 이상이면 정답이 모호해진다
+      const seen = new Set();
+      for (const opt of q.a) {
+        const key = String(opt).replace(/\s+/g, ' ').trim();
+        if (seen.has(key)) err(`${at}: 보기에 중복된 내용 '${key}'`);
+        seen.add(key);
+      }
+    }
+    if (!Number.isInteger(q.c)) err(`${at}: 정답 번호(c)가 정수가 아님`);
+    else if (q.c < 0 || q.c >= (Array.isArray(q.a) ? q.a.length : 0)) err(`${at}: 정답 번호 ${q.c} 범위 밖`);
+    if (!isStr(q.why)) err(`${at}: 해설(why)이 비어 있거나 문자열이 아님`);
   });
 }
 for (const [id, mon] of Object.entries(MONSTERS)) {
+  // 몬스터 핵심 필드 스키마
+  if (!isStr(mon.name)) err(`몬스터 ${id}: name이 비었거나 문자열이 아님`);
+  if (!Number.isInteger(mon.hp) || mon.hp <= 0) err(`몬스터 ${id}: hp가 양의 정수가 아님 (${mon.hp})`);
+  if (!isStr(mon.intro)) err(`몬스터 ${id}: intro가 비었거나 문자열이 아님`);
+  if (!isStr(mon.win)) err(`몬스터 ${id}: win이 비었거나 문자열이 아님`);
+  if (!mon.topic || (Array.isArray(mon.topic) && mon.topic.length === 0)) err(`몬스터 ${id}: topic 없음`);
   const topics = Array.isArray(mon.topic) ? mon.topic : [mon.topic];
   let pool = 0;
   for (const t of topics) {
