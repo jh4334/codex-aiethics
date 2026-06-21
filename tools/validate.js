@@ -236,5 +236,23 @@ if (process.argv.includes('--print')) {
   }
 }
 
+// 생성된 교사용 문서가 퀴즈 데이터와 어긋나지 않았는지 점검
+// (퀴즈를 바꾸고 `node tools/quizlist.js`를 다시 돌리지 않은 경우를 잡는다)
+(() => {
+  const docPath = path.join(__dirname, '..', 'docs', '주제별-문제-목록.md');
+  if (!fs.existsSync(docPath)) return; // 문서가 아직 없으면 통과(선택 사항)
+  let totalQ = 0;
+  for (const t of Object.keys(QUIZZES)) totalQ += QUIZZES[t].length;
+  const txt = fs.readFileSync(docPath, 'utf8');
+  const mt = txt.match(/전체 문항 수:\s*\*\*(\d+)문항\*\*/);
+  const mTopic = txt.match(/주제 수:\s*\*\*(\d+)개\*\*/);
+  if (!mt || Number(mt[1]) !== totalQ) {
+    err(`교사용 문서 문항 수 불일치(문서 ${mt ? mt[1] : '?'} vs 데이터 ${totalQ}). 'node tools/quizlist.js'로 다시 생성하세요`);
+  }
+  if (!mTopic || Number(mTopic[1]) !== Object.keys(QUIZZES).length) {
+    err(`교사용 문서 주제 수 불일치. 'node tools/quizlist.js'로 다시 생성하세요`);
+  }
+})();
+
 if (errors === 0) console.log('✔ 모든 검사 통과');
 else { console.error(`✘ 오류 ${errors}개`); process.exit(1); }

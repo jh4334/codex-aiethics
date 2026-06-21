@@ -7,7 +7,8 @@
     "validate": "node tools/validate.js",
     "test": "node tools/smoketest.js && node tools/slottest.js",
     "shots": "node tools/shots.js",
-    "icons": "node tools/icons.js"
+    "icons": "node tools/icons.js",
+    "docs": "node tools/quizlist.js"
   },
   "devDependencies": {
     "canvas": "^3.2.3"
