@@ -116,4 +116,19 @@ tap('z'); // 삭제 실행
 check('슬롯 1 삭제됨', !slot(1));
 check('슬롯 0은 영향 없음', !!slot(0));
 
+console.log('[6] 막힌 위치에 저장된 세이브 → 안전 칸 보정 (갇힘 방지)');
+const { MAPS, WALKABLE } = vm.runInContext('({ MAPS, WALKABLE })', sandbox);
+// village (0,0)은 'T'(나무, 이동 불가). 손상/구버전 세이브를 흉내 낸다.
+storage.set('ai-ethics-adventure-slot-2', JSON.stringify({
+  name: '테스트', map: 'village', x: 0, y: 0,
+  flags: { talkedProf: true, badges: {}, defeated: {}, mercy: 0, visited: {} }, updatedAt: Date.now(),
+}));
+g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 2;
+tap('z'); // 슬롯 2 이어하기
+check('막힌 위치에서도 월드 진입', g.mode === 'world');
+const landed = MAPS[g.map].tiles[g.player.y][g.player.x];
+check('이동 가능한 칸으로 보정됨', WALKABLE.has(landed));
+check('원래 막힌 칸(0,0)이 아님', !(g.map === 'village' && g.player.x === 0 && g.player.y === 0));
+check('px/py가 NaN이 아님', Number.isFinite(g.player.px) && Number.isFinite(g.player.py));
+
 console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);

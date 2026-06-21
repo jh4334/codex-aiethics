@@ -4433,14 +4433,41 @@
     ]);
   }
 
+  // 저장된 위치가 (맵 수정·손상 등으로) 막힌 칸이면 가까운 안전한 칸을 찾아 갇힘을 막는다.
+  function findSafeSpawn(mapId, x, y) {
+    const m = MAPS[mapId];
+    if (!m) return null;
+    const H = m.tiles.length, W = m.tiles[0].length;
+    const okTile = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H &&
+      !SOLID(tileAt(mapId, tx, ty)) && !npcAt(mapId, tx, ty) && !monsterAt(mapId, tx, ty);
+    if (okTile(x, y)) return { x, y };
+    for (let r = 1; r < Math.max(W, H); r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // 테두리만
+          if (okTile(x + dx, y + dy)) return { x: x + dx, y: y + dy };
+        }
+      }
+    }
+    return null;
+  }
+
   function continueGame(slot) {
     const s = loadSlot(slot);
     if (!s) return;
     game.currentSlot = slot;
     game.playerName = s.name || '수호자';
     game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
-    game.player.x = s.x || 13; game.player.y = s.y || 16;
-    game.player.px = s.x * TS; game.player.py = s.y * TS;
+    let sx = (typeof s.x === 'number') ? s.x : 13;
+    let sy = (typeof s.y === 'number') ? s.y : 16;
+    // 막힌 칸이면 보정, 그래도 없으면 마을 기본 위치로 복귀
+    if (SOLID(tileAt(game.map, sx, sy))) {
+      const safe = findSafeSpawn(game.map, sx, sy);
+      if (safe) { sx = safe.x; sy = safe.y; }
+      else { game.map = 'village'; sx = 13; sy = 16; }
+    }
+    game.player.x = sx; game.player.y = sy;
+    game.player.px = sx * TS; game.player.py = sy * TS;
     game.player.dir = 'up';
     game.flags = Object.assign(newFlags(), s.flags);
     game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
