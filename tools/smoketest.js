@@ -639,11 +639,19 @@ check('색약 모드 복원', g.colorBlind === cbBefore);
 tap('x'); // 닫기
 check('메뉴 닫힘', g.mode === 'world');
 
-console.log('[34] 도움말 화면');
+console.log('[34] 도움말 화면 (2장 페이지)');
 tap('i');
-check('도움말 열림', g.mode === 'help');
-tap('z');
-check('도움말 닫고 월드 복귀', g.mode === 'world');
+check('도움말 열림', g.mode === 'help' && g.helpPage === 0);
+tap('ArrowRight');
+check('다음 페이지로 이동', g.helpPage === 1);
+tap('ArrowLeft');
+check('이전 페이지로 이동', g.helpPage === 0);
+tap('z'); // 1페이지에서 Z는 다음 장
+check('Z로 다음 장', g.mode === 'help' && g.helpPage === 1);
+tap('z'); // 마지막 장에서 Z는 닫기
+check('마지막 장에서 Z로 닫기', g.mode === 'world');
+tap('i'); tap('x'); // X는 어느 페이지서든 닫기
+check('X로 닫고 월드 복귀', g.mode === 'world');
 
 console.log('[35] 슬롯별 학습 데이터 분리');
 // 슬롯 1에 기록해도 슬롯 0의 학습 기록과 섞이지 않아야 한다

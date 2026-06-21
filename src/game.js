@@ -2860,8 +2860,14 @@
     ['', '수료증(N): 진도를 증서로 저장 · 난이도·읽어주기(TTS)는 메뉴에서'],
     ['', '눈이 부시면 메뉴의 「화면 효과 줄이기」로 번쩍임을 줄일 수 있어요'],
   ];
+  // 한 화면(528px)에 다 들어가지 않아 2장으로 나눈다. (← → 로 넘김)
+  const HELP_PAGES = [
+    HELP_LINES.slice(0, 13),  // 게임 목표 · 기본 조작 · 전투
+    HELP_LINES.slice(13),     // 메뉴 · 더 즐기기 · 선생님·접근성
+  ];
   function openHelp(ret) {
     game.helpRet = ret;
+    game.helpPage = 0;
     game.mode = 'help';
     Sound.select();
   }
@@ -2870,29 +2876,47 @@
     Sound.select();
   }
   function updateHelp() {
-    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeHelp();
+    const pages = HELP_PAGES.length;
+    if (justPressed('right')) { game.helpPage = (game.helpPage + 1) % pages; Sound.blip(); return; }
+    if (justPressed('left')) { game.helpPage = (game.helpPage + pages - 1) % pages; Sound.blip(); return; }
+    // 마지막 장에서 Z는 닫기, 아니면 다음 장으로 (자연스러운 넘김)
+    if (justPressed('action')) {
+      if (game.helpPage < pages - 1) { game.helpPage += 1; Sound.blip(); }
+      else closeHelp();
+      return;
+    }
+    if (justPressed('cancel') || justPressed('menu')) closeHelp();
   }
   function drawHelp() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
+    const page = Math.min(game.helpPage || 0, HELP_PAGES.length - 1);
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
     ctx.fillText('? 도움말', 24, 38);
+    ctx.font = '13px monospace';
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${page + 1} / ${HELP_PAGES.length}`, LW - 24, 36);
+    ctx.textAlign = 'left';
 
-    let y = 76;
-    for (const [kind, text] of HELP_LINES) {
-      if (text === '') { y += 12; continue; }
+    let y = 84;
+    for (const [kind, text] of HELP_PAGES[page]) {
+      if (text === '') { y += 14; continue; }
       if (kind === 'head') { ctx.fillStyle = warnColor(); ctx.font = 'bold 16px monospace'; }
       else { ctx.fillStyle = '#ddd'; ctx.font = '14px monospace'; }
       ctx.fillText(text, 28, y);
-      y += 26;
+      y += 28;
     }
 
     ctx.fillStyle = '#777';
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Z 또는 X로 닫기', LW / 2, 512);
+    const nav = page < HELP_PAGES.length - 1
+      ? '← → 페이지 넘기기 · Z 다음 · X 닫기'
+      : '← → 페이지 넘기기 · Z·X 닫기';
+    ctx.fillText(nav, LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
