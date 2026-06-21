@@ -881,9 +881,18 @@ MONSTER_SPRITES.pinggyemon = [
 
 // 스프라이트 렌더 캐시
 const _spriteCache = new Map();
+// 스프라이트 배열마다 짧은 고유 id를 붙여, 매 프레임 256자 join을 피한다.
+// (저사양 교실 태블릿에서 프레임마다 일어나던 문자열 할당/GC 부담을 줄임)
+let _spriteSeq = 0;
+const _spriteIds = new WeakMap();
+function _spriteId(rows) {
+  let id = _spriteIds.get(rows);
+  if (id === undefined) { id = ++_spriteSeq; _spriteIds.set(rows, id); }
+  return id;
+}
 
 function drawSprite(ctx, rows, x, y, scale, palOverride, flip) {
-  const key = rows.join('') + JSON.stringify(palOverride || {}) + scale + (flip ? 'F' : '');
+  const key = _spriteId(rows) + '|' + (palOverride ? JSON.stringify(palOverride) : '') + '|' + scale + (flip ? 'F' : '');
   let cv = _spriteCache.get(key);
   if (!cv) {
     cv = document.createElement('canvas');
