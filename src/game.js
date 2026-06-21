@@ -692,6 +692,10 @@
     { topic: 'persuasion', icon: '🪤', lesson: '자꾸 누르게 만드는 화면에 속지 말고 천천히 결정해요.' },
     { topic: 'genai', icon: '✨', lesson: 'AI는 그럴듯한 거짓(환각)을 지어낼 수 있어요. 꼭 확인해요.' },
     { topic: 'deepfake', icon: '🎬', lesson: '진짜 같은 가짜 영상·목소리가 있어요. 출처를 의심해 봐요.' },
+    { topic: 'rumor', icon: '📣', lesson: '확인하지 않은 소문은 퍼뜨리지 않아요. 사실인지 먼저 확인해요.' },
+    { topic: 'listen', icon: '👂', lesson: '나와 다른 의견도 끝까지 들어 봐요. 귀를 열면 생각이 넓어져요.' },
+    { topic: 'saving', icon: '🔋', lesson: '데이터·전기는 한정돼 있어요. 필요한 만큼만 알맞게 써요.' },
+    { topic: 'excuse', icon: '🙋', lesson: '핑계보다 "내가 했어"가 멋져요. 내 행동은 내가 책임져요.' },
   ];
   function cardUnlocked(slot, topic) {
     const s = getStats(slot)[topic];
