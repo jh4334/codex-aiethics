@@ -511,7 +511,7 @@ check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
 check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
-const PAUSE_ORDER = ['journal', 'cards', 'halloffame', 'dashboard', 'awards', 'cosmetics', 'cert',
+const PAUSE_ORDER = ['journal', 'cards', 'halloffame', 'dashboard', 'classmode', 'awards', 'cosmetics', 'cert',
   'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
   'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
 const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
@@ -985,5 +985,38 @@ console.log('[63] drawDodge 안전 가드 (회피 종료 프레임)');
 g.mode = 'world';
 step(3);
 check('회피 가드 후 프레임 정상', typeof g.mode === 'string' && g.mode === 'world');
+
+console.log('[64] 수업 모드 — 스테이지 점프');
+const { WALKABLE } = vm.runInContext('({ WALKABLE })', sandbox);
+const TJ = vm.runInContext('window.__test', sandbox);
+// setupStageFlags: 목표 스테이지 시작 상태가 정확한가
+const f1 = TJ.setupStageFlags(1);
+check('1스테이지: 박사님 대화 완료', f1.talkedProf === true);
+check('1스테이지: 증표 없음', !f1.badges.forest && !f1.badges.lake && !f1.badges.cave);
+check('1스테이지: getStage===1', TJ.getStage(f1) === 1);
+const f5 = TJ.setupStageFlags(5);
+check('5스테이지: 증표 모두 획득', f5.badges.forest && f5.badges.lake && f5.badges.cave);
+check('5스테이지: 이전 보스 모두 처치', f5.defeated.hondonmon && f5.defeated.meotdaeromon && f5.defeated.tteonemgimon && f5.defeated.hollimmon);
+check('5스테이지: 5보스는 미처치', f5.defeated.finalboss === false);
+check('5스테이지: getStage===5', TJ.getStage(f5) === 5);
+const f10 = TJ.setupStageFlags(10);
+check('10스테이지: 직전 보스 처치', f10.defeated.soksagimon === true);
+check('10스테이지: 최종 영이 미처치', f10.defeated.yeongi === false);
+check('10스테이지: getStage===10', TJ.getStage(f10) === 10);
+check('범위를 벗어난 입력은 안전하게 보정', TJ.getStage(TJ.setupStageFlags(99)) === 10 && TJ.getStage(TJ.setupStageFlags(0)) === 1);
+// stageSpawn: 항상 이동 가능한 칸으로 떨어지는가
+for (const st of [1, 3, 6, 9]) {
+  const sp = TJ.stageSpawn(TJ.setupStageFlags(st), st);
+  const m = MAPS[sp.map];
+  const tile = m && m.tiles[sp.y] && m.tiles[sp.y][sp.x];
+  check(`${st}스테이지 시작 위치가 이동 가능`, !!m && WALKABLE.has(tile));
+}
+// applyStageJump: 실제 슬롯/위치에 반영되는가 (마지막 블록이라 상태 변경 OK)
+TJ.applyStageJump(6);
+check('점프 후 getStage===6', TJ.getStage(g.flags) === 6);
+check('점프 후 맵이 6스테이지 시작 맵', g.map === TJ.stageSpawn(TJ.setupStageFlags(6), 6).map);
+check('점프 후 px/py가 유효한 픽셀 좌표(타일×배수)',
+  Number.isFinite(g.player.px) && Number.isFinite(g.player.py) &&
+  g.player.x > 0 && g.player.px / g.player.x === g.player.py / g.player.y && g.player.px > g.player.x);
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

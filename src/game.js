@@ -74,6 +74,7 @@
     tts: false,          // 읽어주기(TTS) 접근성
     reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
     dashboard: { ret: 'title', cursor: 0, toast: 0 }, // 교사용 대시보드
+    classmode: { ret: 'world', sel: 1, confirm: false, toast: 0 }, // 수업 모드(스테이지 점프)
     quizedit: { ret: 'title', cursor: 0, toast: 0, confirm: false }, // 커스텀 퀴즈 편집·가져오기
     cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
     cert: { ret: 'title', slot: 0, toast: 0 },       // 수료증·진도 인증서
@@ -2206,7 +2207,7 @@
 
   // ---------- 설정·일시정지 메뉴 ----------
   // 터치 기기에는 키보드 단축키(J/Q/B/I 등)가 없으므로, 모든 기능을 메뉴로 연다.
-  const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'dashboard', 'awards', 'cosmetics', 'cert',
+  const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'dashboard', 'classmode', 'awards', 'cosmetics', 'cert',
     'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
     'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
   const PAUSE_LABELS = {
@@ -2214,6 +2215,7 @@
     cards: '📚 배움 카드',
     halloffame: '🏆 명예의 전당',
     dashboard: '▤ 교사용 대시보드',
+    classmode: '▶ 수업 모드 (스테이지 시작)',
     awards: '☆ 도전과제',
     cosmetics: '✿ 꾸미기 (칭호·테마)',
     cert: '🎓 수료증',
@@ -2284,6 +2286,7 @@
       else if (item === 'halloffame') openHof('pause');
       else if (item === 'cert') openCert('pause');
       else if (item === 'dashboard') openDashboard('pause');
+      else if (item === 'classmode') openClassMode('pause');
       else if (item === 'awards') openAwards('pause');
       else if (item === 'cosmetics') openCosmetics('pause');
       else if (item === 'review') openReview('pause');
@@ -3631,6 +3634,151 @@
     ctx.textAlign = 'left';
   }
 
+  // ---------- 수업 모드 (스테이지 점프) ----------
+  // 선생님이 오늘 수업할 스테이지부터 바로 시작하게 해 준다.
+  // 지금 슬롯의 진행을 "N스테이지 시작" 상태로 맞춘다(이전 스테이지는 모두 완료 처리).
+  const STAGE_COUNT = 10;
+  // 목표 스테이지 시작 상태의 flags를 만든다. (1스테이지 = 거의 새 모험)
+  function setupStageFlags(target) {
+    target = Math.max(1, Math.min(STAGE_COUNT, target | 0));
+    const flags = newFlags();
+    flags.talkedProf = true;
+    if (target > 1) {
+      flags.badges.forest = flags.badges.lake = flags.badges.cave = true;
+      // 도감의 스테이지 정보로, 이전 스테이지(1..target-1) 몬스터를 모두 깨우친 것으로 처리
+      for (const id of Object.keys(flags.defeated)) {
+        const dx = MONSTER_DEX[id];
+        if (dx && dx.stage >= 1 && dx.stage < target) flags.defeated[id] = true;
+      }
+    }
+    return flags;
+  }
+  // 목표 스테이지의 안전한 시작 위치를 찾는다.
+  function stageSpawn(flags, target) {
+    if (target <= 1) {
+      const safe = findSafeSpawn('village', 13, 16) || { x: 13, y: 16 };
+      return { map: 'village', x: safe.x, y: safe.y };
+    }
+    const t = getObjectiveTarget(flags);
+    if (!t) { const s = findSafeSpawn('village', 13, 16) || { x: 13, y: 16 }; return { map: 'village', x: s.x, y: s.y }; }
+    const safe = findSafeSpawn(t.map, t.x, t.y) || { x: t.x, y: t.y };
+    return { map: t.map, x: safe.x, y: safe.y };
+  }
+  function applyStageJump(target) {
+    const flags = setupStageFlags(target);
+    const sp = stageSpawn(flags, target);
+    game.flags = flags;
+    game.map = sp.map;
+    game.player.x = sp.x;
+    game.player.y = sp.y;
+    game.player.px = sp.x * TS;
+    game.player.py = sp.y * TS;
+    game.player.moving = false;
+    game.player.dir = 'down';
+    save();
+  }
+  function openClassMode(ret) {
+    const cm = game.classmode;
+    cm.ret = ret;
+    cm.sel = Math.max(1, Math.min(STAGE_COUNT, getStage(game.flags)));
+    cm.confirm = false;
+    cm.toast = 0;
+    game.mode = 'classmode';
+    Sound.select();
+  }
+  function closeClassMode() {
+    game.mode = game.classmode.ret;
+    Sound.select();
+  }
+  function updateClassMode() {
+    const cm = game.classmode;
+    if (cm.toast > 0) cm.toast -= 1;
+    if (cm.toast > 0) return; // 적용 안내 표시 중엔 입력 잠금
+    if (cm.confirm) {
+      if (justPressed('action')) {
+        applyStageJump(cm.sel);
+        cm.confirm = false;
+        cm.toast = 90;
+        Sound.badge();
+        return;
+      }
+      if (justPressed('cancel') || justPressed('menu')) { cm.confirm = false; Sound.blip(); }
+      return;
+    }
+    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= 1 ? STAGE_COUNT : cm.sel - 1; Sound.blip(); }
+    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= STAGE_COUNT ? 1 : cm.sel + 1; Sound.blip(); }
+    if (justPressed('action')) { cm.confirm = true; Sound.select(); return; }
+    if (justPressed('cancel') || justPressed('menu')) { closeClassMode(); }
+  }
+  // 스테이지별 한 줄 소개(선생님이 고르기 쉽게)
+  const STAGE_BLURB = {
+    1: '개인정보 · 저작권 · 가짜정보 · 공정함 · 절제',
+    2: '고운 말 · 필터버블 · 사람 확인 · 소문 · 경청',
+    3: '환경 · 투명성 · 책임 · 절약 · 정직',
+    4: '창의성 · 일자리 협력 · AI와 사람의 관계',
+    5: '1~4스테이지 종합 · 어둠대왕몬',
+    6: '계정 보안 · 디지털 발자국',
+    7: '데이터 수집과 동의',
+    8: 'AI 필터 · 사칭 · 신원',
+    9: '다크패턴 · 설득 · 외로움',
+    10: '심층부 종합 · 존재의 가치',
+  };
+  function drawClassMode() {
+    const cm = game.classmode;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, LW, LH);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText('▶ 수업 모드 — 스테이지 바로 시작', 24, 40);
+    ctx.fillStyle = '#888';
+    ctx.font = '13px monospace';
+    ctx.fillText('오늘 수업할 스테이지를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
+
+    // 스테이지 선택기
+    ctx.textAlign = 'center';
+    ctx.fillStyle = themeAccent();
+    ctx.font = 'bold 56px monospace';
+    ctx.fillText(`${cm.sel}`, LW / 2, 180);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '15px monospace';
+    ctx.fillText(`/ ${STAGE_COUNT} 스테이지`, LW / 2, 210);
+    ctx.fillStyle = '#fff';
+    ctx.font = '15px monospace';
+    ctx.fillText(STAGE_BLURB[cm.sel] || '', LW / 2, 250);
+    ctx.fillStyle = '#666';
+    ctx.font = '13px monospace';
+    ctx.fillText('◀ ▶ 스테이지 고르기', LW / 2, 286);
+
+    if (cm.toast > 0) {
+      ctx.fillStyle = okColor();
+      ctx.font = 'bold 17px monospace';
+      ctx.fillText(`✓ ${cm.sel}스테이지 시작 상태로 맞췄어요!`, LW / 2, 360);
+      ctx.fillStyle = '#aaa';
+      ctx.font = '13px monospace';
+      ctx.fillText('잠시 후 모험 화면으로 돌아갑니다…', LW / 2, 386);
+      if (cm.toast === 1) { game.mode = cm.ret; }
+    } else if (cm.confirm) {
+      ctx.fillStyle = badColor();
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText(`지금 이 슬롯을 ${cm.sel}스테이지 시작 상태로 바꿀까요?`, LW / 2, 360);
+      ctx.fillStyle = '#ddd';
+      ctx.font = '13px monospace';
+      ctx.fillText('이전 진행은 완료 처리되고 되돌릴 수 없어요.', LW / 2, 384);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('Z: 시작   ·   X: 취소', LW / 2, 416);
+    } else {
+      ctx.fillStyle = '#777';
+      ctx.font = '13px monospace';
+      ctx.fillText('Z: 이 스테이지로 시작 · X: 닫기', LW / 2, 360);
+      ctx.fillStyle = '#555';
+      ctx.font = '12px monospace';
+      ctx.fillText('※ 미리 「데이터 백업」을 해 두면 안전해요.', LW / 2, 388);
+    }
+    ctx.textAlign = 'left';
+  }
+
   // ---------- 커스텀 퀴즈 (선생님 문제) 편집·가져오기 ----------
   const QUIZEDIT_ITEMS = ['importFile', 'importClip', 'template', 'clear', 'close'];
   const QUIZEDIT_LABELS = {
@@ -4901,6 +5049,10 @@
         updateDashboard();
         drawDashboard();
         break;
+      case 'classmode':
+        updateClassMode();
+        drawClassMode();
+        break;
       case 'quizedit':
         updateQuizEdit();
         drawQuizEdit();
@@ -5007,7 +5159,7 @@
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
-    buildClassCsv,
+    buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump,
   };
   frame();
 })();
