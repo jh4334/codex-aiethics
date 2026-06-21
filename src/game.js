@@ -371,6 +371,8 @@
     consent: '데이터 수집과 동의', identity: '사칭 · 신원', persuasion: '다크패턴 · 설득',
     core: '존재의 가치 · 책임',
     genai: '생성형 AI · 환각', deepfake: '딥페이크 분별',
+    rumor: '소문 · 사실 확인', listen: '경청 · 다양한 의견',
+    saving: '에너지 절약', excuse: '핑계 · 정직한 책임',
     custom: '커스텀 · 선생님 문제',
   };
   function topicLabel(t) { return TOPIC_LABEL[t] || t; }
