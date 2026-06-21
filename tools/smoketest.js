@@ -687,6 +687,16 @@ check('통계가 복원됨', storage.get('ai-ethics-adventure-stats-0') === good
 check('잘못된 데이터는 거부', T.applyBackup('{"app":"other"}').ok === false);
 check('깨진 JSON은 거부', T.applyBackup('not json').ok === false);
 
+console.log('[36b] 교사용 반 현황 CSV 내보내기');
+const csv = T.buildClassCsv();
+const csvLines = csv.split('\r\n');
+check('CSV가 CRLF 줄바꿈 사용', csv.includes('\r\n'));
+check('CSV 헤더 행 존재', csvLines[0].startsWith('슬롯,이름,'));
+check('CSV 헤더 12개 열', csvLines[0].split(',').length === 12);
+check('CSV 행 = 헤더 + 슬롯 3개', csvLines.length === 4);
+check('CSV 슬롯1 행이 슬롯 번호로 시작', csvLines[1].startsWith('1,'));
+check('CSV 슬롯1(데이터 있음) 12개 열', csvLines[1].split(',').length === 12);
+
 console.log('[37] 적응형(맞춤) 학습 — 약점 집중 출제');
 const adaptive = T.buildAdaptivePool(0, 8);
 check('맞춤 풀 생성', adaptive.length > 0 && adaptive.length <= 8);

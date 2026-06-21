@@ -73,7 +73,7 @@
     difficulty: 'normal', // easy | normal | hard — 학년별 난이도
     tts: false,          // 읽어주기(TTS) 접근성
     reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
-    dashboard: { ret: 'title', cursor: 0 }, // 교사용 대시보드
+    dashboard: { ret: 'title', cursor: 0, toast: 0 }, // 교사용 대시보드
     quizedit: { ret: 'title', cursor: 0, toast: 0, confirm: false }, // 커스텀 퀴즈 편집·가져오기
     cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
     cert: { ret: 'title', slot: 0, toast: 0 },       // 수료증·진도 인증서
@@ -3479,9 +3479,56 @@
   }
 
   // ---------- 교사용 대시보드 (모든 학생 한눈에) ----------
+  // CSV 한 칸을 안전하게 감싼다(쉼표·따옴표·줄바꿈 포함 시 큰따옴표 처리).
+  function csvCell(v) {
+    const s = String(v == null ? '' : v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  // 세 학생(슬롯)의 학습 현황을 스프레드시트로 열 수 있는 CSV로 만든다.
+  function buildClassCsv() {
+    const header = ['슬롯', '이름', '칭호', '진행', '완주', '푼 문제', '정답 수',
+      '정답률(%)', '복습 노트', '도전과제', '안아준 마음', '연속 출석(일)'];
+    const lines = [header.map(csvCell).join(',')];
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const sum = slotSummary(i);
+      if (!sum) { lines.push(csvCell(i + 1) + ',(비어 있음)'); continue; }
+      const s = buildLearningSummary(i);
+      const meta = getMeta(i);
+      const title = selectedTitle(i);
+      lines.push([
+        i + 1,
+        sum.name,
+        title ? title.name : '',
+        sum.done ? '모험 완료' : ('스테이지 ' + sum.stage + '/10'),
+        sum.done ? 'Y' : 'N',
+        s.attempted,
+        s.correct,
+        s.attempted ? Math.round(s.overallRate * 100) : '',
+        mistakeCount(i),
+        countAchievements(i) + '/' + ACHIEVEMENTS.length,
+        sum.mercy,
+        meta.streak || 0,
+      ].map(csvCell).join(','));
+    }
+    return lines.join('\r\n');
+  }
+  // CSV를 파일로 내려받는다. 엑셀 한글 깨짐 방지를 위해 UTF-8 BOM을 붙인다.
+  function downloadClassCsv() {
+    try {
+      const text = '﻿' + buildClassCsv();
+      const a = document.createElement('a');
+      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(text);
+      a.download = 'ai-ethics-class-' + todayStr() + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return true;
+    } catch (e) { return false; }
+  }
   function openDashboard(ret) {
     game.dashboard.ret = ret;
     game.dashboard.cursor = 0;
+    game.dashboard.toast = 0;
     game.mode = 'dashboard';
     Sound.select();
   }
@@ -3490,7 +3537,15 @@
     Sound.select();
   }
   function updateDashboard() {
-    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeDashboard();
+    const d = game.dashboard;
+    if (d.toast > 0) d.toast -= 1; else if (d.toast < 0) d.toast += 1;
+    if (justPressed('cancel') || justPressed('menu')) { closeDashboard(); return; }
+    if (justPressed('action')) {
+      // 파일 저장이 안 되는 환경이면 클립보드 복사로 대신한다.
+      const ok = downloadClassCsv() || copyTextToClipboard(buildClassCsv());
+      d.toast = ok ? 200 : -200;
+      Sound.badge();
+    }
   }
   function drawDashboard() {
     ctx.fillStyle = '#000';
@@ -3558,10 +3613,21 @@
       }
     }
 
-    ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    const d = game.dashboard;
     ctx.textAlign = 'center';
-    ctx.fillText('Z 또는 X로 닫기 · (리포트 복사는 각 학생의 수호자 일지에서)', LW / 2, 512);
+    if (d.toast > 0) {
+      ctx.fillStyle = okColor();
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('✓ 반 현황 CSV를 저장했어요 (엑셀·구글시트에서 열기)', LW / 2, 512);
+    } else if (d.toast < 0) {
+      ctx.fillStyle = badColor();
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('이 환경에서는 내보낼 수 없어요 (브라우저에서 시도해 주세요)', LW / 2, 512);
+    } else {
+      ctx.fillStyle = '#777';
+      ctx.font = '13px monospace';
+      ctx.fillText('Z: 반 현황 CSV 내보내기 · X: 닫기 (상세 리포트는 각 학생 수호자 일지)', LW / 2, 512);
+    }
     ctx.textAlign = 'left';
   }
 
@@ -4941,6 +5007,7 @@
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
+    buildClassCsv,
   };
   frame();
 })();
