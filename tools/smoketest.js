@@ -1019,4 +1019,16 @@ check('점프 후 px/py가 유효한 픽셀 좌표(타일×배수)',
   Number.isFinite(g.player.px) && Number.isFinite(g.player.py) &&
   g.player.x > 0 && g.player.px / g.player.x === g.player.py / g.player.y && g.player.px > g.player.x);
 
+console.log('[65] 가상 스틱 방향 판정 (모바일 이동)');
+const sd = TJ.stickDirection;
+check('가운데(데드존)는 정지', sd(0, 0, 100) === null);
+check('작은 흔들림은 데드존으로 무시', sd(20, 10, 100) === null);
+check('오른쪽', sd(60, 0, 100) === 'right');
+check('왼쪽', sd(-60, 5, 100) === 'left');
+check('위', sd(0, -60, 100) === 'up');
+check('아래', sd(5, 60, 100) === 'down');
+check('우세 축 선택(가로 우세)', sd(60, 40, 100) === 'right');
+check('우세 축 선택(세로 우세)', sd(30, 70, 100) === 'down');
+check('데드존 경계 바로 밖은 방향 인식', sd(35, 0, 100) === 'right');
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

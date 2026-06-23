@@ -70,11 +70,38 @@
     color: rgba(255,255,255,.66); text-shadow: 0 1px 2px #000;
   }
 
-  /* 방향키 — 왼쪽 아래 십자 배치 (서로 살짝 떨어뜨려 오조작 줄임) */
-  #t-up    { left: calc(18px + var(--b) + env(safe-area-inset-left)); bottom: calc(30px + var(--b) * 2); }
-  #t-down  { left: calc(18px + var(--b) + env(safe-area-inset-left)); bottom: calc(22px + env(safe-area-inset-bottom)); }
-  #t-left  { left: calc(12px + env(safe-area-inset-left));            bottom: calc(26px + var(--b)); }
-  #t-right { left: calc(24px + var(--b) * 2 + env(safe-area-inset-left)); bottom: calc(26px + var(--b)); }
+  /* 가상 스틱 — 왼쪽 아래. 손가락으로 끌어 이동(상하좌우). */
+  #t-stick {
+    position: fixed;
+    left: calc(20px + env(safe-area-inset-left));
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    --sr: clamp(116px, 30vmin, 168px);
+    width: var(--sr); height: var(--sr);
+    border-radius: 50%;
+    background: rgba(28,30,46,.42);
+    border: 2px solid rgba(255,255,255,.38);
+    box-shadow: inset 0 0 18px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.4);
+    backdrop-filter: blur(2px);
+    touch-action: none;
+    z-index: 10;
+  }
+  /* 방향 힌트(십자 가이드) */
+  #t-stick::before, #t-stick::after {
+    content: ''; position: absolute; background: rgba(255,255,255,.16);
+  }
+  #t-stick::before { left: 18%; right: 18%; top: 50%; height: 2px; margin-top: -1px; }
+  #t-stick::after  { top: 18%; bottom: 18%; left: 50%; width: 2px; margin-left: -1px; }
+  #t-stick-knob {
+    position: absolute; left: 50%; top: 50%;
+    width: 46%; height: 46%;
+    border-radius: 50%;
+    background: rgba(255,255,255,.5);
+    border: 2px solid rgba(255,255,255,.75);
+    box-shadow: 0 2px 8px rgba(0,0,0,.45);
+    transform: translate(-50%, -50%);
+    transition: transform .03s linear;
+    pointer-events: none;
+  }
 
   /* A(결정/피하기) — 오른쪽 아래, 크고 둥글게 */
   #t-a {
@@ -194,10 +221,9 @@
   <canvas id="game" width="720" height="528" tabindex="0" role="application" aria-label="AI 윤리 어드벤처 게임 화면. 방향키로 이동, Z 또는 스페이스로 결정합니다."></canvas>
 </div>
 <div id="touch-ui">
-  <div class="tbtn" id="t-up" role="button" aria-label="위로 이동">▲</div>
-  <div class="tbtn" id="t-down" role="button" aria-label="아래로 이동">▼</div>
-  <div class="tbtn" id="t-left" role="button" aria-label="왼쪽으로 이동">◀</div>
-  <div class="tbtn" id="t-right" role="button" aria-label="오른쪽으로 이동">▶</div>
+  <div id="t-stick" role="application" aria-label="이동 스틱. 손가락으로 끌어 상하좌우로 움직입니다.">
+    <div id="t-stick-knob"></div>
+  </div>
   <div class="tbtn" id="t-a" role="button" aria-label="결정·대화">A<span class="sub">결정</span></div>
   <div class="tbtn" id="t-hint" role="button" aria-label="50:50 힌트">힌트</div>
   <div class="tbtn" id="t-menu" role="button" aria-label="도감 열기">도감</div>

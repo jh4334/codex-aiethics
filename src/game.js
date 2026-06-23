@@ -874,12 +874,24 @@
   // 돌아왔을 때 캐릭터가 계속 걷는 문제를 막는다.
   window.addEventListener('blur', () => { held.clear(); pressed.clear(); });
 
+  // 가상 스틱: 중심에서의 변위(dx,dy)를 4방향 중 하나로 환산. 데드존 안이면 null.
+  // (그리드 이동 게임이라 우세 축 하나만 사용한다.) — 순수 함수라 테스트로 검증한다.
+  function stickDirection(dx, dy, max) {
+    const dist = Math.hypot(dx, dy);
+    if (dist < max * 0.34) return null; // 데드존: 가운데 근처는 정지
+    if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? 'left' : 'right';
+    return dy < 0 ? 'up' : 'down';
+  }
+  let stickDir = null;       // 스틱이 현재 가리키는 방향(없으면 null)
+  let stickRepeatFrames = 0; // 메뉴에서 누른 채로 두면 자동 반복시키는 카운터
+
   // 터치 컨트롤
   if ('ontouchstart' in window) {
     document.body.classList.add('touch');
     const touchIds = new Map();
     const bind = (id, key) => {
       const el = document.getElementById(id);
+      if (!el) return;
       const down = (e) => {
         e.preventDefault(); Sound.resume();
         for (const t of e.changedTouches) touchIds.set(t.identifier, { el, key });
@@ -907,11 +919,61 @@
       el.addEventListener('touchcancel', up);
       el.addEventListener('touchmove', move);
     };
-    bind('t-up', 'up'); bind('t-down', 'down');
-    bind('t-left', 'left'); bind('t-right', 'right');
     bind('t-a', 'action');
     bind('t-menu', 'menu');
     bind('t-pause', 'cancel');
+
+    // 가상 스틱 (이동) — 손가락 방향으로 상하좌우를 누른 효과를 낸다.
+    const DIRS4 = ['up', 'down', 'left', 'right'];
+    const stick = document.getElementById('t-stick');
+    const knob = document.getElementById('t-stick-knob');
+    if (stick && knob) {
+      let stickId = null, cx = 0, cy = 0, radius = 1;
+      const setDir = (dir) => {
+        for (const d of DIRS4) {
+          if (d === dir) { if (!held.has(d)) pressed.add(d); held.add(d); }
+          else held.delete(d);
+        }
+        if (dir !== stickDir) { stickDir = dir; stickRepeatFrames = 0; }
+      };
+      const place = (dx, dy) => {
+        knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+      };
+      const onStart = (e) => {
+        e.preventDefault(); Sound.resume();
+        const t = e.changedTouches[0];
+        stickId = t.identifier;
+        const r = stick.getBoundingClientRect();
+        cx = r.left + r.width / 2; cy = r.top + r.height / 2;
+        radius = r.width * 0.36; // 노브 이동 한계
+        onMove(e);
+      };
+      const onMove = (e) => {
+        if (stickId === null) return;
+        let t = null;
+        for (const ct of e.changedTouches) if (ct.identifier === stickId) t = ct;
+        if (!t) return;
+        e.preventDefault();
+        let dx = t.clientX - cx, dy = t.clientY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > radius) { dx = dx / dist * radius; dy = dy / dist * radius; }
+        place(dx, dy);
+        setDir(stickDirection(dx, dy, radius));
+      };
+      const onEnd = (e) => {
+        let mine = false;
+        for (const ct of e.changedTouches) if (ct.identifier === stickId) mine = true;
+        if (!mine) return;
+        e.preventDefault();
+        stickId = null;
+        setDir(null);
+        place(0, 0);
+      };
+      stick.addEventListener('touchstart', onStart);
+      stick.addEventListener('touchmove', onMove);
+      stick.addEventListener('touchend', onEnd);
+      stick.addEventListener('touchcancel', onEnd);
+    }
     const hintBtn = document.getElementById('t-hint');
     if (hintBtn) {
       const onHint = (e) => { e.preventDefault(); Sound.resume(); useHint(); };
@@ -4967,6 +5029,15 @@
       checkDPR();
       game.time = (game.time + 1) & 0x7FFFFFFF;
 
+      // 가상 스틱을 한 방향으로 누른 채 두면, 메뉴에서 키 리피트처럼 자동 반복시킨다.
+      // (월드 이동은 held로 처리되므로 영향 없음.)
+      if (stickDir) {
+        stickRepeatFrames++;
+        if (stickRepeatFrames > 16 && (stickRepeatFrames - 16) % 7 === 0) pressed.add(stickDir);
+      } else {
+        stickRepeatFrames = 0;
+      }
+
     switch (game.mode) {
       case 'title':
         updateTitle();
@@ -5146,6 +5217,7 @@
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
     buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump,
+    stickDirection,
   };
   frame();
 })();
