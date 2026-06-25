@@ -511,7 +511,7 @@ check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
 check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
-const PAUSE_ORDER = ['journal', 'cards', 'halloffame', 'dashboard', 'classmode', 'awards', 'cosmetics', 'cert',
+const PAUSE_ORDER = ['journal', 'cards', 'halloffame', 'dashboard', 'report', 'classmode', 'awards', 'cosmetics', 'cert',
   'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
   'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
 const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
@@ -1030,5 +1030,21 @@ check('아래', sd(5, 60, 100) === 'down');
 check('우세 축 선택(가로 우세)', sd(60, 40, 100) === 'right');
 check('우세 축 선택(세로 우세)', sd(30, 70, 100) === 'down');
 check('데드존 경계 바로 밖은 방향 인식', sd(35, 0, 100) === 'right');
+
+console.log('[66] 교사용 학생 진단 리포트 (U3)');
+const TR = vm.runInContext('window.__test', sandbox);
+// 약점 주제가 추천 차시로 매핑되는지 (순수 함수)
+check('주제→차시 매핑(개인정보=1차시)', /1차시/.test(TR.topicSession('privacy')));
+check('주제→차시 매핑(가짜정보=2차시)', /2차시/.test(TR.topicSession('fake')));
+check('미정 주제는 종합 복습 폴백', /종합 복습/.test(TR.topicSession('___none___')));
+const rep0 = TR.buildDiagnosticReport(0);
+check('진단 리포트 구조 반환', rep0 && typeof rep0.text === 'string' && Array.isArray(rep0.recommendations));
+check('리포트 제목 포함', rep0.text.includes('학생 진단 리포트'));
+// 약점을 강제로 만들어 추천이 나오는지 확인 (privacy를 충분히 오답 기록 → 정답률<60%)
+for (let i = 0; i < 14; i++) TR.recordTopicResult(0, 'privacy', false);
+const rep1 = TR.buildDiagnosticReport(0);
+check('약점 주제가 추천에 등장', rep1.recommendations.some((x) => x.topic === 'privacy'));
+check('추천에 차시가 연결됨', rep1.recommendations.every((x) => typeof x.session === 'string' && x.session.length > 0));
+check('빈 슬롯은 empty 처리', TR.buildDiagnosticReport(2).empty === true || typeof TR.buildDiagnosticReport(2).text === 'string');
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

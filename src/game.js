@@ -75,6 +75,7 @@
     reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
     dashboard: { ret: 'title', cursor: 0, toast: 0 }, // 교사용 대시보드
     classmode: { ret: 'world', sel: 1, confirm: false, toast: 0 }, // 수업 모드(스테이지 점프)
+    report: { ret: 'world', slot: 0, toast: 0 }, // 교사용 학생 진단 리포트
     quizedit: { ret: 'title', cursor: 0, toast: 0, confirm: false }, // 커스텀 퀴즈 편집·가져오기
     cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
     cert: { ret: 'title', slot: 0, toast: 0 },       // 수료증·진도 인증서
@@ -2255,7 +2256,7 @@
 
   // ---------- 설정·일시정지 메뉴 ----------
   // 터치 기기에는 키보드 단축키(J/Q/B/I 등)가 없으므로, 모든 기능을 메뉴로 연다.
-  const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'dashboard', 'classmode', 'awards', 'cosmetics', 'cert',
+  const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'dashboard', 'report', 'classmode', 'awards', 'cosmetics', 'cert',
     'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
     'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
   const PAUSE_LABELS = {
@@ -2263,6 +2264,7 @@
     cards: '📚 배움 카드',
     halloffame: '🏆 명예의 전당',
     dashboard: '▤ 교사용 대시보드',
+    report: '🩺 학생 진단 리포트',
     classmode: '▶ 수업 모드 (스테이지 시작)',
     awards: '☆ 도전과제',
     cosmetics: '✿ 꾸미기 (칭호·테마)',
@@ -2334,6 +2336,7 @@
       else if (item === 'halloffame') openHof('pause');
       else if (item === 'cert') openCert('pause');
       else if (item === 'dashboard') openDashboard('pause');
+      else if (item === 'report') openReport('pause');
       else if (item === 'classmode') openClassMode('pause');
       else if (item === 'awards') openAwards('pause');
       else if (item === 'cosmetics') openCosmetics('pause');
@@ -3827,6 +3830,118 @@
     ctx.textAlign = 'left';
   }
 
+  // ---------- 교사용 학생 진단 리포트 (U3) ----------
+  // 주제 키 → 추천 차시(docs/차시별-활동지.md). 약점 주제를 다음 수업과 연결한다.
+  const TOPIC_SESSION = {
+    privacy: '1차시 (개인정보·저작권)', copyright: '1차시 (개인정보·저작권)',
+    consent: '1차시 (개인정보·저작권)', security: '1차시 (개인정보·저작권)', identity: '1차시 (개인정보·저작권)',
+    fake: '2차시 (가짜 정보·생성형 AI)', genai: '2차시 (가짜 정보·생성형 AI)',
+    deepfake: '2차시 (가짜 정보·생성형 AI)', rumor: '2차시 (가짜 정보·생성형 AI)',
+    bias: '3차시 (공정함·편향)', filterbubble: '3차시 (공정함·편향)', listen: '3차시 (공정함·편향)',
+    balance: '4차시 (절제·디지털 발자국)', footprint: '4차시 (절제·디지털 발자국)',
+    saving: '4차시 (절제·디지털 발자국)', environment: '4차시 (절제·디지털 발자국)', persuasion: '4차시 (절제·디지털 발자국)',
+    manners: '5차시 (관계·책임)', emotion: '5차시 (관계·책임)', responsibility: '5차시 (관계·책임)',
+    excuse: '5차시 (관계·책임)', safety: '5차시 (관계·책임)', transparency: '5차시 (관계·책임)', core: '5차시 (관계·책임)',
+  };
+  function topicSession(t) { return TOPIC_SESSION[t] || '종합 복습 (퀴즈 챌린지)'; }
+
+  // 슬롯의 학습 데이터를 분석해, 약점 주제 → 추천 차시로 매칭한 진단을 만든다.
+  function buildDiagnosticReport(slot) {
+    if (slot == null) slot = activeSlot();
+    const sum = slotSummary(slot);
+    const s = buildLearningSummary(slot);
+    const weakRows = s.rows.filter((r) => r.total >= 2 && r.rate < 0.6);
+    const recommendations = weakRows.map((r) => ({
+      topic: r.topic, label: r.label, rate: r.rate, session: topicSession(r.topic),
+    }));
+    const sessions = [];
+    for (const r of recommendations) if (!sessions.includes(r.session)) sessions.push(r.session);
+    const pct = (r) => Math.round(r * 100) + '%';
+    let date = ''; try { date = new Date().toLocaleDateString('ko-KR'); } catch (e) {}
+    const lines = [];
+    lines.push('[AI 윤리 어드벤처 — 학생 진단 리포트]');
+    if (date) lines.push('날짜: ' + date);
+    if (!sum) {
+      lines.push('(빈 슬롯 — 아직 학습 기록이 없어요)');
+      return { empty: true, name: '', recommendations: [], sessions: [], text: lines.join('\n') };
+    }
+    lines.push('이름: ' + slotLearnName(slot));
+    lines.push('진행: ' + (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`));
+    lines.push(`푼 문제: ${s.attempted}개 · 정답률 ${s.attempted ? pct(s.overallRate) : '—'} · 복습 노트 ${mistakeCount(slot)}개`);
+    lines.push('──────────────────────');
+    if (recommendations.length === 0) {
+      lines.push('약점 주제가 없어요 👍 잘하고 있어요!');
+      lines.push('심화: 퀴즈 챌린지의 「전체 랜덤」으로 복습을 권합니다.');
+    } else {
+      lines.push('더 살펴볼 주제 → 추천 차시:');
+      for (const r of recommendations) {
+        lines.push(`  · ${r.label} (${pct(r.rate)}) → ${r.session}`);
+      }
+      lines.push('');
+      lines.push('추천 수업: ' + sessions.join(', '));
+    }
+    return { empty: false, name: slotLearnName(slot), recommendations, sessions, text: lines.join('\n') };
+  }
+  // 텍스트를 파일로 내려받는다(진단 리포트 인쇄·보관용).
+  function downloadTextFile(text, filename) {
+    try {
+      const a = document.createElement('a');
+      a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent('﻿' + text);
+      a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      return true;
+    } catch (e) { return false; }
+  }
+  function openReport(ret) {
+    game.report.ret = ret;
+    game.report.slot = activeSlot();
+    game.report.toast = 0;
+    game.mode = 'report';
+    Sound.select();
+  }
+  function closeReport() { game.mode = game.report.ret; Sound.select(); }
+  function updateReport() {
+    const r = game.report;
+    if (r.toast > 0) r.toast -= 1; else if (r.toast < 0) r.toast += 1;
+    // 좌우로 학생(슬롯) 전환
+    if (justPressed('left')) { r.slot = (r.slot + SLOT_COUNT - 1) % SLOT_COUNT; Sound.blip(); }
+    if (justPressed('right')) { r.slot = (r.slot + 1) % SLOT_COUNT; Sound.blip(); }
+    if (justPressed('action')) {
+      const text = buildDiagnosticReport(r.slot).text;
+      const ok = downloadTextFile(text, 'ai-ethics-diagnostic-' + todayStr() + '.txt') || copyTextToClipboard(text);
+      r.toast = ok ? 200 : -200; Sound.badge();
+    }
+    if (justPressed('cancel') || justPressed('menu')) closeReport();
+  }
+  function drawReport() {
+    const r = game.report;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px monospace';
+    ctx.fillText('🩺 학생 진단 리포트', 24, 38);
+    ctx.fillStyle = '#888'; ctx.font = '12px monospace';
+    ctx.fillText(`◀ ▶ 학생(슬롯) 전환 · 슬롯 ${r.slot + 1}`, 24, 58);
+
+    const rep = buildDiagnosticReport(r.slot);
+    let y = 92;
+    const lines = rep.text.split('\n');
+    for (const ln of lines) {
+      if (ln.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = 'bold 15px monospace'; }
+      else if (ln.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = '13px monospace'; }
+      else if (ln.startsWith('추천 수업')) { ctx.fillStyle = okColor(); ctx.font = 'bold 13px monospace'; }
+      else if (ln.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = '13px monospace'; }
+      else { ctx.fillStyle = '#ddd'; ctx.font = '13px monospace'; }
+      ctx.fillText(ln, 28, y);
+      y += 22;
+    }
+
+    ctx.textAlign = 'center';
+    if (r.toast > 0) { ctx.fillStyle = okColor(); ctx.font = 'bold 14px monospace'; ctx.fillText('✓ 진단 리포트를 저장했어요 (인쇄·보관용)', LW / 2, 512); }
+    else if (r.toast < 0) { ctx.fillStyle = badColor(); ctx.font = 'bold 14px monospace'; ctx.fillText('이 환경에서는 내보낼 수 없어요 (브라우저에서 시도)', LW / 2, 512); }
+    else { ctx.fillStyle = '#777'; ctx.font = '13px monospace'; ctx.fillText('Z: 리포트 내보내기(.txt/클립보드) · ◀▶ 학생 전환 · X: 닫기', LW / 2, 512); }
+    ctx.textAlign = 'left';
+  }
+
   // ---------- 커스텀 퀴즈 (선생님 문제) 편집·가져오기 ----------
   const QUIZEDIT_ITEMS = ['importFile', 'importClip', 'template', 'clear', 'close'];
   const QUIZEDIT_LABELS = {
@@ -5110,6 +5225,10 @@
         updateClassMode();
         drawClassMode();
         break;
+      case 'report':
+        updateReport();
+        drawReport();
+        break;
       case 'quizedit':
         updateQuizEdit();
         drawQuizEdit();
@@ -5217,7 +5336,7 @@
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
     buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump,
-    stickDirection,
+    stickDirection, buildDiagnosticReport, topicSession,
   };
   frame();
 })();

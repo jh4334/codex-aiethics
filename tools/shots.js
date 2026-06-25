@@ -286,4 +286,11 @@ g.classmode = { ret: 'world', sel: 3, confirm: false, toast: 0 };
 g.time = 20;
 shot('22-classmode.png');
 
-console.log('완료. shots/ 폴더에 22장 생성.');
+// 23) 교사용 학생 진단 리포트
+g.currentSlot = 0;
+g.mode = 'report';
+g.report = { ret: 'title', slot: 0, toast: 0 };
+g.time = 20;
+shot('23-report.png');
+
+console.log('완료. shots/ 폴더에 23장 생성.');
