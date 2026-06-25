@@ -1505,6 +1505,11 @@
     p.x = w.tx; p.y = w.ty;
     p.px = w.tx * TS; p.py = w.ty * TS;
     p.moving = false;
+    // 새 맵에 도착하면 이동을 멈춘다. (방향키/스틱을 누른 채 워프해도
+    // 도착하자마자 되돌아가는 워프 칸으로 걸어 들어가 '바로 전 맵으로 튕기는'
+    // 현상을 막는다 — 계속 가려면 다시 눌러야 한다.)
+    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+    stickDir = null; stickRepeatFrames = 0;
     Sound.warp();
     Sound.playSong(MAPS[w.to].song);
     // 처음 방문하는 맵의 인트로 연출

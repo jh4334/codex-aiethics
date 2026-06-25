@@ -45,6 +45,9 @@ for (const [id, m] of Object.entries(MAPS)) {
     if (!tm) { err(`${id} 워프 목적지 맵 '${w.to}' 없음`); continue; }
     const dst = tm.tiles[w.ty] && tm.tiles[w.ty][w.tx];
     if (!dst || !WALKABLE.has(dst)) err(`${id}→${w.to} 도착 (${w.tx},${w.ty}) 타일이 '${dst}' (이동 불가)`);
+    // 도착 칸이 또 다른 워프면 즉시 재이동(무한 튕김) 위험 → 금지
+    const landWarp = (tm.warps || []).find((w2) => w2.x === w.tx && w2.y === w.ty);
+    if (landWarp) err(`${id}→${w.to} 도착 (${w.tx},${w.ty})가 또 다른 워프 칸 (즉시 재이동 위험)`);
   }
 }
 

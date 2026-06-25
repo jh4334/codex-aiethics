@@ -50,6 +50,11 @@ const sandbox = {
 };
 vm.createContext(sandbox);
 
+// 결정적 테스트: Math.random을 시드 기반 PRNG로 고정한다.
+// (보기 섞기 등 무작위 요소 때문에 가끔 검사 결과가 흔들리던 플래키 현상 제거)
+let _seed = 1234567;
+Math.random = () => { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; };
+
 for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), sandbox, { filename: f });
 }
@@ -1051,5 +1056,17 @@ const cls = TR.buildClassDiagnostic();
 check('반 전체 진단 구조 반환', cls && typeof cls.text === 'string' && Array.isArray(cls.common));
 check('반 전체 진단 제목', cls.text.includes('반 전체 진단'));
 check('공통 약점에 privacy 집계', cls.common.some((c) => c.topic === 'privacy' && c.count >= 1));
+
+console.log('[67] 워프 자동 바운스 방지 (방향키 누른 채 워프)');
+// windhill 왼쪽 출구(0,10)→meadow 는 도착지(1,10)가 meadow의 windhill 워프(0,10)와
+// 붙어 있어, 예전엔 왼쪽을 누른 채 워프하면 바로 전 맵으로 튕겼다.
+g.flags.visited = g.flags.visited || {};
+g.flags.visited.meadow = true; g.flags.visited.windhill = true;
+g.dialog = null; g.mode = 'world'; g.map = 'windhill'; setPos(1, 10, 'left');
+dispatch('keydown', { key: 'ArrowLeft' });
+step(60); // 60프레임 내내 왼쪽을 누른 채로 둔다
+dispatch('keyup', { key: 'ArrowLeft' });
+check('워프 후에도 전 맵으로 튕기지 않음(meadow 유지)', g.map === 'meadow');
+check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 1 && g.player.y === 10);
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
