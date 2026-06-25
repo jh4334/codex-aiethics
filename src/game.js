@@ -3882,6 +3882,43 @@
     }
     return { empty: false, name: slotLearnName(slot), recommendations, sessions, text: lines.join('\n') };
   }
+  // 반 전체(세 슬롯) 공통 약점을 집계해 우선 수업을 제안한다.
+  function buildClassDiagnostic() {
+    const perTopic = {};
+    let students = 0;
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      if (!slotSummary(i)) continue;
+      students++;
+      for (const r of buildLearningSummary(i).rows) {
+        if (r.total >= 2 && r.rate < 0.6) {
+          const e = perTopic[r.topic] || { topic: r.topic, label: r.label, count: 0 };
+          e.count++; perTopic[r.topic] = e;
+        }
+      }
+    }
+    const common = Object.keys(perTopic).map((k) => perTopic[k]).sort((a, b) => b.count - a.count);
+    let date = ''; try { date = new Date().toLocaleDateString('ko-KR'); } catch (e) {}
+    const lines = ['[AI 윤리 어드벤처 — 반 전체 진단]'];
+    if (date) lines.push('날짜: ' + date);
+    lines.push('학습한 학생(슬롯): ' + students + '명');
+    lines.push('──────────────────────');
+    const sessions = [];
+    if (students === 0) {
+      lines.push('아직 학습한 학생이 없어요.');
+    } else if (common.length === 0) {
+      lines.push('공통 약점이 없어요 👍 반 전체가 잘하고 있어요!');
+    } else {
+      lines.push('공통 약점 (학생 수 많은 순):');
+      for (const c of common.slice(0, 5)) {
+        const sess = topicSession(c.topic);
+        lines.push(`  · ${c.label} — ${c.count}명 → ${sess}`);
+        if (!sessions.includes(sess)) sessions.push(sess);
+      }
+      lines.push('');
+      lines.push('우선 추천 수업: ' + sessions.slice(0, 3).join(', '));
+    }
+    return { students, common, sessions, text: lines.join('\n') };
+  }
   // 텍스트를 파일로 내려받는다(진단 리포트 인쇄·보관용).
   function downloadTextFile(text, filename) {
     try {
@@ -3900,14 +3937,17 @@
     Sound.select();
   }
   function closeReport() { game.mode = game.report.ret; Sound.select(); }
+  // slot 0..SLOT_COUNT-1 = 학생별, slot === SLOT_COUNT = 반 전체
+  function reportView(slot) { return slot >= SLOT_COUNT ? buildClassDiagnostic() : buildDiagnosticReport(slot); }
   function updateReport() {
     const r = game.report;
+    const N = SLOT_COUNT + 1; // 학생 3명 + 반 전체
     if (r.toast > 0) r.toast -= 1; else if (r.toast < 0) r.toast += 1;
-    // 좌우로 학생(슬롯) 전환
-    if (justPressed('left')) { r.slot = (r.slot + SLOT_COUNT - 1) % SLOT_COUNT; Sound.blip(); }
-    if (justPressed('right')) { r.slot = (r.slot + 1) % SLOT_COUNT; Sound.blip(); }
+    // 좌우로 학생(슬롯)·반 전체 전환
+    if (justPressed('left')) { r.slot = (r.slot + N - 1) % N; Sound.blip(); }
+    if (justPressed('right')) { r.slot = (r.slot + 1) % N; Sound.blip(); }
     if (justPressed('action')) {
-      const text = buildDiagnosticReport(r.slot).text;
+      const text = reportView(r.slot).text;
       const ok = downloadTextFile(text, 'ai-ethics-diagnostic-' + todayStr() + '.txt') || copyTextToClipboard(text);
       r.toast = ok ? 200 : -200; Sound.badge();
     }
@@ -3919,16 +3959,17 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff'; ctx.font = 'bold 22px monospace';
     ctx.fillText('🩺 학생 진단 리포트', 24, 38);
+    const isClass = r.slot >= SLOT_COUNT;
     ctx.fillStyle = '#888'; ctx.font = '12px monospace';
-    ctx.fillText(`◀ ▶ 학생(슬롯) 전환 · 슬롯 ${r.slot + 1}`, 24, 58);
+    ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, 24, 58);
 
-    const rep = buildDiagnosticReport(r.slot);
+    const rep = reportView(r.slot);
     let y = 92;
     const lines = rep.text.split('\n');
     for (const ln of lines) {
       if (ln.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = 'bold 15px monospace'; }
       else if (ln.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = '13px monospace'; }
-      else if (ln.startsWith('추천 수업')) { ctx.fillStyle = okColor(); ctx.font = 'bold 13px monospace'; }
+      else if (ln.startsWith('추천 수업') || ln.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = 'bold 13px monospace'; }
       else if (ln.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = '13px monospace'; }
       else { ctx.fillStyle = '#ddd'; ctx.font = '13px monospace'; }
       ctx.fillText(ln, 28, y);
@@ -5336,7 +5377,7 @@
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
     buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump,
-    stickDirection, buildDiagnosticReport, topicSession,
+    stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
   };
   frame();
 })();

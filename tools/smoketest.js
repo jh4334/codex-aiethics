@@ -1046,5 +1046,10 @@ const rep1 = TR.buildDiagnosticReport(0);
 check('약점 주제가 추천에 등장', rep1.recommendations.some((x) => x.topic === 'privacy'));
 check('추천에 차시가 연결됨', rep1.recommendations.every((x) => typeof x.session === 'string' && x.session.length > 0));
 check('빈 슬롯은 empty 처리', TR.buildDiagnosticReport(2).empty === true || typeof TR.buildDiagnosticReport(2).text === 'string');
+// 반 전체 진단: 슬롯 0에 강제로 만든 privacy 약점이 공통 약점에 집계됨
+const cls = TR.buildClassDiagnostic();
+check('반 전체 진단 구조 반환', cls && typeof cls.text === 'string' && Array.isArray(cls.common));
+check('반 전체 진단 제목', cls.text.includes('반 전체 진단'));
+check('공통 약점에 privacy 집계', cls.common.some((c) => c.topic === 'privacy' && c.count >= 1));
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
