@@ -576,3 +576,105 @@ After: `npm run test:pack`이 ZIP 생성 뒤 필수 파일, 서비스워커 asse
 - 사용자 영향: 파일 누락 또는 서비스워커 캐시 누락이 있는 ZIP을 받을 가능성
 - 해결 회차: 5
 - 비고: `npm run test:pack`으로 ZIP 내용 검증 추가
+
+## Cycle 6
+
+### 1. 개발자 관점 검토
+
+게임은 localStorage 저장 실패를 감지하는 `probeStorage()`와 `noteStorageFail()` 방어 코드를 갖고 있었다. 하지만 실제 브라우저에서 localStorage 쓰기가 실패하는 환경을 강제로 만들고, 타이틀 로드와 새 모험 시작이 계속 동작하는지 확인하는 회귀 테스트는 없었다.
+
+### 2. 코드리뷰 결과
+
+새로 발견한 문제:
+
+- 비공개 모드, 저장소 쿼터 초과, 브라우저 정책 차단처럼 `localStorage.setItem`이 실패하는 실제 환경을 브라우저 스모크 테스트에서 다루지 않는다.
+- 저장 실패 방어 코드가 깨져도 Node 로직 테스트만으로는 Canvas 부팅/타이틀/새 모험 흐름이 유지되는지 놓칠 수 있다.
+
+### 3. 사용자 관점 검토
+
+시나리오: 학생이 학교 태블릿의 제한된 브라우저나 시크릿 모드에서 게임을 연다. 진행 저장은 실패하더라도 게임이 검은 화면으로 죽지 않고, 저장되지 않는다는 경고를 유지하며, 새 모험 시작까지는 가능해야 한다.
+
+### 4. 이번 회차 우선순위
+
+- ID: C6-STORAGE-FAIL-BROWSER
+- 우선순위: P1
+- 문제: 저장 실패 환경을 실제 브라우저에서 자동 검증하지 않는다.
+- 사용자 영향: 저장이 막힌 기기에서 게임이 부팅 실패하거나 경고 없이 진행되어 데이터 유실을 겪을 수 있다.
+- 개발/운영 영향: localStorage 방어 코드 회귀를 배포 전 발견하기 어렵다.
+- 해결 방향: Playwright 컨텍스트에서 `Storage.prototype.setItem`을 실패시키고, 타이틀 nonblank, boot error 없음, `storageOk=false`, 새 모험 world 진입을 확인한다.
+- 관련 파일: `tools/browser-smoketest.js`
+- 회귀 위험: 테스트가 브라우저 Storage 구현 세부에 의존한다.
+- 검증 방법: `npm run test:browser`, `npm run validate`, `npm test`, `npm run test:pack`.
+
+### 5. 실제 코드 변경
+
+수정한 파일: `tools/browser-smoketest.js`, `docs/launch-quality-loop.md`
+
+변경 이유: 저장 실패가 사용자 데이터 안정성에 직접 영향을 주므로 실제 브라우저에서 회귀를 잡기 위해서다.
+
+핵심 코드 변경:
+
+- `runStorageFailureCheck()` 추가.
+- 새 브라우저 컨텍스트에서 `Storage.prototype.setItem`을 `QuotaExceededError`로 실패시킨다.
+- 타이틀 모드 진입, boot error 없음, nonblank canvas, `window.__test.getStorageOk() === false`를 확인한다.
+- 저장 실패 상태에서도 `startAdventure()`가 world mode에 도달하는지 확인한다.
+
+새 예외 처리: 없음.
+
+데이터 구조/환경변수 변경: 없음.
+
+### 6. 검증 결과
+
+- 실행한 명령: `npm run test:browser`
+- 결과: 통과, 저장 실패 시나리오 포함 브라우저 스모크 테스트 통과
+
+- 실행한 명령: `npm run validate`
+- 결과: 통과, 모든 검사 통과
+
+- 실행한 명령: `npm test`
+- 결과: 통과, 스모크 320개 + 슬롯 24개 검사
+
+- 실행한 명령: `npm run test:pack`
+- 결과: 통과, ZIP 생성 후 내용 검사 통과
+
+### 7. Before/After
+
+UI 변경 없음. 기존 저장 실패 경고 UI를 새로 바꾸지는 않고, 그 흐름이 깨지지 않는지 테스트로 고정했다.
+
+Before: 브라우저 저장 실패 환경은 자동 테스트되지 않았다.
+
+After: 브라우저 스모크 테스트가 저장 실패 환경에서도 타이틀과 새 모험 시작이 유지되는지 확인한다.
+
+스크린샷: UI 변경이 없어 생성하지 않음.
+
+### 8. 회차 요약
+
+이번 회차에서 해결한 문제: localStorage 쓰기 실패 환경의 브라우저 회귀 테스트 부재.
+
+사용자에게 좋아진 점: 저장이 막힌 기기에서도 게임이 죽지 않고 경고 상태를 유지하는지 배포 전 확인된다.
+
+개발/운영 측면에서 좋아진 점: 데이터 유실 위험과 관련된 방어 코드가 Playwright 스모크 테스트에 포함됐다.
+
+수정한 파일: `tools/browser-smoketest.js`, `docs/launch-quality-loop.md`
+
+추가/수정한 테스트: `runStorageFailureCheck()` 추가.
+
+검증 결과: 로컬 검증 명령 통과.
+
+새로 생긴 리스크: 테스트 시간이 약간 늘었다.
+
+아직 남은 문제: 저장 실패 경고 문구가 Canvas 안에 있어 스크린리더에 별도 저장 실패 live status로 전달되지는 않는다.
+
+다음 회차 후보: 저장 실패 접근성 상태 보강, 백업/복원 실패 안내 개선, 수업 모드 위험 행동 복구성 점검.
+
+### 9. Issue Ledger 업데이트
+
+- Issue ID: C6-STORAGE-FAIL-BROWSER
+- 발견 회차: 6
+- 심각도: P1
+- 상태: fixed
+- 유형: data / test
+- 관련 파일: `tools/browser-smoketest.js`
+- 사용자 영향: 저장 실패 기기에서 부팅 실패 또는 조용한 데이터 유실 가능성
+- 해결 회차: 6
+- 비고: Playwright에서 Storage write 실패를 강제해 회귀 검증

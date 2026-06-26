@@ -181,6 +181,31 @@ async function runMobileChecks(browser, baseUrl, errors) {
   await landscape.close();
 }
 
+async function runStorageFailureCheck(browser, baseUrl, errors) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+  await context.addInitScript(() => {
+    Storage.prototype.setItem = function setItem() {
+      throw new DOMException('Storage writes are blocked', 'QuotaExceededError');
+    };
+  });
+  const page = await context.newPage();
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push('storage console: ' + msg.text());
+  });
+  page.on('pageerror', (error) => errors.push('storage pageerror: ' + error.message));
+
+  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => !!window.__game);
+  await expectMode(page, 'title');
+  assert(await page.$eval('#boot-error', (el) => getComputedStyle(el).display) === 'none', 'storage failure shows boot error');
+  assert((await canvasHasPaint(page)) > 0.05, 'storage failure title canvas appears blank');
+  assert(await page.evaluate(() => window.__test.getStorageOk() === false), 'storage failure was not detected');
+  await startAdventure(page);
+  await expectMode(page, 'world');
+  assert(await page.evaluate(() => window.__test.getStorageOk() === false), 'storage failure state was lost after starting');
+  await context.close();
+}
+
 (async () => {
   const server = await createServer();
   const address = server.address();
@@ -191,6 +216,7 @@ async function runMobileChecks(browser, baseUrl, errors) {
     browser = await chromium.launch({ headless: true });
     await runDesktopFlow(browser, baseUrl, errors);
     await runMobileChecks(browser, baseUrl, errors);
+    await runStorageFailureCheck(browser, baseUrl, errors);
     assert(errors.length === 0, errors.join('\n'));
     console.log('✔ browser smoke test passed');
   } finally {
