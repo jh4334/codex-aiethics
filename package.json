@@ -6,6 +6,7 @@
   "scripts": {
     "validate": "node tools/validate.js",
     "test": "node tools/smoketest.js && node tools/slottest.js",
+    "test:browser": "node tools/browser-smoketest.js",
     "shots": "node tools/shots.js",
     "icons": "node tools/icons.js",
     "docs": "node tools/quizlist.js",

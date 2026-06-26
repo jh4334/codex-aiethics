@@ -4808,9 +4808,8 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
-    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · K 꾸미기 · L 배움카드`, LW / 2, 456);
-    ctx.fillText(`F 명예의전당 · N 수료증 · P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말`, LW / 2, 472);
-    ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 488);
+    ctx.fillText(`↑↓ 슬롯 선택 · Z 시작 · X 삭제 · C 도감 · I 도움말`, LW / 2, 462);
+    ctx.fillText(`교사용: P 대시보드 · U 백업 · X/메뉴 전체 기능 · 저장은 이 기기 로컬`, LW / 2, 482);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
