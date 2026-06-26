@@ -691,6 +691,20 @@ check('복원 성공', res.ok === true && res.count >= 2);
 check('통계가 복원됨', storage.get('ai-ethics-adventure-stats-0') === goodStats);
 check('잘못된 데이터는 거부', T.applyBackup('{"app":"other"}').ok === false);
 check('깨진 JSON은 거부', T.applyBackup('not json').ok === false);
+const originalSetItem = sandbox.localStorage.setItem;
+sandbox.localStorage.setItem = (k, v) => {
+  if (k === 'ai-ethics-adventure-stats-0') throw new Error('quota');
+  return originalSetItem(k, v);
+};
+const partialRestore = T.applyBackup(JSON.stringify({
+  app: 'ai-ethics-adventure',
+  version: 1,
+  savedAt: Date.now(),
+  data: { 'ai-ethics-adventure-stats-0': goodStats },
+}));
+sandbox.localStorage.setItem = originalSetItem;
+check('복원 저장 실패는 실패 처리', partialRestore.ok === false && partialRestore.error === 'storage' && partialRestore.failed === 1);
+check('복원 저장 실패 시 저장 불가 상태', T.getStorageOk() === false);
 
 console.log('[36b] 교사용 반 현황 CSV 내보내기');
 const csv = T.buildClassCsv();

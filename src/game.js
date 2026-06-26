@@ -733,10 +733,13 @@
     if (!obj || obj.app !== 'ai-ethics-adventure' || !obj.data) return { ok: false, error: 'format' };
     const valid = new Set(allBackupKeys());
     let count = 0;
+    let failed = 0;
     for (const k of Object.keys(obj.data)) {
       if (!valid.has(k)) continue;
-      try { localStorage.setItem(k, String(obj.data[k])); count++; } catch (e) { /* 무시 */ }
+      try { localStorage.setItem(k, String(obj.data[k])); count++; }
+      catch (e) { failed++; noteStorageFail(); }
     }
+    if (failed) return { ok: false, error: 'storage', count, failed };
     return { ok: true, count };
   }
   // 텍스트를 클립보드에 복사 (가능한 환경에서). 성공 여부 반환.
