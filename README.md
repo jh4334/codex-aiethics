@@ -512,6 +512,7 @@ tools/quizlist.js  주제별 문제 목록 문서 자동 생성 (docs/주제별-
 tools/editor.html  교사용 커스텀 퀴즈 편집기 (의존성 0, 오프라인 동작)
 tools/shots.js     스크린샷 생성기 · tools/icons.js  앱 아이콘 생성기 (node-canvas)
 tools/pack.js      오프라인 배포용 ZIP 생성기 (운영체제별 zip 명령 의존 없음)
+tools/packtest.js  ZIP 필수 파일·서비스워커 캐시 대상 검증
 .github/workflows/pages.yml    GitHub Pages 자동 배포 (검증 통과 시에만)
 .github/workflows/release.yml  v* 태그 시 오프라인 ZIP 릴리스
 ```
@@ -524,6 +525,7 @@ node tools/smoketest.js  # 게임 로직 스모크 테스트 (플레이 경로, 
 node tools/slottest.js   # 세이브 슬롯 시스템 테스트 (24개)
 npm run docs             # 교사용 주제별 문제 목록 문서 재생성
 npm run pack             # 오프라인 배포용 ZIP 생성
+npm run test:pack        # ZIP 생성 후 필수 파일·서비스워커 캐시 대상 검사
 ```
 
 ## 퀴즈 수정·추가하기
