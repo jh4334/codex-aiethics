@@ -126,6 +126,16 @@ async function runDesktopFlow(browser, baseUrl, errors) {
   await expectMode(page, 'report');
   await page.waitForFunction(() => document.getElementById('a11y-status').textContent.includes('학생 진단 리포트'));
 
+  await page.evaluate(() => {
+    window.__game.mode = 'classmode';
+    window.__game.classmode.confirm = true;
+    window.__game.classmode.sel = 5;
+  });
+  await page.waitForFunction(() => {
+    const text = document.getElementById('a11y-status').textContent;
+    return text.includes('수업 모드 확인 화면') && text.includes('데이터 백업');
+  });
+
   await context.close();
 }
 

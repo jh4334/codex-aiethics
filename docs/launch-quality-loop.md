@@ -883,3 +883,107 @@ After: 일부 저장 실패는 `ok:false`, `error:'storage'`로 반환되어 실
 - 사용자 영향: 일부 기록만 복원된 상태를 성공으로 오인할 가능성
 - 해결 회차: 8
 - 비고: `applyBackup()` 부분 실패 반환과 스모크 테스트 추가
+
+## Cycle 9
+
+### 1. 개발자 관점 검토
+
+수업 모드는 현재 학생 슬롯의 진행도를 특정 스테이지 시작 상태로 바꾸는 고위험 운영 기능이다. 확인 단계와 “되돌릴 수 없음” 안내는 있었지만, 백업을 먼저 하라는 즉시 행동 안내는 화면과 접근성 상태에 충분히 드러나지 않았다.
+
+### 2. 코드리뷰 결과
+
+새로 발견한 문제:
+
+- 수업 모드 확인 화면에 데이터 백업 권장이 직접 표시되지 않아 교사가 진행 변경 전 복구 수단을 놓칠 수 있다.
+- `a11y-status`가 `classmode`를 구체적으로 설명하지 않아 스크린리더 사용자는 수업 모드 확인 단계의 위험성과 취소/시작 행동을 알기 어렵다.
+
+### 3. 사용자 관점 검토
+
+시나리오: 교사가 수업 중 특정 스테이지를 바로 시작하려고 수업 모드를 연다. 이 기능은 학생 슬롯 진행을 바꾸므로, 교사는 “되돌릴 수 없음”뿐 아니라 “필요하면 먼저 데이터 백업”이라는 다음 행동을 바로 알아야 한다.
+
+### 4. 이번 회차 우선순위
+
+- ID: C9-CLASSMODE-BACKUP-WARNING
+- 우선순위: P1
+- 문제: 수업 모드 확인 단계의 백업 권장과 접근성 안내가 부족하다.
+- 사용자 영향: 학생 슬롯 진행을 바꾼 뒤 원래 상태로 되돌리지 못할 수 있다.
+- 개발/운영 영향: 수업 운영 중 데이터 복구 문의가 늘 수 있다.
+- 해결 방향: 수업 모드 확인 화면에 백업 권장 문구를 추가하고, live status가 확인 단계와 백업 권장을 읽도록 한다.
+- 관련 파일: `src/game.js`, `index.html`, `tools/browser-smoketest.js`, `README.md`
+- 회귀 위험: 확인 화면 문구가 좁은 영역에서 겹칠 수 있다.
+- 검증 방법: 1440px Before/After 캡처, `npm run test:browser`, 기존 검증 명령.
+
+### 5. 실제 코드 변경
+
+수정한 파일: `src/game.js`, `index.html`, `tools/browser-smoketest.js`, `README.md`, `docs/launch-quality-loop.md`
+
+변경 이유: 진행 상태를 바꾸는 위험 행동 전에 백업이라는 복구 행동을 더 분명히 안내하기 위해서다.
+
+핵심 코드 변경:
+
+- 수업 모드 확인 화면에 “필요하면 먼저 데이터 백업을 해 주세요.” 문구 추가.
+- 확인 영역의 줄 위치를 조정해 문구 겹침을 방지.
+- `index.html`의 `describeGame()`에 `classmode` 설명 추가.
+- 브라우저 스모크 테스트에서 수업 모드 확인 live status가 “수업 모드 확인 화면”과 “데이터 백업”을 포함하는지 확인.
+- README 수업 모드 설명에 백업 권장 문구 추가.
+
+새 예외 처리: 없음.
+
+데이터 구조/환경변수 변경: 없음.
+
+### 6. 검증 결과
+
+- 실행한 명령: `npm run test:browser`
+- 결과: 통과, 수업 모드 live status 검증 포함
+
+- 실행한 명령: `npm run validate`
+- 결과: 통과, 모든 검사 통과
+
+- 실행한 명령: `npm test`
+- 결과: 통과, 스모크 322개 + 슬롯 24개 검사
+
+- 실행한 명령: `npm run test:pack`
+- 결과: 통과, ZIP 생성 후 내용 검사 통과
+
+### 7. Before/After
+
+Before: 확인 화면은 “이전 진행은 완료 처리되고 되돌릴 수 없어요.”만 표시했다.
+
+After: 확인 화면에 “필요하면 먼저 데이터 백업을 해 주세요.”가 추가됐다.
+
+스크린샷:
+
+- Before: `C:\Users\USER\AppData\Local\Temp\codex-aiethics-cycle9\cycle9-before-classmode-confirm.png`
+- After: `C:\Users\USER\AppData\Local\Temp\codex-aiethics-cycle9\cycle9-after-classmode-confirm.png`
+
+### 8. 회차 요약
+
+이번 회차에서 해결한 문제: 수업 모드 진행 변경 전 백업 안내와 접근성 설명 부족.
+
+사용자에게 좋아진 점: 교사가 학생 슬롯 진행을 바꾸기 전 백업 필요성을 즉시 볼 수 있다.
+
+개발/운영 측면에서 좋아진 점: 수업 모드 접근성 상태가 브라우저 스모크 테스트에 포함됐다.
+
+수정한 파일: `src/game.js`, `index.html`, `tools/browser-smoketest.js`, `README.md`, `docs/launch-quality-loop.md`
+
+추가/수정한 테스트: 브라우저 스모크 테스트에 수업 모드 확인 live status 검증 추가.
+
+검증 결과: 로컬 검증 명령 통과.
+
+새로 생긴 리스크: 확인 화면 문구가 한 줄 늘었지만 1440px 캡처에서 겹침 없음 확인.
+
+아직 남은 문제: 최종 출시 체크리스트와 수동 QA 시나리오를 문서 말미에 통합해야 한다.
+
+다음 회차 후보: 최종 10회차에서 출시 체크리스트, 수동 QA, 남은 리스크, 최종 출시 판단을 완성한다.
+
+### 9. Issue Ledger 업데이트
+
+- Issue ID: C9-CLASSMODE-BACKUP-WARNING
+- 발견 회차: 9
+- 심각도: P1
+- 상태: fixed
+- 유형: ux / accessibility / data
+- 관련 파일: `src/game.js`, `index.html`, `tools/browser-smoketest.js`, `README.md`
+- 사용자 영향: 학생 슬롯 진행 변경 전 백업 필요성을 놓칠 가능성
+- 해결 회차: 9
+- 비고: 확인 화면과 live status에 백업 안내 추가

@@ -3870,10 +3870,12 @@
       ctx.fillText(`지금 이 슬롯을 ${cm.sel}스테이지 시작 상태로 바꿀까요?`, LW / 2, 360);
       ctx.fillStyle = '#ddd';
       ctx.font = '13px monospace';
-      ctx.fillText('이전 진행은 완료 처리되고 되돌릴 수 없어요.', LW / 2, 384);
+      ctx.fillText('이전 진행은 완료 처리되고 되돌릴 수 없어요.', LW / 2, 382);
+      ctx.fillStyle = warnColor();
+      ctx.fillText('필요하면 먼저 데이터 백업을 해 주세요.', LW / 2, 404);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 14px monospace';
-      ctx.fillText('Z: 시작   ·   X: 취소', LW / 2, 416);
+      ctx.fillText('Z: 시작   ·   X: 취소', LW / 2, 430);
     } else {
       ctx.fillStyle = '#777';
       ctx.font = '13px monospace';
