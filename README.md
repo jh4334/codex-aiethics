@@ -511,6 +511,7 @@ tools/slottest.js  세이브 슬롯·마이그레이션·안전 스폰 테스트
 tools/quizlist.js  주제별 문제 목록 문서 자동 생성 (docs/주제별-문제-목록.md)
 tools/editor.html  교사용 커스텀 퀴즈 편집기 (의존성 0, 오프라인 동작)
 tools/shots.js     스크린샷 생성기 · tools/icons.js  앱 아이콘 생성기 (node-canvas)
+tools/pack.js      오프라인 배포용 ZIP 생성기 (운영체제별 zip 명령 의존 없음)
 .github/workflows/pages.yml    GitHub Pages 자동 배포 (검증 통과 시에만)
 .github/workflows/release.yml  v* 태그 시 오프라인 ZIP 릴리스
 ```

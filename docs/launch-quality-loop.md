@@ -262,3 +262,111 @@ After:
 - 사용자 영향: 수업 기록 로컬 저장 사실을 놓쳐 백업하지 않을 가능성
 - 해결 회차: 2
 - 비고: 대시보드 화면과 live status 문구 보강
+
+## Cycle 3
+
+### 1. 개발자 관점 검토
+
+릴리스 workflow는 `npm run pack`으로 오프라인 ZIP을 만들지만, 기존 `pack` 스크립트는 `rm`과 `zip` 셸 명령에 의존했다. Windows 개발 환경에서는 `rm`이 인식되지 않아 로컬에서 릴리스 패키지를 재현할 수 없었다. 또한 스크립트가 `.nojekyll`을 포함하려 했지만 실제 파일은 없어 입력 목록과 저장소 상태가 맞지 않았다.
+
+### 2. 코드리뷰 결과
+
+새로 발견한 문제:
+
+- `npm run pack`이 Windows `cmd`에서 실패해 오프라인 배포본을 만들 수 없다.
+- README의 프로젝트 구조 목록에 새 패키징 책임을 가진 도구 파일이 없으면 운영자가 어떤 코드가 ZIP을 만드는지 추적하기 어렵다.
+
+### 3. 사용자 관점 검토
+
+시나리오: 교사가 인터넷이 불안정한 교실에서 오프라인 배포본 ZIP을 받아 USB로 옮겨 실행하려고 한다. 개발자나 운영자가 Windows PC에서 ZIP을 만들 수 없으면 수업 직전 배포가 막히고, 교사는 학생용 기기에 파일을 나눠 줄 수 없다.
+
+### 4. 이번 회차 우선순위
+
+- ID: C3-PACK-WINDOWS
+- 우선순위: P1
+- 문제: 오프라인 ZIP 생성 스크립트가 Windows에서 실패한다.
+- 사용자 영향: 인터넷 없는 교실 배포본을 로컬에서 만들지 못해 수업 준비가 막힌다.
+- 개발/운영 영향: GitHub Actions 외 환경에서 릴리스 산출물을 재현하기 어렵다.
+- 해결 방향: Node 표준 라이브러리만으로 ZIP을 생성하는 `tools/pack.js`를 추가하고 `npm run pack`을 교체한다.
+- 관련 파일: `tools/pack.js`, `package.json`, `README.md`
+- 회귀 위험: 수동 ZIP 구현이 잘못되면 압축 해제가 실패하거나 한글 파일명이 깨질 수 있다.
+- 검증 방법: `npm run pack`, `Expand-Archive`, 필수 파일 존재 확인, 압축 해제본 브라우저 로드 확인.
+
+### 5. 실제 코드 변경
+
+수정한 파일: `package.json`, `README.md`, `tools/pack.js`, `docs/launch-quality-loop.md`
+
+변경 이유: 운영체제별 셸 명령 의존을 제거하고 오프라인 배포본 생성을 재현 가능하게 만들기 위해서다.
+
+핵심 코드 변경:
+
+- `tools/pack.js` 추가: Node `fs`, `path`, `zlib`만 사용해 ZIP local header, central directory, EOCD를 생성한다.
+- 한글 파일명을 위해 ZIP UTF-8 flag를 설정한다.
+- `package.json`의 `pack` 스크립트를 `node tools/pack.js`로 교체한다.
+- 기존 `.gitignore`가 `node_modules/`와 `ai-ethics-adventure-offline.zip`을 제외하는 상태임을 확인했다.
+- README 프로젝트 구조에 `tools/pack.js` 설명 추가.
+
+새 예외 처리: 입력 경로가 없으면 건너뛰고, 존재하는 파일만 수집한다.
+
+데이터 구조/환경변수 변경: 없음.
+
+### 6. 검증 결과
+
+- 실행한 명령: `npm run pack` (기존)
+- 결과: 실패
+- 실패 원인: Windows `cmd`에서 `'rm' is not recognized as an internal or external command`
+- 수정 여부: Node 기반 `tools/pack.js`로 교체
+
+- 실행한 명령: `node --check tools\pack.js`
+- 결과: 통과
+
+- 실행한 명령: `npm run pack`
+- 결과: 통과, `ai-ethics-adventure-offline.zip` 생성, 21 files
+
+- 실행한 명령: `Expand-Archive` 후 필수 파일 확인
+- 결과: 통과, `index.html`, `sw.js`, `manifest.webmanifest`, `src/game.js`, `icons/icon-192.png`, `docs/교사용-안내서.md`, `README.md` 확인
+
+- 실행한 명령: 압축 해제본 로컬 서버 + Playwright 브라우저 로드
+- 결과: 통과, `window.__game.mode === 'title'`와 nonblank canvas 확인
+
+### 7. Before/After
+
+UI 변경 없음.
+
+Before: `npm run pack`이 Windows에서 `rm` 명령을 찾지 못해 실패했다.
+
+After: `npm run pack`이 Node 스크립트로 ZIP을 만들고, 압축 해제본을 브라우저에서 정상 로드했다.
+
+스크린샷: UI 변경이 없어 생성하지 않음. 검증 증거는 명령 결과와 압축 해제본 브라우저 로드 결과로 대체했다.
+
+### 8. 회차 요약
+
+이번 회차에서 해결한 문제: Windows에서 오프라인 배포 ZIP을 만들 수 없는 출시 차단급 운영 문제.
+
+사용자에게 좋아진 점: 인터넷 없는 교실 배포본을 로컬에서도 만들 수 있어 수업 준비 안정성이 올라간다.
+
+개발/운영 측면에서 좋아진 점: GitHub Actions와 Windows 로컬에서 같은 `npm run pack` 명령을 사용할 수 있다.
+
+수정한 파일: `package.json`, `README.md`, `tools/pack.js`, `docs/launch-quality-loop.md`
+
+추가/수정한 테스트: 별도 테스트 파일은 없지만 ZIP 생성, 압축 해제, 필수 파일 확인, 압축 해제본 브라우저 로드를 수행했다.
+
+검증 결과: 패키징 관련 실행 검증 통과.
+
+새로 생긴 리스크: 자체 ZIP 작성 코드가 ZIP64를 지원하지 않는다. 현재 산출물은 4GB/65535파일 한도와 무관하므로 출시 전 필수 리스크는 아니다.
+
+아직 남은 문제: release workflow에서 브라우저 스모크 테스트까지 포함할지 검토 필요.
+
+다음 회차 후보: release workflow 품질 게이트 강화, 서비스워커 asset 목록과 패키지 파일 목록 동기화 검증, 백업/복원 실패 안내 개선.
+
+### 9. Issue Ledger 업데이트
+
+- Issue ID: C3-PACK-WINDOWS
+- 발견 회차: 3
+- 심각도: P1
+- 상태: fixed
+- 유형: deploy / maintainability
+- 관련 파일: `tools/pack.js`, `package.json`, `README.md`
+- 사용자 영향: Windows 환경에서 오프라인 수업 배포본 생성 실패
+- 해결 회차: 3
+- 비고: Node 기반 ZIP 생성, 압축 해제 및 브라우저 로드 검증 완료
