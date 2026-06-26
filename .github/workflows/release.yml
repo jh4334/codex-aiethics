@@ -25,6 +25,12 @@ jobs:
         run: node tools/smoketest.js
       - name: 슬롯 테스트
         run: node tools/slottest.js
+      - name: 브라우저 테스트 준비
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: 브라우저 스모크 테스트
+        run: npm run test:browser
       - name: 오프라인 ZIP 빌드
         run: npm run pack
       - name: 릴리스에 첨부

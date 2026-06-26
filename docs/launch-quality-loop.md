@@ -370,3 +370,103 @@ After: `npm run pack`이 Node 스크립트로 ZIP을 만들고, 압축 해제본
 - 사용자 영향: Windows 환경에서 오프라인 수업 배포본 생성 실패
 - 해결 회차: 3
 - 비고: Node 기반 ZIP 생성, 압축 해제 및 브라우저 로드 검증 완료
+
+## Cycle 4
+
+### 1. 개발자 관점 검토
+
+GitHub Pages workflow는 브라우저 스모크 테스트를 실행하지만, 오프라인 ZIP을 릴리스에 첨부하는 Release workflow는 데이터/로직 테스트만 실행했다. 릴리스 태그는 교사에게 배포할 ZIP 산출물을 직접 만들기 때문에, 실제 브라우저에서 타이틀/메뉴/대시보드/리포트/모바일 회전 안내가 깨지는 회귀를 릴리스 전에 막아야 한다.
+
+### 2. 코드리뷰 결과
+
+새로 발견한 문제:
+
+- Release workflow가 `npm run test:browser`를 실행하지 않아 Canvas 렌더링, 접근성 live status, 모바일 회전 안내, 터치 버튼 semantics 회귀가 ZIP 릴리스 전에 걸러지지 않는다.
+
+### 3. 사용자 관점 검토
+
+시나리오: 운영자가 `v*` 태그를 올리고 GitHub Release의 오프라인 ZIP 링크를 교사에게 보낸다. ZIP 내부 파일은 만들어졌지만 실제 브라우저에서 빈 화면이 뜨거나 모바일 회전 안내가 깨지면 교사는 수업 현장에서 문제를 발견하게 된다.
+
+### 4. 이번 회차 우선순위
+
+- ID: C4-RELEASE-BROWSER-GATE
+- 우선순위: P1
+- 문제: 릴리스 산출물이 실제 브라우저 스모크 테스트 없이 첨부된다.
+- 사용자 영향: 교사가 받는 오프라인 ZIP이 브라우저에서 깨질 가능성을 릴리스 전에 놓칠 수 있다.
+- 개발/운영 영향: 릴리스 후 수동 롤백과 재배포 부담 증가.
+- 해결 방향: Release workflow에 Playwright 설치와 `npm run test:browser` 단계를 ZIP 빌드 전에 추가한다.
+- 관련 파일: `.github/workflows/release.yml`
+- 회귀 위험: 릴리스 workflow 시간이 늘고, Playwright 설치 장애가 릴리스를 막을 수 있다.
+- 검증 방법: 로컬 `npm run test:browser` 재실행, YAML diff 확인. GitHub Actions 실제 실행은 원격 트리거 필요.
+
+### 5. 실제 코드 변경
+
+수정한 파일: `.github/workflows/release.yml`, `docs/launch-quality-loop.md`
+
+변경 이유: 오프라인 ZIP 릴리스 전에 실제 브라우저 사용자 흐름을 자동 검증하기 위해서다.
+
+핵심 코드 변경:
+
+- `오프라인 ZIP 빌드` 전에 `브라우저 테스트 준비` 단계 추가.
+- `npm install --no-save playwright`와 `npx playwright install --with-deps chromium` 실행.
+- `브라우저 스모크 테스트` 단계에서 `npm run test:browser` 실행.
+
+새 예외 처리: 없음.
+
+데이터 구조/환경변수 변경: 없음.
+
+### 6. 검증 결과
+
+- 실행한 명령: `npm run test:browser`
+- 결과: 통과, 브라우저 스모크 테스트 통과
+
+- 실행한 명령: `npm run validate`
+- 결과: 통과, 모든 검사 통과
+
+- 실행한 명령: `npm test`
+- 결과: 통과, 스모크 320개 + 슬롯 24개 검사
+
+- 실행하지 못한 항목: GitHub Actions Release workflow 원격 실행
+- 이유: 태그 push 또는 workflow_dispatch가 필요한 원격 CI 실행이며, 현재 작업은 로컬 브랜치에서 수행했다.
+
+### 7. Before/After
+
+UI 변경 없음.
+
+Before: Release workflow는 데이터 검증, 스모크 테스트, 슬롯 테스트 후 바로 오프라인 ZIP을 만들었다.
+
+After: Release workflow가 브라우저 스모크 테스트를 통과한 뒤에만 오프라인 ZIP을 만든다.
+
+스크린샷: UI 변경이 없어 생성하지 않음.
+
+### 8. 회차 요약
+
+이번 회차에서 해결한 문제: 실제 브라우저 회귀가 오프라인 ZIP 릴리스 전에 검출되지 않는 배포 품질 리스크.
+
+사용자에게 좋아진 점: 교사가 받는 ZIP이 브라우저에서 기본 화면과 모바일 흐름을 열 수 있는지 자동 확인된다.
+
+개발/운영 측면에서 좋아진 점: Pages 배포와 Release 배포의 검증 수준이 더 일관된다.
+
+수정한 파일: `.github/workflows/release.yml`, `docs/launch-quality-loop.md`
+
+추가/수정한 테스트: Release workflow에 `npm run test:browser` 단계 추가.
+
+검증 결과: 로컬 브라우저 스모크와 기존 검증 통과. 원격 GitHub Actions 실행은 확인 필요.
+
+새로 생긴 리스크: Playwright 설치 장애가 릴리스를 막을 수 있으나, 깨진 ZIP을 배포하는 것보다 안전한 실패다.
+
+아직 남은 문제: release workflow가 생성 ZIP을 압축 해제해 브라우저로 직접 여는 검증까지는 하지 않는다.
+
+다음 회차 후보: 패키지 파일 목록과 서비스워커 asset 목록 동기화 검증, 생성 ZIP 자체를 CI에서 압축 해제해 확인, 백업/복원 실패 안내 개선.
+
+### 9. Issue Ledger 업데이트
+
+- Issue ID: C4-RELEASE-BROWSER-GATE
+- 발견 회차: 4
+- 심각도: P1
+- 상태: fixed
+- 유형: deploy / test
+- 관련 파일: `.github/workflows/release.yml`
+- 사용자 영향: 브라우저에서 깨지는 오프라인 ZIP을 받을 가능성
+- 해결 회차: 4
+- 비고: 릴리스 전 Playwright 브라우저 스모크 단계 추가. 원격 workflow 실행은 확인 필요
