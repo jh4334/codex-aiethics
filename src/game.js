@@ -893,16 +893,25 @@
     const bind = (id, key) => {
       const el = document.getElementById(id);
       if (!el) return;
-      const down = (e) => {
-        e.preventDefault(); Sound.resume();
-        for (const t of e.changedTouches) touchIds.set(t.identifier, { el, key });
+      let lastDirectActivation = 0;
+      const press = () => {
+        Sound.resume();
         if (!held.has(key)) pressed.add(key);
         held.add(key);
+        lastDirectActivation = Date.now();
+      };
+      const release = () => { held.delete(key); };
+      const down = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        for (const t of e.changedTouches) touchIds.set(t.identifier, { el, key });
+        press();
       };
       const up = (e) => {
         e.preventDefault();
+        e.stopPropagation();
         for (const t of e.changedTouches) touchIds.delete(t.identifier);
-        held.delete(key);
+        release();
       };
       const move = (e) => {
         for (const t of e.changedTouches) {
@@ -919,6 +928,25 @@
       el.addEventListener('touchend', up);
       el.addEventListener('touchcancel', up);
       el.addEventListener('touchmove', move);
+      el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) press();
+      });
+      el.addEventListener('keyup', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        e.stopPropagation();
+        release();
+      });
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (Date.now() - lastDirectActivation < 500) return;
+        press();
+        setTimeout(release, 80);
+      });
     };
     bind('t-a', 'action');
     bind('t-menu', 'menu');
@@ -977,8 +1005,21 @@
     }
     const hintBtn = document.getElementById('t-hint');
     if (hintBtn) {
-      const onHint = (e) => { e.preventDefault(); Sound.resume(); useHint(); };
+      let lastHintActivation = 0;
+      const onHint = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (Date.now() - lastHintActivation < 500) return;
+        lastHintActivation = Date.now();
+        Sound.resume();
+        useHint();
+      };
       hintBtn.addEventListener('touchstart', onHint);
+      hintBtn.addEventListener('click', onHint);
+      hintBtn.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        onHint(e);
+      });
     }
   }
 
@@ -3615,7 +3656,7 @@
     ctx.fillText('▤ 교사용 대시보드 — 학생 현황', 24, 36);
     ctx.fillStyle = '#888';
     ctx.font = '12px monospace';
-    ctx.fillText('한 기기를 나눠 쓰는 세 학생(슬롯)의 학습 현황을 비교합니다.', 24, 56);
+    ctx.fillText('기록은 이 기기에만 저장됩니다. 수업 후 CSV 내보내기·백업을 권장합니다.', 24, 56);
 
     const colW = (LW - 32) / SLOT_COUNT;
     for (let i = 0; i < SLOT_COUNT; i++) {

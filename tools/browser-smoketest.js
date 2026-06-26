@@ -156,6 +156,28 @@ async function runMobileChecks(browser, baseUrl, errors) {
   await landscapePage.waitForFunction(() => !!window.__game);
   assert(await landscapePage.$eval('#rotate-hint', (el) => getComputedStyle(el).display) === 'none', 'landscape rotate hint is visible');
   assert(await landscapePage.$eval('#touch-ui', (el) => getComputedStyle(el).display) === 'block', 'landscape touch UI is hidden');
+  const touchButtons = await landscapePage.$$eval('.tbtn', (els) => els.map((el) => ({
+    tag: el.tagName,
+    type: el.getAttribute('type'),
+    label: el.getAttribute('aria-label'),
+    tabIndex: el.tabIndex,
+  })));
+  assert(touchButtons.length === 4, 'expected four touch buttons');
+  assert(touchButtons.every((btn) => btn.tag === 'BUTTON' && btn.type === 'button'), 'touch controls must be native buttons');
+  assert(touchButtons.every((btn) => btn.label && btn.tabIndex >= 0), 'touch buttons need labels and keyboard focus');
+  await landscapePage.focus('#t-menu');
+  await landscapePage.keyboard.down('Space');
+  await landscapePage.waitForTimeout(45);
+  await landscapePage.keyboard.up('Space');
+  await expectMode(landscapePage, 'dex');
+  assert(await landscapePage.$eval('#name-overlay', (el) => getComputedStyle(el).display) === 'none', 'touch menu key activation leaked to title action');
+  await tapKey(landscapePage, 'KeyX');
+  await expectMode(landscapePage, 'title');
+  await landscapePage.focus('#t-a');
+  await landscapePage.keyboard.down('Space');
+  await landscapePage.waitForTimeout(45);
+  await landscapePage.keyboard.up('Space');
+  await landscapePage.waitForFunction(() => getComputedStyle(document.getElementById('name-overlay')).display === 'flex');
   await landscape.close();
 }
 

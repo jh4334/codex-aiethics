@@ -60,18 +60,24 @@
     background: rgba(28,30,46,.55);
     border: 2px solid rgba(255,255,255,.5);
     border-radius: 16px;
+    padding: 0;
     color: #fff;
+    font-family: inherit;
     font-size: clamp(22px, 5.4vmin, 30px);
     font-weight: bold;
+    line-height: 1;
     display: flex; align-items: center; justify-content: center;
     user-select: none; -webkit-user-select: none;
     touch-action: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
     z-index: 10;
     backdrop-filter: blur(2px);
     box-shadow: 0 2px 8px rgba(0,0,0,.45);
     transition: transform .04s ease, background .04s ease;
   }
   .tbtn:active { background: rgba(255,255,255,.42); color: #1c1e2e; transform: scale(.92); }
+  .tbtn:focus-visible { outline: 3px solid #ffd644; outline-offset: 3px; }
   /* 버튼 아래 작은 안내 글자 */
   .tbtn .sub {
     position: absolute; bottom: -16px; left: 0; right: 0;
@@ -238,10 +244,10 @@
   <div id="t-stick" role="application" aria-label="이동 스틱. 손가락으로 끌어 상하좌우로 움직입니다.">
     <div id="t-stick-knob"></div>
   </div>
-  <div class="tbtn" id="t-a" role="button" aria-label="결정·대화">A<span class="sub">결정</span></div>
-  <div class="tbtn" id="t-hint" role="button" aria-label="50:50 힌트">힌트</div>
-  <div class="tbtn" id="t-menu" role="button" aria-label="도감 열기">도감</div>
-  <div class="tbtn" id="t-pause" role="button" aria-label="메뉴 열기">메뉴</div>
+  <button type="button" class="tbtn" id="t-a" aria-label="결정·대화">A<span class="sub">결정</span></button>
+  <button type="button" class="tbtn" id="t-hint" aria-label="50:50 힌트">힌트</button>
+  <button type="button" class="tbtn" id="t-menu" aria-label="도감 열기">도감</button>
+  <button type="button" class="tbtn" id="t-pause" aria-label="메뉴 열기">메뉴</button>
 </div>
 <div id="rotate-hint">
   <div class="ico">📱</div>
@@ -300,7 +306,7 @@
       if (g.mode === 'dialog') return '대화 화면입니다. Z 또는 스페이스로 다음 문장을 넘깁니다.';
       if (g.mode === 'battle') return '퀴즈 배틀 화면입니다. 위아래로 답을 고르고 Z로 결정합니다.';
       if (g.mode === 'pause') return '메뉴 화면입니다. 수호자 일지, 교사용 대시보드, 학생 진단 리포트, 백업 기능을 선택할 수 있습니다.';
-      if (g.mode === 'dashboard') return '교사용 대시보드입니다. Z로 반 현황 CSV를 내보내고 X로 닫습니다.';
+      if (g.mode === 'dashboard') return '교사용 대시보드입니다. 기록은 이 기기에만 저장됩니다. Z로 반 현황 CSV를 내보내고 X로 닫습니다.';
       if (g.mode === 'report') return '학생 진단 리포트입니다. 좌우로 학생 또는 반 전체를 바꾸고 Z로 텍스트 리포트를 내보냅니다.';
       if (g.mode === 'backup') return '데이터 백업과 복원 화면입니다. 수업 기록은 이 기기에 저장되므로 백업을 권장합니다.';
       if (g.mode === 'ending') return '엔딩 화면입니다. Z로 진행합니다.';
