@@ -200,9 +200,14 @@ async function runStorageFailureCheck(browser, baseUrl, errors) {
   assert(await page.$eval('#boot-error', (el) => getComputedStyle(el).display) === 'none', 'storage failure shows boot error');
   assert((await canvasHasPaint(page)) > 0.05, 'storage failure title canvas appears blank');
   assert(await page.evaluate(() => window.__test.getStorageOk() === false), 'storage failure was not detected');
+  await page.waitForFunction(() => document.getElementById('a11y-status').textContent.includes('저장이 되지 않는 환경'));
   await startAdventure(page);
   await expectMode(page, 'world');
   assert(await page.evaluate(() => window.__test.getStorageOk() === false), 'storage failure state was lost after starting');
+  await page.waitForFunction(() => {
+    const text = document.getElementById('a11y-status').textContent;
+    return text.includes('저장이 되지 않는 환경') && text.includes('탐험 화면');
+  });
   await context.close();
 }
 

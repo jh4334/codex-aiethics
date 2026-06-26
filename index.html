@@ -314,6 +314,10 @@
     }
     function updateStatus() {
       var text = describeGame();
+      var g = window.__game;
+      if (g && g.storageOk === false) {
+        text = '저장이 되지 않는 환경입니다. 메뉴의 데이터 백업을 이용하세요. ' + text;
+      }
       if (text !== lastText) {
         statusEl.textContent = text;
         lastText = text;

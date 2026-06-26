@@ -81,6 +81,7 @@
     cert: { ret: 'title', slot: 0, toast: 0 },       // 수료증·진도 인증서
     hof: { ret: 'title', cat: 0 },                   // 명예의 전당(로컬 기록)
     pauseScroll: 0,      // 일시정지 메뉴 스크롤
+    storageOk: true,
   };
 
   const SLOT_COUNT = 3;
@@ -88,20 +89,25 @@
   // ---------- 저장 가능 여부 (비공개 모드·저장공간 가득 등) ----------
   // 모든 쓰기가 조용히 실패해 진행이 안 저장되는 최악의 상황을 사용자에게 알린다.
   let storageOk = true;
+  function setStorageOk(ok) {
+    storageOk = ok;
+    game.storageOk = ok;
+    return storageOk;
+  }
   function probeStorage() {
     try {
       const k = '__ae_probe__';
       localStorage.setItem(k, '1');
       const ok = localStorage.getItem(k) === '1';
       localStorage.removeItem(k);
-      storageOk = ok;
-    } catch (e) { storageOk = false; }
+      setStorageOk(ok);
+    } catch (e) { setStorageOk(false); }
     return storageOk;
   }
   // 런타임에 저장이 처음 실패하면(쿼터 초과 등) 경고로 승격하고 안내를 띄운다.
   function noteStorageFail() {
     if (storageOk) {
-      storageOk = false;
+      setStorageOk(false);
       try { game.notice = { text: '⚠ 이 기기에서는 진행이 저장되지 않아요. 백업을 이용해 주세요.', t: 360 }; } catch (e) { /* 무시 */ }
     }
   }
