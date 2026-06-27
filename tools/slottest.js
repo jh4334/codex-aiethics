@@ -20,7 +20,7 @@ function makeCanvas(w, h) {
   return { width: w || 0, height: h || 0, getContext: () => makeCtx(), addEventListener() {} };
 }
 
-// 미리 옛 단일 세이브를 심어 둔다 (스테이지 6 진행 중인 저장본)
+// 미리 옛 단일 세이브를 심어 둔다 (후일담 진행 중인 저장본)
 const storage = new Map();
 const oldSave = {
   map: 'serverroom', x: 7, y: 9,
@@ -62,6 +62,7 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), sandbox, { filename: f });
 }
 const g = windowObj.__game;
+const { ETHICS_AXES } = vm.runInContext('({ ETHICS_AXES })', sandbox);
 
 function step(n = 1) { for (let i = 0; i < n; i++) { const cb = rafCb; rafCb = null; cb(); } }
 function dispatch(ev, obj) { for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj)); }
@@ -78,7 +79,9 @@ console.log('[1] 기존 단일 세이브 → 슬롯 0 이전(마이그레이션)
 step(5);
 check('옛 세이브 키는 제거됨', !storage.get('ai-ethics-adventure-v1'));
 check('슬롯 0으로 이전됨', !!slot(0));
-check('이전된 진행도 보존 (스테이지 6)', slot(0).flags.defeated.finalboss === true);
+check('이전된 후일담 진행도 보존', slot(0).flags.defeated.finalboss === true);
+check('이전된 세이브도 5개 윤리 축을 가짐',
+  ETHICS_AXES.every((axis) => Object.prototype.hasOwnProperty.call(slot(0).flags.ethics, axis)));
 check('이전된 이름 기본값', slot(0).name === '수호자');
 check('타이틀에서 슬롯 0이 채워져 보임', g.mode === 'title' && g.titleScreen === 'slots');
 

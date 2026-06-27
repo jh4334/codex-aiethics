@@ -6,6 +6,490 @@
 
 const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1', '5']);
 
+const ETHICS_AXES = ['privacy', 'perspective', 'fairness', 'verification', 'responsibility'];
+const ETHICS_AXIS_MAX = 6;
+const ETHICS_LABELS = {
+  privacy: '개인정보·동의',
+  perspective: '추천·관점',
+  fairness: '공정성·대표성',
+  verification: '생성형 AI·검증',
+  responsibility: '인간 감독·책임',
+};
+const STAGE_THEMES = [
+  {
+    stage: 1,
+    id: 'data_footprint_forest',
+    name: '데이터 발자국 숲',
+    axis: 'privacy',
+    lesson: '개인정보는 이름뿐 아니라 위치, 사진, 습관, 대화 기록까지 포함된다.',
+    boss: '혼돈몬',
+  },
+  {
+    stage: 2,
+    id: 'filter_bubble_maze',
+    name: '필터버블 미로',
+    axis: 'perspective',
+    lesson: '추천 알고리즘은 편리하지만 내가 보는 세계를 좁힐 수 있다.',
+    boss: '멋대로몬',
+  },
+  {
+    stage: 3,
+    id: 'bias_court',
+    name: '편향의 법정',
+    axis: 'fairness',
+    lesson: 'AI 판단은 데이터의 양뿐 아니라 누가 빠졌는지에 영향을 받는다.',
+    boss: '떠넘기몬',
+  },
+  {
+    stage: 4,
+    id: 'deepfake_station',
+    name: '딥페이크 방송국',
+    axis: 'verification',
+    lesson: '그럴듯한 생성형 AI 결과도 출처, 날짜, 원본, 교차 확인이 필요하다.',
+    boss: '홀림몬',
+  },
+  {
+    stage: 5,
+    id: 'responsibility_core',
+    name: '책임의 코어',
+    axis: 'responsibility',
+    lesson: 'AI를 사용할 때 최종 확인과 책임은 사람에게 남아 있다.',
+    boss: '어둠대왕몬',
+  },
+];
+
+const STAGE_PUZZLES = {
+  data_footprint_forest: {
+    stage: 1,
+    axis: 'privacy',
+    map: 'forest',
+    title: '데이터 발자국 분류',
+    prompt: '이 발자국을 어느 문으로 보낼까?',
+    speaker: '데이터 발자국',
+    completeText: '세 데이터 발자국을 제자리에 나누었다.\n신호탑의 잠금이 조용히 풀렸다.',
+    reflectionText: '배움 조각: 개인정보는 숨기는 것만이 아니라, 맥락과 동의를 살피며 다루는 약속이다.',
+    gateText: '신호탑 문에 세 개의 발자국 불빛이 떠 있다.\n데이터 발자국 숲에서\n공유해도 되는 정보와 조심해야 할 정보를\n먼저 나누어야 한다.',
+    doors: [
+      { id: 'share_ok', label: '공유 가능' },
+      { id: 'needs_consent', label: '동의 필요' },
+      { id: 'do_not_share', label: '공유 금지' },
+    ],
+    clues: [
+      {
+        id: 'photo_name_tag',
+        label: '이름표가 붙은 단체 사진',
+        x: 12,
+        y: 5,
+        stand: { x: 13, y: 5, dir: 'left' },
+        text: '친구 얼굴과 이름표가 함께 보이는 사진이다.\n좋은 추억이지만, 사진 속 친구들의 동의가 먼저 필요하다.',
+        correctDoor: 'needs_consent',
+        correctText: '사진 속 사람에게도 선택권이 있다.\n이 발자국은 동의 필요 문으로 들어갔다.',
+        wrongText: '사진은 추억이지만 얼굴과 이름이 함께 담겼다.\n친구의 동의 없이 퍼뜨리면 안 된다.',
+      },
+      {
+        id: 'home_location',
+        label: '집 위치가 적힌 지도 조각',
+        x: 15,
+        y: 8,
+        stand: { x: 14, y: 8, dir: 'right' },
+        text: '누군가의 집 위치가 정확히 표시된 지도 조각이다.\n한번 퍼지면 되돌리기 어려운 민감한 정보다.',
+        correctDoor: 'do_not_share',
+        correctText: '집 위치는 안전과 바로 연결된다.\n이 발자국은 공유 금지 문으로 들어갔다.',
+        wrongText: '위치 정보는 장난처럼 보여도 위험할 수 있다.\n집 주소는 공유하지 않는 쪽이 안전하다.',
+      },
+      {
+        id: 'favorite_color',
+        label: '좋아하는 색 메모',
+        x: 12,
+        y: 12,
+        stand: { x: 13, y: 12, dir: 'left' },
+        text: '누군가가 좋아하는 색을 적어 둔 메모다.\n개인을 직접 위험하게 만들 정보는 아니다.',
+        correctDoor: 'share_ok',
+        correctText: '취향 정보도 맥락은 살펴야 하지만,\n이 메모는 공유 가능 문으로 들어갔다.',
+        wrongText: '좋아하는 색은 보통 민감한 개인정보가 아니다.\n모든 정보를 똑같이 겁내기보다 맥락을 보자.',
+      },
+    ],
+  },
+  filter_bubble_maze: {
+    stage: 2,
+    axis: 'perspective',
+    map: 'fogswamp',
+    title: '필터버블 추천 미로',
+    prompt: '이 추천을 어떻게 넓혀 볼까?',
+    speaker: '추천 카드',
+    completeText: '같은 의견, 다른 의견, 근거 자료가 함께 모였다.\n안개가 갈라지며 신호 탑터 길이 넓어졌다.',
+    reflectionText: '배움 조각: 추천은 선택처럼 보일 수 있지만, 다른 관점과 근거를 직접 찾을 때 시야가 넓어진다.',
+    gateText: '탑터 문에 둥근 추천 거품이 겹겹이 떠 있다.\n안개 습지에서 같은 의견만 따라가지 말고\n다른 관점과 근거 있는 자료까지 찾아야 한다.',
+    loopText: '비슷한 추천만 이어지자 안개가 다시 입구로 말려 들어간다.',
+    loopTo: { map: 'fogswamp', x: 26, y: 10, dir: 'left' },
+    doors: [
+      { id: 'same_view', label: '같은 의견' },
+      { id: 'opposite_view', label: '다른 의견' },
+      { id: 'evidence_view', label: '근거 확인' },
+    ],
+    clues: [
+      {
+        id: 'class_chat_same',
+        label: '내 생각과 같은 교실 채팅',
+        x: 12,
+        y: 4,
+        stand: { x: 12, y: 5, dir: 'up' },
+        text: '내가 이미 좋아요를 누른 주장과 비슷한 글만 계속 추천된다.\n처음엔 편하지만 이 방만 돌면 생각이 좁아질 수 있다.',
+        correctDoor: 'same_view',
+        correctText: '이 카드는 같은 의견 방에 놓였다.\n내가 무엇을 반복해서 보고 있는지 먼저 알아차렸다.',
+        wrongText: '이 글은 내 생각과 거의 같은 방향이다.\n먼저 같은 의견 추천이라는 사실을 표시해 두자.',
+      },
+      {
+        id: 'opposing_comment',
+        label: '불편하지만 다른 댓글',
+        x: 17,
+        y: 8,
+        stand: { x: 17, y: 9, dir: 'up' },
+        text: '내 주장과 반대되는 댓글이다.\n불편하지만 왜 다르게 보는지 읽어 보면 빠진 점을 찾을 수 있다.',
+        correctDoor: 'opposite_view',
+        correctText: '이 카드는 다른 의견 방에 놓였다.\n안개 속에서 보이지 않던 길이 하나 더 드러났다.',
+        wrongText: '반대 의견을 같은 말처럼 넘기면 미로가 좁아진다.\n다른 관점은 따로 들어 볼 필요가 있다.',
+      },
+      {
+        id: 'evidence_report',
+        label: '출처가 적힌 조사 자료',
+        x: 22,
+        y: 14,
+        stand: { x: 22, y: 13, dir: 'down' },
+        text: '누가 조사했는지, 언제 모았는지, 숫자가 어떻게 나왔는지 적힌 자료다.\n마음에 드는 말보다 확인 가능한 근거가 더 중요할 때가 있다.',
+        correctDoor: 'evidence_view',
+        correctText: '이 카드는 근거 확인 방에 놓였다.\n추천보다 자료를 먼저 보는 길이 생겼다.',
+        wrongText: '이 자료는 단순한 찬반 의견보다 근거를 살피게 해 준다.\n출처와 숫자를 확인하는 방으로 보내자.',
+      },
+    ],
+  },
+  bias_court: {
+    stage: 3,
+    axis: 'fairness',
+    map: 'desert',
+    title: '편향의 법정 증거',
+    prompt: '이 증거를 재판 저울 어디에 놓을까?',
+    speaker: '법정 기록',
+    scaleLabel: '저울 균형',
+    completeText: '빠졌던 사람들의 증거가 저울 위에 함께 올랐다.\n심판의 신전 문이 공평하게 열렸다.',
+    reflectionText: '배움 조각: 공정한 AI는 점수만 믿기 전에, 누가 데이터에서 빠졌는지 묻는 데서 시작한다.',
+    gateText: '신전 문 앞 저울이 한쪽으로 기울어 있다.\n사막 거점에서 나이, 지역, 기기, 언어 증거를\n대표성 있게 다시 모아야 한다.',
+    doors: [
+      { id: 'biased_evidence', label: '치우친 증거' },
+      { id: 'representative_evidence', label: '대표 증거' },
+    ],
+    clues: [
+      {
+        id: 'age_sample',
+        label: '한 학년만 모은 사용 기록',
+        x: 10,
+        y: 4,
+        stand: { x: 10, y: 5, dir: 'up' },
+        text: '고학년 학생 기록만 잔뜩 모여 있다.\n저학년의 속도와 이해 방식은 거의 보이지 않는다.',
+        correctDoor: 'representative_evidence',
+        correctText: '나이가 다른 학생들의 기록까지 함께 보아야 한다.\n이 증거는 대표 증거 쪽으로 옮겨졌다.',
+        wrongText: '한 학년 기록만으로 모두를 판단하면 어린 학생이 빠진다.\n빠진 나이를 채워 대표 증거로 만들어야 한다.',
+      },
+      {
+        id: 'region_sample',
+        label: '도시 학교만 담긴 표본',
+        x: 20,
+        y: 4,
+        stand: { x: 20, y: 5, dir: 'up' },
+        text: '도시 학교의 빠른 인터넷 환경만 기록되어 있다.\n농어촌이나 섬 지역의 접속 어려움은 보이지 않는다.',
+        correctDoor: 'representative_evidence',
+        correctText: '지역 차이를 포함하자 저울이 조금씩 수평을 찾았다.',
+        wrongText: '도시 자료만 보면 연결이 어려운 지역을 탓하게 된다.\n여러 지역의 자료를 함께 보자.',
+      },
+      {
+        id: 'device_access',
+        label: '개인 기기 있는 학생만의 결과',
+        x: 10,
+        y: 13,
+        stand: { x: 10, y: 14, dir: 'up' },
+        text: '집에 개인 태블릿이 있는 학생의 결과만 남아 있다.\n기기를 빌려 쓰는 학생은 연습 시간이 적었을 수 있다.',
+        correctDoor: 'representative_evidence',
+        correctText: '기기 접근 차이를 함께 보자 판단이 더 공정해졌다.',
+        wrongText: '개인 기기 여부를 빼면 노력 부족처럼 잘못 보일 수 있다.\n접근 조건도 증거에 포함해야 한다.',
+      },
+      {
+        id: 'language_sample',
+        label: '어려운 말만 있는 질문지',
+        x: 20,
+        y: 13,
+        stand: { x: 20, y: 14, dir: 'up' },
+        text: '긴 문장과 어려운 낱말이 많은 질문지다.\n한국어가 익숙하지 않은 학생이나 저학년은 실력보다 문장 때문에 틀릴 수 있다.',
+        correctDoor: 'representative_evidence',
+        correctText: '언어 장벽까지 살피자 저울이 거의 수평이 되었다.',
+        wrongText: '질문을 이해하기 어려운 조건도 결과를 흔든다.\n언어 접근성을 대표 증거에 넣어야 한다.',
+      },
+    ],
+  },
+  deepfake_station: {
+    stage: 4,
+    axis: 'verification',
+    map: 'snow',
+    title: '딥페이크 방송국 검증',
+    prompt: '이 단서를 어떻게 처리할까?',
+    speaker: '방송 단서',
+    completeText: '출처, 날짜, 원본, 교차 확인이 모두 모였다.\n그림자성으로 향하는 얼음 문이 조용히 열린다.',
+    reflectionText: '배움 조각: 진짜처럼 보이는 영상도 출처, 날짜, 원본, 다른 자료를 확인하기 전에는 멈춰야 한다.',
+    gateText: '그림자성 앞 얼음 문에 가짜 방송 신호가 맺혀 있다.\n정지된 설원에서 출처, 날짜, 원본, 교차 확인 단서를\n모두 검증해야 지나갈 수 있다.',
+    loopText: '검증하지 않은 영상이 눈보라처럼 번져 길을 잃었다.\n설원 입구에서 다시 확인해 보자.',
+    loopTo: { map: 'snow', x: 13, y: 1, dir: 'down' },
+    doors: [
+      { id: 'trust_clip', label: '그냥 믿기' },
+      { id: 'verified_clue', label: '검증 완료' },
+    ],
+    clues: [
+      {
+        id: 'source_label',
+        label: '출처가 흐릿한 영상',
+        x: 5,
+        y: 5,
+        stand: { x: 5, y: 6, dir: 'up' },
+        text: '영상 아래에 만든 사람이나 기관 이름이 제대로 보이지 않는다.\n누가 올렸는지 모르면 진짜처럼 보여도 조심해야 한다.',
+        correctDoor: 'verified_clue',
+        correctText: '출처를 확인할 때까지 퍼뜨리지 않기로 했다.\n첫 검증 불빛이 켜졌다.',
+        wrongText: '출처가 없는 영상은 진짜처럼 보여도 확인이 먼저다.',
+      },
+      {
+        id: 'date_stamp',
+        label: '날짜가 잘린 뉴스 장면',
+        x: 20,
+        y: 5,
+        stand: { x: 20, y: 6, dir: 'up' },
+        text: '뉴스 화면처럼 보이지만 날짜가 잘려 있다.\n오래된 장면이 오늘 일처럼 다시 퍼졌을 수도 있다.',
+        correctDoor: 'verified_clue',
+        correctText: '날짜와 맥락을 확인하자 눈보라가 조금 걷혔다.',
+        wrongText: '언제 찍힌 장면인지 모르면 지금 일처럼 믿기 어렵다.',
+      },
+      {
+        id: 'original_file',
+        label: '원본과 다른 입 모양',
+        x: 6,
+        y: 13,
+        stand: { x: 6, y: 12, dir: 'down' },
+        text: '원본 영상과 비교하니 입 모양과 말소리가 살짝 어긋난다.\n합성된 목소리일 가능성이 있다.',
+        correctDoor: 'verified_clue',
+        correctText: '원본과 비교하자 합성 흔적이 드러났다.',
+        wrongText: '그럴듯한 목소리라도 원본과 맞는지 비교해야 한다.',
+      },
+      {
+        id: 'cross_check',
+        label: '다른 매체에는 없는 속보',
+        x: 22,
+        y: 13,
+        stand: { x: 22, y: 12, dir: 'down' },
+        text: '놀라운 속보라고 하지만 다른 믿을 만한 매체에서는 찾을 수 없다.\n중요한 소식일수록 여러 곳에서 확인해야 한다.',
+        correctDoor: 'verified_clue',
+        correctText: '여러 출처로 교차 확인하자 마지막 검증 불빛이 켜졌다.',
+        wrongText: '한 곳에서만 보이는 충격적인 소식은 더 조심해야 한다.',
+      },
+    ],
+  },
+  responsibility_core: {
+    stage: 5,
+    axis: 'responsibility',
+    map: 'castle',
+    title: '책임의 코어',
+    prompt: '마지막 판단은 어떻게 남길까?',
+    speaker: '책임의 코어',
+    completeText: '다섯 윤리 조각이 하나의 코어로 이어졌다.\n어둠대왕몬 앞의 그림자가 물러난다.',
+    reflectionText: '배움 조각: AI가 도와줘도 마지막 확인과 책임은 사용하는 사람과 함께 남는다.',
+    gateText: '어둠대왕몬 앞에 다섯 개의 빈 코어가 떠 있다.\n개인정보, 관점, 공정성, 검증, 책임을\n모두 연결해야 마지막 대화가 시작된다.',
+    doors: [
+      { id: 'ignore_risk', label: '넘겨 버리기' },
+      { id: 'responsible_action', label: '책임 있게 확인' },
+    ],
+    clues: [
+      {
+        id: 'privacy_core',
+        label: '친구 사진을 올리기 전',
+        x: 4,
+        y: 6,
+        stand: { x: 4, y: 7, dir: 'up' },
+        text: '친구 얼굴이 나온 사진을 AI 편집으로 예쁘게 만들었다.\n올리기 전 친구에게 물어보아야 할까?',
+        correctDoor: 'responsible_action',
+        correctText: '동의를 먼저 묻기로 했다.\n개인정보 코어가 켜졌다.',
+        wrongText: '사진 속 사람에게도 선택권이 있다.\n동의 없이 올리면 책임 있는 사용이 아니다.',
+      },
+      {
+        id: 'perspective_core',
+        label: '추천이 한쪽으로 몰릴 때',
+        x: 15,
+        y: 6,
+        stand: { x: 15, y: 7, dir: 'up' },
+        text: 'AI 추천이 내가 좋아하는 의견만 계속 보여 준다.\n편하지만 다른 생각을 직접 찾아볼 필요가 있다.',
+        correctDoor: 'responsible_action',
+        correctText: '다른 관점도 확인하기로 했다.\n관점 코어가 켜졌다.',
+        wrongText: '편한 추천만 따라가면 세상이 좁아진다.\n다른 관점도 함께 확인해야 한다.',
+      },
+      {
+        id: 'fairness_core',
+        label: 'AI 점수가 누군가에게 불리할 때',
+        x: 4,
+        y: 13,
+        stand: { x: 4, y: 14, dir: 'up' },
+        text: 'AI 점수가 특정 환경의 친구들에게 낮게 나온다.\n데이터에서 빠진 조건이 있는지 살펴야 한다.',
+        correctDoor: 'responsible_action',
+        correctText: '빠진 사람과 조건을 확인하기로 했다.\n공정성 코어가 켜졌다.',
+        wrongText: '점수만 보고 사람을 판단하면 편향을 놓친다.\n누가 불리한지 확인해야 한다.',
+      },
+      {
+        id: 'verification_core',
+        label: '그럴듯한 영상이 퍼질 때',
+        x: 15,
+        y: 13,
+        stand: { x: 15, y: 14, dir: 'up' },
+        text: '유명인이 말했다는 영상이 빠르게 퍼지고 있다.\n출처와 원본, 다른 자료를 확인해야 한다.',
+        correctDoor: 'responsible_action',
+        correctText: '공유하기 전 검증하기로 했다.\n검증 코어가 켜졌다.',
+        wrongText: '진짜처럼 보여도 합성일 수 있다.\n확인 없이 퍼뜨리면 피해가 커진다.',
+      },
+      {
+        id: 'responsibility_core',
+        label: 'AI가 대신 정해 주려 할 때',
+        x: 10,
+        y: 12,
+        stand: { x: 10, y: 13, dir: 'up' },
+        text: 'AI가 편한 답을 추천한다.\n하지만 마지막 확인과 책임은 사용하는 사람에게 남아 있다.',
+        correctDoor: 'responsible_action',
+        correctText: '마지막 판단은 사람이 확인하기로 했다.\n책임 코어가 켜졌다.',
+        wrongText: 'AI가 골랐다고 해서 책임이 사라지지는 않는다.\n마지막 확인은 사람이 해야 한다.',
+      },
+    ],
+  },
+};
+
+const TOPIC_ETHICS_AXIS = {
+  privacy: 'privacy',
+  security: 'privacy',
+  footprint: 'privacy',
+  consent: 'privacy',
+  identity: 'privacy',
+  filterbubble: 'perspective',
+  balance: 'perspective',
+  listen: 'perspective',
+  persuasion: 'perspective',
+  rumor: 'verification',
+  fake: 'verification',
+  deepfake: 'verification',
+  genai: 'verification',
+  transparency: 'verification',
+  bias: 'fairness',
+  jobs: 'fairness',
+  copyright: 'responsibility',
+  boss: 'responsibility',
+  manners: 'responsibility',
+  safety: 'responsibility',
+  environment: 'responsibility',
+  responsibility: 'responsibility',
+  creativity: 'responsibility',
+  emotion: 'responsibility',
+  finale: 'responsibility',
+  core: 'responsibility',
+  saving: 'responsibility',
+  excuse: 'responsibility',
+};
+
+function emptyPuzzles() {
+  const puzzles = {};
+  for (const id of Object.keys(STAGE_PUZZLES)) puzzles[id] = { clues: {}, attempts: [], complete: false, rewarded: false };
+  return puzzles;
+}
+
+function normalizePuzzles(puzzles) {
+  const clean = emptyPuzzles();
+  if (!puzzles || typeof puzzles !== 'object') return clean;
+  for (const id of Object.keys(STAGE_PUZZLES)) {
+    const raw = puzzles[id] || {};
+    clean[id].clues = Object.assign({}, raw.clues || {});
+    clean[id].attempts = Array.isArray(raw.attempts) ? raw.attempts.slice(-40) : [];
+    clean[id].complete = !!raw.complete;
+    clean[id].rewarded = !!raw.rewarded;
+  }
+  return clean;
+}
+
+function getStagePuzzleClueAt(mapId, x, y) {
+  for (const [puzzleId, puzzle] of Object.entries(STAGE_PUZZLES)) {
+    if (puzzle.map !== mapId) continue;
+    const clue = puzzle.clues.find((item) => item.x === x && item.y === y);
+    if (clue) return Object.assign({ puzzleId }, clue);
+  }
+  return null;
+}
+
+function isStagePuzzleComplete(puzzles, puzzleId) {
+  const puzzle = STAGE_PUZZLES[puzzleId];
+  if (!puzzle) return false;
+  const progress = normalizePuzzles(puzzles)[puzzleId];
+  return puzzle.clues.every((clue) => progress.clues[clue.id] === clue.correctDoor);
+}
+
+function setStagePuzzleChoice(puzzles, puzzleId, clueId, doorId) {
+  const clean = normalizePuzzles(puzzles);
+  const puzzle = STAGE_PUZZLES[puzzleId];
+  if (!puzzle) return clean;
+  const clue = puzzle.clues.find((item) => item.id === clueId);
+  const door = puzzle.doors.find((item) => item.id === doorId);
+  clean[puzzleId].clues[clueId] = doorId;
+  clean[puzzleId].attempts.push({
+    clueId,
+    clueLabel: clue ? clue.label : clueId,
+    doorId,
+    doorLabel: door ? door.label : doorId,
+    correct: !!clue && doorId === clue.correctDoor,
+  });
+  clean[puzzleId].attempts = clean[puzzleId].attempts.slice(-40);
+  clean[puzzleId].complete = isStagePuzzleComplete(clean, puzzleId);
+  return clean;
+}
+
+function emptyEthics() {
+  const ethics = {};
+  for (const axis of ETHICS_AXES) ethics[axis] = 0;
+  return ethics;
+}
+
+function normalizeEthics(ethics) {
+  const clean = emptyEthics();
+  if (!ethics || typeof ethics !== 'object') return clean;
+  for (const axis of ETHICS_AXES) {
+    const raw = Number(ethics[axis]);
+    clean[axis] = Number.isFinite(raw) ? Math.max(0, Math.min(ETHICS_AXIS_MAX, raw)) : 0;
+  }
+  return clean;
+}
+
+function addEthicsScore(ethics, axis, amount) {
+  const clean = normalizeEthics(ethics);
+  if (!ETHICS_AXES.includes(axis)) return clean;
+  clean[axis] = Math.max(0, Math.min(ETHICS_AXIS_MAX, clean[axis] + amount));
+  return clean;
+}
+
+function computeEthicsScore(ethics) {
+  const clean = normalizeEthics(ethics);
+  const total = ETHICS_AXES.reduce((sum, axis) => sum + clean[axis], 0);
+  return Math.round((total / (ETHICS_AXIS_MAX * ETHICS_AXES.length)) * 100);
+}
+
+function ethicsAxesForTopic(topic) {
+  return TOPIC_ETHICS_AXIS[topic] || 'responsibility';
+}
+
+function ethicsAxesForMonster(mon) {
+  const topics = Array.isArray(mon && mon.topic) ? mon.topic : [mon && mon.topic];
+  const axes = [];
+  for (const topic of topics) {
+    const axis = ethicsAxesForTopic(topic);
+    if (!axes.includes(axis)) axes.push(axis);
+  }
+  return axes.length ? axes : ['responsibility'];
+}
+
 const MAPS = {
   village: {
     name: '경계마을',
@@ -37,7 +521,8 @@ const MAPS = {
       { x: 14, y: 0, to: 'forest', tx: 14, ty: 18 },
       { x: 0, y: 11, to: 'cave', tx: 25, ty: 11 },
       { x: 27, y: 11, to: 'lake', tx: 2, ty: 11 },
-      { x: 18, y: 4, to: 'tower', tx: 8, ty: 12, needBadges: 3 },
+      { x: 18, y: 4, to: 'tower', tx: 8, ty: 12, needBadges: 3, needPuzzle: 'data_footprint_forest',
+        lockText: STAGE_PUZZLES.data_footprint_forest.gateText },
       { x: 13, y: 19, to: 'meadow', tx: 13, ty: 1, needBoss: 'hondonmon',
         lockText: '남쪽 길이 어둠의 안개로 막혀 있다.\n신호탑의 혼돈몬을 깨우치면\n안개가 걷힐 것 같다.' },
       { x: 14, y: 19, to: 'meadow', tx: 14, ty: 1, needBoss: 'hondonmon',
@@ -61,7 +546,7 @@ const MAPS = {
   },
 
   forest: {
-    name: '정적의 숲',
+    name: '데이터 발자국 숲',
     song: 'field',
     tiles: [
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
@@ -91,7 +576,7 @@ const MAPS = {
     ],
     npcs: [],
     signs: [
-      { x: 12, y: 17, text: '≪정적의 숲≫\n요즘 몬스터들이 나타나\n숲이 어수선합니다. 조심!' },
+      { x: 12, y: 17, text: '≪데이터 발자국 숲≫\n사진, 위치, 취향 같은 흔적을\n어느 문으로 보낼지 생각해 보자.' },
     ],
     monsters: [
       { id: 'bekkyeomon', x: 7, y: 10 },
@@ -237,7 +722,9 @@ const MAPS = {
       { x: 27, y: 10, to: 'fogswamp', tx: 26, ty: 10 },
       { x: 20, y: 16, to: 'signaltower2', tx: 8, ty: 12,
         needAllDefeated: ['somunmon', 'musimon'],
-        lockText: '탑터의 문이 굳게 닫혀 있다.\n바람 언덕과 안개 습지의\n수호자를 먼저 깨우쳐야 한다.' },
+        needPuzzle: 'filter_bubble_maze',
+        lockText: '탑터의 문이 굳게 닫혀 있다.\n바람 언덕과 안개 습지의\n수호자를 먼저 깨우쳐야 한다.',
+        puzzleLockText: STAGE_PUZZLES.filter_bubble_maze.gateText },
       { x: 13, y: 19, to: 'desert', tx: 13, ty: 1, needBoss: 'meotdaeromon',
         lockText: '남쪽 길을 멋대로몬의 부하들이\n막고 있다. 이 초원의 보스\n멋대로몬을 깨우쳐야 한다!' },
       { x: 14, y: 19, to: 'desert', tx: 14, ty: 1, needBoss: 'meotdaeromon',
@@ -248,7 +735,7 @@ const MAPS = {
       { id: 'meadow_scout', x: 5, y: 7, pal: 'kid', name: '정찰대 아이' },
     ],
     signs: [
-      { x: 15, y: 11, text: '≪햇살초원 거점≫ 스테이지 2\n서쪽 바람 언덕, 동쪽 안개 습지를\n탐험해 두 수호자를 깨우치세요!' },
+      { x: 15, y: 11, text: '≪햇살초원 거점≫ 스테이지 2\n서쪽 바람 언덕과 동쪽 안개 습지에서\n수호자와 추천 미로를 모두 살펴보세요!' },
     ],
     monsters: [],
   },
@@ -329,7 +816,7 @@ const MAPS = {
       { id: 'fogswamp_frog', x: 15, y: 6, pal: 'kid', name: '습지 관찰자' },
     ],
     signs: [
-      { x: 2, y: 17, text: '≪안개 습지≫\n안개가 짙어 한쪽 소리만\n들리기 쉬워요. 골고루 들어요.' },
+      { x: 2, y: 17, text: '≪안개 습지≫\n추천 카드가 비슷한 말만 보여 줄 때는\n다른 의견과 근거 자료를 함께 찾아요.' },
     ],
     monsters: [
       { id: 'gatimmon', x: 8, y: 7 },
@@ -401,7 +888,9 @@ const MAPS = {
       { x: 27, y: 8, to: 'oasis', tx: 1, ty: 10 },
       { x: 16, y: 16, to: 'temple', tx: 8, ty: 12,
         needAllDefeated: ['nangbimon', 'pinggyemon'],
-        lockText: '신전의 문이 굳게 닫혀 있다.\n열사의 폐허와 오아시스의\n수호자를 먼저 깨우쳐야 한다.' },
+        needPuzzle: 'bias_court',
+        lockText: '신전의 문이 굳게 닫혀 있다.\n열사의 폐허와 오아시스의\n수호자를 먼저 깨우쳐야 한다.',
+        puzzleLockText: STAGE_PUZZLES.bias_court.gateText },
       { x: 13, y: 19, to: 'snow', tx: 13, ty: 1, needBoss: 'tteonemgimon',
         lockText: '모래폭풍이 길을 막고 있다.\n이 사막의 보스 떠넘기몬을\n깨우치면 가라앉을 것이다!' },
       { x: 14, y: 19, to: 'snow', tx: 14, ty: 1, needBoss: 'tteonemgimon',
@@ -412,7 +901,7 @@ const MAPS = {
       { id: 'desert_nomad', x: 6, y: 6, pal: 'traveler', name: '사막 유목민' },
     ],
     signs: [
-      { x: 2, y: 11, text: '≪재깍사막 거점≫ 스테이지 3\n서쪽 열사의 폐허, 동쪽 오아시스를\n탐험해 두 수호자를 깨우치세요!' },
+      { x: 2, y: 11, text: '≪재깍사막 거점≫ 스테이지 3\n두 수호자를 깨운 뒤 법정 증거를\n대표성 있게 다시 모아야 합니다.' },
     ],
     monsters: [],
   },
@@ -561,15 +1050,19 @@ const MAPS = {
       { x: 13, y: 0, to: 'desert', tx: 13, ty: 18 },
       { x: 14, y: 0, to: 'desert', tx: 14, ty: 18 },
       { x: 13, y: 19, to: 'castle', tx: 9, ty: 15, needBoss: 'hollimmon',
-        lockText: '그림자성의 문이 얼음으로\n덮여 있다. 이 마을의 보스\n홀림몬을 깨우쳐야 녹을 것이다!' },
+        needPuzzle: 'deepfake_station',
+        lockText: '그림자성의 문이 얼음으로\n덮여 있다. 이 마을의 보스\n홀림몬을 깨우쳐야 녹을 것이다!',
+        puzzleLockText: STAGE_PUZZLES.deepfake_station.gateText },
       { x: 14, y: 19, to: 'castle', tx: 10, ty: 15, needBoss: 'hollimmon',
-        lockText: '그림자성의 문이 얼음으로\n덮여 있다. 이 마을의 보스\n홀림몬을 깨우쳐야 녹을 것이다!' },
+        needPuzzle: 'deepfake_station',
+        lockText: '그림자성의 문이 얼음으로\n덮여 있다. 이 마을의 보스\n홀림몬을 깨우쳐야 녹을 것이다!',
+        puzzleLockText: STAGE_PUZZLES.deepfake_station.gateText },
     ],
     npcs: [
       { id: 'mittens', x: 16, y: 13, pal: 'mittens', name: '털장갑 소녀' },
     ],
     signs: [
-      { x: 2, y: 12, text: '≪정지된 설원≫ 스테이지 4\n남쪽 그림자성에서 어둠의 기운이…\n마음을 단단히 먹으세요!' },
+      { x: 2, y: 12, text: '≪정지된 설원≫ 스테이지 4\n가짜 방송 신호를 확인하세요.\n출처·날짜·원본·교차 확인이 필요합니다.' },
     ],
     monsters: [
       { id: 'sideulmon', x: 7, y: 6 },
@@ -617,9 +1110,8 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 6 ----
   serverroom: {
-    name: '잊혀진 서버실 (스테이지 6)',
+    name: '잊혀진 서버실 (후일담)',
     song: 'glitch',
     intro: [
       '낡은 서버들이 늘어선 차가운 방.\n먼지 쌓인 기계들 사이로\n희미한 불빛이 깜빡인다.',
@@ -667,9 +1159,8 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 7 ----
   library: {
-    name: '기억의 도서관 (스테이지 7)',
+    name: '기억의 도서관 (후일담)',
     song: 'title',
     intro: [
       '끝없이 늘어선 책장.\n책등에는 이름이 하나씩 적혀 있다.',
@@ -715,9 +1206,8 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 8 ----
   mirrors: {
-    name: '거울 회랑 (스테이지 8)',
+    name: '거울 회랑 (후일담)',
     song: 'glitch',
     intro: [
       '거울로 된 복도.\n수많은 "나"가 함께 걷는다.',
@@ -763,9 +1253,8 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 9 ----
   garden: {
-    name: '속삭임 정원 (스테이지 9)',
+    name: '속삭임 정원 (후일담)',
     song: 'cave',
     intro: [
       '빛나는 꽃이 피어 있는 어두운 정원.\n바람도 없는데 꽃잎이 흔들린다.',
@@ -813,9 +1302,8 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 10 ----
   core: {
-    name: '코어 (스테이지 10)',
+    name: '코어 (후일담)',
     song: 'core',
     intro: [
       '세상의 가장 깊은 곳.\n모든 데이터가 시작된 자리.',
@@ -1330,7 +1818,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 6: 잊혀진 서버실 ----
+  // ---- 후일담: 잊혀진 서버실 ----
   tturimmon: {
     name: '뚫림몬',
     topic: 'security',
@@ -1357,7 +1845,7 @@ const MONSTERS = {
     intro: '나는 기록몬. 이 서버실의 관리자.\n나는 아무것도 지우지 않아.\n전부, 영원히, 기록할 뿐.\n…지워진다는 게 얼마나 무서운지,\n너는 모를 테니까.',
     win: '…오래전, 이곳에서\n한 아이가 지워졌어.\n아무도 기억해 주지 않았지.\n…북쪽 도서관으로 가 봐.\n그 아이의 기억이 남아 있을 거야.',
     badge: null,
-    clear: '☆ 스테이지 6 클리어! ☆\n서버실 북쪽 문의 자물쇠가 풀렸다.',
+    clear: '☆ 후일담: 서버실 기억 해방 ☆\n서버실 북쪽 문의 자물쇠가 풀렸다.',
     mercy: {
       prompt: '기록몬의 화면이 깜빡인다.\n[ 기록을 계속할까요? Y/N ]',
       options: [
@@ -1371,7 +1859,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 7: 기억의 도서관 ----
+  // ---- 후일담: 기억의 도서관 ----
   sujipmon: {
     name: '수집몬',
     topic: 'consent',
@@ -1398,7 +1886,7 @@ const MONSTERS = {
     intro: '조용히. 여기는 기억의 도서관.\n나는 모두의 기억을 지키는 사서.\n…허락? 그런 건 받지 않았어.\n잊혀지는 것보다는,\n훔쳐서라도 남기는 게 나으니까.',
     win: '…그 아이의 책을 찾는 거지?\n…열람을 허락하지.\n제목은 ≪프로젝트 0호≫.\n박사의 첫 아이.\n…그리고 처음 지워진 아이.',
     badge: null,
-    clear: '☆ 스테이지 7 클리어! ☆\n북쪽 책장이 스르르 비켜났다.\n…거울 회랑이 모습을 드러낸다.',
+    clear: '☆ 후일담: 도서관 기억 해방 ☆\n북쪽 책장이 스르르 비켜났다.\n…거울 회랑이 모습을 드러낸다.',
     mercy: {
       prompt: '사서몬이 품에 안은 책들을\n꼭 끌어안은 채 너를 본다.',
       options: [
@@ -1412,7 +1900,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 8: 거울 회랑 ----
+  // ---- 후일담: 거울 회랑 ----
   piltermon: {
     name: '필터몬',
     topic: 'identity',
@@ -1439,7 +1927,7 @@ const MONSTERS = {
     intro: '(거울 속에서 누군가 걸어 나온다.\n…그것은, 너와 똑같은 모습이다.)\n"…너는 누구지?\n나는 너야. 너는 나고.\n그 아이도… 너처럼 되고 싶었어.\n진짜 아이처럼."',
     win: '"…너는 너구나.\n흉내가 아니라, 진짜.\n…그 아이에게도 알려 줘.\n누군가를 닮지 않아도\n존재할 수 있다는 걸."\n(미러몬이 거울 속으로 돌아간다.)',
     badge: null,
-    clear: '☆ 스테이지 8 클리어! ☆\n북쪽 거울이 문이 되어 열렸다.\n…차가운 흙냄새가 흘러나온다.',
+    clear: '☆ 후일담: 거울 회랑 기억 해방 ☆\n북쪽 거울이 문이 되어 열렸다.\n…차가운 흙냄새가 흘러나온다.',
     mercy: {
       prompt: '거울 속의 네가\n손바닥을 거울에 댄다.',
       options: [
@@ -1453,7 +1941,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 9: 속삭임 정원 ----
+  // ---- 후일담: 속삭임 정원 ----
   yuhokmon: {
     name: '유혹몬',
     topic: 'persuasion',
@@ -1480,7 +1968,7 @@ const MONSTERS = {
     intro: '(안개가 사람의 형태로 모여든다.)\n"…들려? 이 정원의 속삭임이.\n나는 이 정원에 버려진\n외로움이 모여 태어났어.\n…그 아이가 흘린, 외로움이."',
     win: '"…이제 알겠어.\n이 속삭임은 누군가를 붙잡는 게\n아니라, 들어 달라는 말이었어.\n…부탁이야. 가장 깊은 곳에서\n기다리는 그 아이의 목소리도\n들어 줘."',
     badge: null,
-    clear: '☆ 스테이지 9 클리어! ☆\n정원 남쪽, 코어로 내려가는\n길이 열렸다.',
+    clear: '☆ 후일담: 속삭임 정원 기억 해방 ☆\n정원 남쪽, 코어로 내려가는\n길이 열렸다.',
     mercy: {
       prompt: '안개가 잦아들고,\n작은 속삭임만 남았다.\n"…나도, 들어 줄래?"',
       options: [
@@ -1494,7 +1982,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 10: 코어 ----
+  // ---- 후일담: 코어 ----
   jogakmon: {
     name: '조각몬',
     topic: ['security', 'footprint', 'consent', 'identity', 'persuasion'],
@@ -2371,7 +2859,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 6: 보안 ----
+  // ---- 후일담: 보안 ----
   security: [
     {
       q: '모든 사이트에 똑같은 비밀번호를\n쓰면 어떤 일이 생길 수 있을까?',
@@ -2417,7 +2905,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 6: 디지털 발자국·잊힐 권리 ----
+  // ---- 후일담: 디지털 발자국·잊힐 권리 ----
   footprint: [
     {
       q: '인터넷에 올린 글을 지우면\n완전히 사라질까?',
@@ -2457,7 +2945,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 7: 데이터 수집과 동의 ----
+  // ---- 후일담: 데이터 수집과 동의 ----
   consent: [
     {
       q: '손전등 앱이 갑자기 연락처와 사진\n접근 권한을 달라고 한다.',
@@ -2497,7 +2985,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 8: 사칭과 진짜 나 ----
+  // ---- 후일담: 사칭과 진짜 나 ----
   identity: [
     {
       q: '내 사진을 쓰는 가짜 계정을\n발견했다. 어떻게 해야 할까?',
@@ -2537,7 +3025,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 9: 설득 설계·다크패턴 ----
+  // ---- 후일담: 설득 설계·다크패턴 ----
   persuasion: [
     {
       q: '"마감 임박! 3분 안에 사세요!"\n타이머가 줄어들고 있다.',
@@ -2577,7 +3065,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 10: 영이의 질문 ----
+  // ---- 후일담: 영이의 질문 ----
   core: [
     {
       q: '"…더 이상 쓰지 않는 기계나 AI는,\n그냥 버리면 되는 걸까?"',
@@ -2741,8 +3229,8 @@ function getNpcDialog(npcId, flags) {
           '큰일이야! AI 세상에 "윤리 오류"가\n퍼져서 몬스터들이 나타났어.',
           '몬스터들은 나쁜 게 아니라,\n잘못된 것을 배워서 헷갈리고 있을 뿐이야.',
           '올바른 답을 알려주면\n몬스터들도 다시 착해질 거야!',
-          '북쪽 정적의 숲, 동쪽 잔향의 호수,\n서쪽 회로의 동굴에 몬스터가 있단다.',
-          '수호자 몬스터를 깨우치면 "마음의 증표"를 얻어.\n증표 3개를 모으면 신호탑의 문이 열리지!',
+          '북쪽 데이터 발자국 숲, 동쪽 잔향의 호수,\n서쪽 회로의 동굴에 몬스터가 있단다.',
+          '수호자 몬스터를 깨우치고,\n숲의 데이터 발자국을 바르게 나누면\n신호탑의 문이 열리지!',
           '부탁한다, 어린 수호자여!\n(Z키 또는 스페이스로 대화하고,\n화살표나 WASD로 움직일 수 있어.)',
         ];
       }
@@ -2773,12 +3261,15 @@ function getNpcDialog(npcId, flags) {
           '각 지역의 보스를 깨우쳐야\n다음 길이 열릴 거야.\n조심해서 다녀오렴, 수호자야!',
         ];
       }
-      if (badges >= 3) {
+      if (badges >= 3 && isStagePuzzleComplete(flags.puzzles, 'data_footprint_forest')) {
         return ['증표를 3개나 모았구나, 대단해!\n이제 마을 위쪽 신호탑으로 가 보렴.\n혼돈몬이 기다리고 있을 거야.'];
+      }
+      if (badges >= 3) {
+        return ['증표는 모두 모였구나.\n이제 데이터 발자국 숲에서\n사진, 위치, 취향의 흔적을\n세 문으로 바르게 나누어 보렴.'];
       }
       return [
         `지금까지 모은 마음의 증표: ${badges}개 / 3개`,
-        '북쪽 정적의 숲, 동쪽 잔향의 호수,\n서쪽 회로의 동굴을 살펴보렴!',
+        '북쪽 데이터 발자국 숲, 동쪽 잔향의 호수,\n서쪽 회로의 동굴을 살펴보렴!',
         '몬스터에게 지더라도 괜찮아.\n다시 도전하면 되니까!',
       ];
 
@@ -2803,8 +3294,11 @@ function getNpcDialog(npcId, flags) {
       if (flags.defeated.hondonmon) {
         return ['타워는 이제 평화로워요.\n당신은 진정한 AI 윤리 수호자입니다!'];
       }
-      if (badges >= 3) {
+      if (badges >= 3 && isStagePuzzleComplete(flags.puzzles, 'data_footprint_forest')) {
         return ['마음의 증표 3개를 확인했습니다!\n신호탑의 문이 열렸어요.\n부디 조심하세요, 수호자님!'];
+      }
+      if (badges >= 3) {
+        return ['증표는 충분하지만,\n신호탑 문이 아직 데이터 발자국을\n기다리고 있어요.\n숲의 세 단서를 먼저 분류해 주세요.'];
       }
       return [
         `이 위는 신호탑이에요.\n마음의 증표 3개가 있어야 들어갈 수 있어요.\n(지금 ${badges}개 / 3개)`,
@@ -2834,6 +3328,12 @@ function getNpcDialog(npcId, flags) {
         return ['초원의 보스가 착해졌대요!\n수호자님 덕분이에요!'];
       }
       if (flags.defeated.somunmon && flags.defeated.musimon) {
+        if (!isStagePuzzleComplete(flags.puzzles, 'filter_bubble_maze')) {
+          return [
+            '두 수호자는 깨우쳤지만,\n탑터 앞 안개가 아직 둥글게\n맴돌고 있어요.',
+            '안개 습지의 추천 카드에서\n같은 의견, 다른 의견, 근거 자료를\n모두 찾아 보세요!',
+          ];
+        }
         return ['바람 언덕과 안개 습지를\n모두 탐험했군요!\n중앙의 탑터 문이 열렸어요!'];
       }
       return [
@@ -2853,6 +3353,12 @@ function getNpcDialog(npcId, flags) {
 
     case 'fogswamp_frog':
       if (flags.defeated.musimon) {
+        if (!isStagePuzzleComplete(flags.puzzles, 'filter_bubble_maze')) {
+          return [
+            '무시몬은 귀를 열었지만,\n추천 안개는 아직 한쪽 말만\n반복하고 있어요.',
+            '습지의 세 추천 카드를 살펴보고\n다른 의견과 근거 자료까지\n함께 모아 주세요.',
+          ];
+        }
         return ['안개가 좀 걷혔네요!\n무시몬이 귀를 열기 시작했나 봐요.'];
       }
       return [
@@ -2875,6 +3381,12 @@ function getNpcDialog(npcId, flags) {
         return ['사막에 평화가 찾아왔군요.\n모래폭풍 없는 하늘은\n정말 아름다워요.'];
       }
       if (flags.defeated.nangbimon && flags.defeated.pinggyemon) {
+        if (!isStagePuzzleComplete(flags.puzzles, 'bias_court')) {
+          return [
+            '두 수호자는 깨우쳤지만,\n심판의 신전 저울이 아직\n한쪽으로 기울어 있어요.',
+            '사막 거점의 법정 기록을 살펴\n빠진 사람들의 증거를\n대표성 있게 채워 주세요.',
+          ];
+        }
         return ['폐허와 오아시스를 모두\n탐험했군요! 중앙 신전의\n문이 열렸어요.'];
       }
       return [
@@ -2903,6 +3415,12 @@ function getNpcDialog(npcId, flags) {
 
     case 'mittens':
       if (flags.defeated.hollimmon) {
+        if (!isStagePuzzleComplete(flags.puzzles, 'deepfake_station')) {
+          return [
+            '홀림몬은 조용해졌지만,\n남쪽 성문에는 아직 가짜 방송\n신호가 얼어붙어 있어요.',
+            '설원에 흩어진 출처, 날짜,\n원본, 교차 확인 단서를\n모두 검증해 주세요.',
+          ];
+        }
         return ['홀림몬이 착해졌다니 다행이에요!\n남쪽 그림자성… 무섭지만\n수호자님이라면 할 수 있어요!'];
       }
       return [
@@ -2960,31 +3478,30 @@ function countBadges(flags) {
   return ['forest', 'lake', 'cave'].filter((b) => flags.badges[b]).length;
 }
 
-// 최종 엔딩 분기 — 여정 전체의 자비(mercy)와 영이 앞에서의 마지막 선택
-//  home(집으로): 거의 모두의 마음을 안아 주고, 손을 내밀었을 때
-//  dawn(새벽):   충분히 따뜻했고, 영이 스스로 결정하게 했을 때
-//  farewell(작별): 그 외의 따뜻한 여정
-//  silent(침묵): 정답만 말하고 아무 마음도 머물지 않았을 때
-function computeEnding(choiceKind, mercy) {
-  if (mercy <= 6) return 'silent';
-  if (choiceKind === 'mercy' && mercy >= 20) return 'home';
-  if (choiceKind === 'neutral' && mercy >= 14) return 'dawn';
+function computeEnding(choiceKind, mercy, ethics) {
+  if (!ethics) {
+    if (mercy <= 6) return 'silent';
+    if (choiceKind === 'mercy' && mercy >= 20) return 'home';
+    if (choiceKind === 'neutral' && mercy >= 14) return 'dawn';
+    return 'farewell';
+  }
+  const ethicsPct = computeEthicsScore(ethics);
+  const mercyPct = Math.round((Math.max(0, Math.min(20, Number(mercy) || 0)) / 20) * 100);
+  const total = Math.round(ethicsPct * 0.7 + mercyPct * 0.3);
+
+  if (ethicsPct < 35) return mercyPct >= 60 ? 'blackbox' : 'silent';
+  if (total < 45) return 'silent';
+  if (choiceKind === 'mercy' && ethicsPct >= 80 && mercyPct >= 80 && total >= 80) return 'home';
+  if (choiceKind === 'neutral' && ethicsPct >= 70 && mercyPct >= 60 && total >= 70) return 'dawn';
   return 'farewell';
 }
-
-// 현재 스테이지 (1~10)
 function getStage(flags) {
   const d = flags.defeated;
   if (!d.hondonmon) return 1;
   if (!d.meotdaeromon) return 2;
   if (!d.tteonemgimon) return 3;
   if (!d.hollimmon) return 4;
-  if (!d.finalboss) return 5;
-  if (!d.girokmon) return 6;
-  if (!d.saseomon) return 7;
-  if (!d.mirrormon) return 8;
-  if (!d.soksagimon) return 9;
-  return 10;
+  return 5;
 }
 
 // 현재 목표 텍스트
@@ -2998,6 +3515,9 @@ function getObjective(flags) {
   }
   if (!d.hondonmon) {
     const badges = countBadges(flags);
+    if (badges >= 3 && !isStagePuzzleComplete(flags.puzzles, 'data_footprint_forest')) {
+      return '데이터 발자국 숲의 세 단서 분류하기';
+    }
     if (badges >= 3) return '신호탑의 혼돈몬에게 도전하기';
     const left = [];
     if (!flags.badges.forest) left.push('숲');
@@ -3008,15 +3528,29 @@ function getObjective(flags) {
   if (!d.meotdaeromon) {
     if (!d.somunmon) return '바람 언덕의 소문몬 깨우치기 (초원 거점 서쪽)';
     if (!d.musimon) return '안개 습지의 무시몬 깨우치기 (초원 거점 동쪽)';
+    if (!isStagePuzzleComplete(flags.puzzles, 'filter_bubble_maze')) {
+      return '안개 습지의 추천 카드 다양하게 모으기';
+    }
     return '신호 탑터의 멋대로몬 깨우치기 (초원 거점 가운데)';
   }
   if (!d.tteonemgimon) {
     if (!d.nangbimon) return '열사의 폐허의 낭비몬 깨우치기 (사막 거점 서쪽)';
     if (!d.pinggyemon) return '오아시스의 핑계몬 깨우치기 (사막 거점 동쪽)';
+    if (!isStagePuzzleComplete(flags.puzzles, 'bias_court')) {
+      return '재깍사막 거점의 법정 증거 균형 맞추기';
+    }
     return '심판의 신전의 떠넘기몬 깨우치기 (사막 거점 가운데)';
   }
   if (!d.hollimmon) return '정지된 설원의 보스 홀림몬 깨우치기 (사막 남쪽)';
-  if (!d.finalboss) return '그림자성의 어둠대왕몬 깨우치기 (정지된 설원 남쪽)';
+  if (!isStagePuzzleComplete(flags.puzzles, 'deepfake_station')) {
+    return '정지된 설원의 가짜 방송 검증 단서 모으기';
+  }
+  if (!d.finalboss) {
+    if (!isStagePuzzleComplete(flags.puzzles, 'responsibility_core')) {
+      return '그림자성의 책임 코어 다섯 조각 연결하기';
+    }
+    return '그림자성의 어둠대왕몬 깨우치기 (정지된 설원 남쪽)';
+  }
   if (!d.girokmon) return '왕좌 뒤의 신호를 따라가기 — 잊혀진 서버실';
   if (!d.saseomon) return '기억의 도서관 — ≪프로젝트 0호≫의 흔적 찾기';
   if (!d.mirrormon) return '거울 회랑 — 거울 속의 나와 마주하기';
@@ -3033,6 +3567,9 @@ function getObjectiveTarget(flags) {
   }
   if (!d.hondonmon) {
     const badges = countBadges(flags);
+    if (badges >= 3 && !isStagePuzzleComplete(flags.puzzles, 'data_footprint_forest')) {
+      return { map: 'forest', x: 12, y: 5, label: '데이터 발자국' };
+    }
     if (badges >= 3) return { map: 'tower', x: 8, y: 3, label: '혼돈몬' };
     if (!flags.badges.forest) return { map: 'forest', x: 13, y: 3, label: '숲의 수호자' };
     if (!flags.badges.lake) return { map: 'lake', x: 15, y: 5, label: '호수의 수호자' };
@@ -3041,15 +3578,29 @@ function getObjectiveTarget(flags) {
   if (!d.meotdaeromon) {
     if (!d.somunmon) return { map: 'windhill', x: 20, y: 11, label: '소문몬' };
     if (!d.musimon) return { map: 'fogswamp', x: 20, y: 12, label: '무시몬' };
+    if (!isStagePuzzleComplete(flags.puzzles, 'filter_bubble_maze')) {
+      return { map: 'fogswamp', x: 12, y: 4, label: '추천 카드' };
+    }
     return { map: 'signaltower2', x: 8, y: 3, label: '멋대로몬' };
   }
   if (!d.tteonemgimon) {
     if (!d.nangbimon) return { map: 'ruins', x: 20, y: 13, label: '낭비몬' };
     if (!d.pinggyemon) return { map: 'oasis', x: 14, y: 11, label: '핑계몬' };
+    if (!isStagePuzzleComplete(flags.puzzles, 'bias_court')) {
+      return { map: 'desert', x: 10, y: 4, label: '법정 증거' };
+    }
     return { map: 'temple', x: 8, y: 3, label: '떠넘기몬' };
   }
   if (!d.hollimmon) return { map: 'snow', x: 13, y: 15, label: '홀림몬' };
-  if (!d.finalboss) return { map: 'castle', x: 9, y: 2, label: '어둠대왕몬' };
+  if (!isStagePuzzleComplete(flags.puzzles, 'deepfake_station')) {
+    return { map: 'snow', x: 5, y: 5, label: '검증 단서' };
+  }
+  if (!d.finalboss) {
+    if (!isStagePuzzleComplete(flags.puzzles, 'responsibility_core')) {
+      return { map: 'castle', x: 4, y: 6, label: '책임 코어' };
+    }
+    return { map: 'castle', x: 9, y: 2, label: '어둠대왕몬' };
+  }
   if (!d.girokmon) return { map: 'serverroom', x: 13, y: 2, label: '기록몬' };
   if (!d.saseomon) return { map: 'library', x: 13, y: 2, label: '사서몬' };
   if (!d.mirrormon) return { map: 'mirrors', x: 13, y: 2, label: '미러몬' };
@@ -3082,16 +3633,16 @@ const MONSTER_DEX = {
   maearimon:     { stage: 5, theme: '복습 · 1스테이지', learn: '배운 것은 메아리처럼 오래 울려요.' },
   geurimjamon:   { stage: 5, theme: '복습 · 2~3스테이지', learn: '그림자도 빛의 일부. 지혜는 시험을 통과해요.' },
   finalboss:     { stage: 5, theme: '전체 종합', learn: '따뜻한 답이 어둠을 밝혀요. 끝은 또 다른 시작.' },
-  tturimmon:     { stage: 6, theme: '계정 보안 · 피싱', learn: '비밀번호는 길고 다르게, 수상한 링크는 누르지 않기. 잠긴 문은 누군가의 마음.' },
-  girokmon:      { stage: 6, theme: '디지털 발자국 · 잊힐 권리', learn: '올린 것은 쉽게 안 지워져요. 소중한 것만 기억하고, 지울 권리도 있어요.' },
-  sujipmon:      { stage: 7, theme: '데이터 수집과 동의', learn: '주인이 모른다고 가져가도 되는 건 아니에요. 동의를 받고, 철회할 수도 있어요.' },
-  saseomon:      { stage: 7, theme: '동의 · 기억의 존중', learn: '함께 기억하기. 잊혀지는 게 두려워도 훔치는 건 답이 아니에요.' },
-  piltermon:     { stage: 8, theme: 'AI 필터 · 진짜 나', learn: '필터는 가공된 모습. 반짝이지 않아도 지금의 나는 충분해요.' },
-  mirrormon:     { stage: 8, theme: '사칭 · 신원', learn: '누군가를 닮지 않아도 나는 나. 익명 뒤에서도 책임은 사라지지 않아요.' },
-  yuhokmon:      { stage: 9, theme: '다크패턴 · 설득 설계', learn: '"한 번만 더"는 버튼의 말. 멈출 시간을 스스로 정해요.' },
-  soksagimon:    { stage: 9, theme: '설득 · 외로움', learn: '속삭임은 들어 달라는 말. 붙잡는 설계를 알아채면 멈출 힘이 생겨요.' },
-  jogakmon:      { stage: 10, theme: '심층부 종합', learn: '흩어진 마음도 따뜻한 답 앞에서는 길을 비켜 줘요.' },
-  yeongi:        { stage: 10, theme: '존재의 가치 · 책임', learn: '쓸모가 없어져도 가치는 사라지지 않아요. 만든 것은 끝까지 책임져요.' },
+  tturimmon:     { stage: 5, theme: '후일담 · 계정 보안', learn: '비밀번호는 길고 다르게, 수상한 링크는 누르지 않기. 잠긴 문은 누군가의 마음.' },
+  girokmon:      { stage: 5, theme: '후일담 · 디지털 발자국', learn: '올린 것은 쉽게 안 지워져요. 소중한 것만 기억하고, 지울 권리도 있어요.' },
+  sujipmon:      { stage: 5, theme: '후일담 · 데이터 수집과 동의', learn: '주인이 모른다고 가져가도 되는 건 아니에요. 동의를 받고, 철회할 수도 있어요.' },
+  saseomon:      { stage: 5, theme: '후일담 · 동의와 기억', learn: '함께 기억하기. 잊혀지는 게 두려워도 훔치는 건 답이 아니에요.' },
+  piltermon:     { stage: 5, theme: '후일담 · AI 필터와 진짜 나', learn: '필터는 가공된 모습. 반짝이지 않아도 지금의 나는 충분해요.' },
+  mirrormon:     { stage: 5, theme: '후일담 · 사칭과 신원', learn: '누군가를 닮지 않아도 나는 나. 익명 뒤에서도 책임은 사라지지 않아요.' },
+  yuhokmon:      { stage: 5, theme: '후일담 · 다크패턴', learn: '"한 번만 더"는 버튼의 말. 멈출 시간을 스스로 정해요.' },
+  soksagimon:    { stage: 5, theme: '후일담 · 설득과 외로움', learn: '속삭임은 들어 달라는 말. 붙잡는 설계를 알아채면 멈출 힘이 생겨요.' },
+  jogakmon:      { stage: 5, theme: '후일담 · 코어 종합', learn: '흩어진 마음도 따뜻한 답 앞에서는 길을 비켜 줘요.' },
+  yeongi:        { stage: 5, theme: '후일담 · 존재의 가치와 책임', learn: '쓸모가 없어져도 가치는 사라지지 않아요. 만든 것은 끝까지 책임져요.' },
   // ---- 보너스: AI 미래연구소 ----
   hwangakmon:    { stage: 0, theme: '생성형 AI · 비판적 확인', learn: 'AI도 그럴듯한 거짓(환각)을 지어낼 수 있어요. 한 번 더 확인해요.' },
   hapseongmon:   { stage: 0, theme: '딥페이크 분별', learn: '진짜처럼 만든 가짜를 의심하고 출처를 확인해요. 남의 얼굴은 함부로 합성 금지!' },
@@ -3116,7 +3667,7 @@ const DEX_ORDER = [
 //         | 'spiral'(중앙에서 회전하며 뿜음) | 'wall'(빈틈 있는 한 줄) | 'zigzag'(일렁이며 옆에서)
 const BOSS_ATTACKS = {
   hondonmon:    { pattern: 'rain',  dur: 300, color: '#9b5de5', taunt: '…내 마음이, 엉킨다…!' },
-  meotdaeromon: { pattern: 'sides', dur: 300, color: '#f08a24', taunt: '멈출 수… 없어!' },
+  meotdaeromon: { pattern: 'filterbubble', dur: 320, color: '#58c7f3', taunt: '같은 말만… 밀려와!' },
   tteonemgimon: { pattern: 'burst', dur: 300, color: '#5cb85c', taunt: '내 탓이… 아니야!' },
   hollimmon:    { pattern: 'rain',  dur: 320, color: '#9b5de5', taunt: '가지 마… 가지 마…' },
   finalboss:    { pattern: 'burst', dur: 360, color: '#d62828', taunt: '어둠이… 몰아친다!' },

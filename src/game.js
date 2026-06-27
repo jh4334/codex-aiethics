@@ -48,6 +48,7 @@
     flags: null,
     dialog: null, // { lines, idx, chars, speaker, onEnd }
     battle: null,
+    puzzle: null,
     time: 0,
     titleCursor: 0,
     endingT: 0,
@@ -130,13 +131,31 @@
         hwangakmon: false, hapseongmon: false, miraemon: false,
         somunmon: false, musimon: false, nangbimon: false, pinggyemon: false,
       },
-      mercy: 0,        // 마음을 안아준 횟수 (스테이지 6~)
+      mercy: 0,        // 마음을 안아준 횟수 (후일담 포함)
+      ethics: emptyEthics(),
+      puzzles: emptyPuzzles(),
       visited: {},     // 맵 인트로 연출 1회 표시용
       trueEnding: false,
       correctCount: 0,
       battleCount: 0,
       sawBattleTip: false, // 첫 전투 1회 안내 표시 여부
     };
+  }
+
+  function awardEthicsForChoice(mon, kind) {
+    const amount = kind === 'mercy' ? 2 : kind === 'neutral' ? 1 : 0;
+    if (!amount) return;
+    let next = normalizeEthics(game.flags.ethics);
+    for (const axis of ethicsAxesForMonster(mon)) next = addEthicsScore(next, axis, amount);
+    game.flags.ethics = next;
+  }
+
+  function awardPuzzleEthics(puzzleId) {
+    const progress = game.flags.puzzles[puzzleId];
+    if (!progress || !progress.complete || progress.rewarded) return;
+    const puzzle = STAGE_PUZZLES[puzzleId];
+    game.flags.ethics = addEthicsScore(game.flags.ethics, puzzle.axis, 3);
+    progress.rewarded = true;
   }
 
   // ---------- 세이브 슬롯 (3개) ----------
@@ -164,7 +183,12 @@
     let old = null;
     try { const r = localStorage.getItem(SAVE_KEY); old = r ? JSON.parse(r) : null; } catch (e) { old = null; }
     if (old && old.flags && !loadSlot(0)) {
-      writeSlot(0, { name: '수호자', map: old.map, x: old.x, y: old.y, flags: old.flags, updatedAt: Date.now() });
+      const flags = Object.assign(newFlags(), old.flags);
+      flags.badges = Object.assign({ forest: false, lake: false, cave: false }, old.flags.badges);
+      flags.defeated = Object.assign(newFlags().defeated, old.flags.defeated);
+      flags.ethics = normalizeEthics(old.flags.ethics);
+      flags.puzzles = normalizePuzzles(old.flags.puzzles);
+      writeSlot(0, { name: '수호자', map: old.map, x: old.x, y: old.y, flags, updatedAt: Date.now() });
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 무시 */ }
     }
   }
@@ -196,6 +220,7 @@
 
   // 발견한 엔딩 기록 — 세이브와 별개로, 게임을 다시 시작해도 남는다
   const ENDINGS_KEY = 'ai-ethics-adventure-endings';
+  const ENDING_IDS = ['home', 'dawn', 'farewell', 'blackbox', 'silent'];
   function getEndingsSeen() {
     try { return JSON.parse(localStorage.getItem(ENDINGS_KEY)) || {}; }
     catch (e) { return {}; }
@@ -292,9 +317,9 @@
     if (!game.tts) return;
     Speech.speak(qText + '. ' + choiceTexts.map((c, i) => `${i + 1}번, ${c}`).join('. '));
   }
-  function speakFeedback(correct, why) {
+  function speakFeedback(correct, why, reflectionPrompt) {
     if (!game.tts) return;
-    Speech.speak((correct ? '정답! ' : '아쉬워요. ') + why);
+    Speech.speak((correct ? '정답! ' : '아쉬워요. ') + why + (reflectionPrompt ? '. ' + reflectionPrompt : ''));
   }
   function cycleTextSpeed() {
     const i = TEXT_SPEED_ORDER.indexOf(game.textSpeed);
@@ -335,8 +360,11 @@
     if (slot === game.currentSlot && game.playerName) return sanitizeName(game.playerName);
     return '수호자';
   }
+  function liveSlotMode() {
+    return ['world', 'dialog', 'battle', 'puzzle', 'ending', 'pause', 'classmode'].includes(game.mode);
+  }
   function slotFlags(slot) {
-    if (slot === game.currentSlot && game.flags) return game.flags;
+    if (slot === game.currentSlot && game.flags && liveSlotMode()) return game.flags;
     const s = loadSlot(slot);
     return (s && s.flags) ? s.flags : null;
   }
@@ -370,6 +398,206 @@
   function statsKey(slot) { return STATS_KEY + '-' + slot; }
   // 주제 키 → 짧은 한글 라벨. 단일 출처는 data.js의 TOPIC_LABEL.
   function topicLabel(t) { return TOPIC_LABEL[t] || t; }
+  const ETHICS_SHORT_LABELS = {
+    privacy: '동의',
+    perspective: '관점',
+    fairness: '공정',
+    verification: '검증',
+    responsibility: '책임',
+  };
+  const ENDING_TITLES = {
+    home: '집으로',
+    dawn: '새벽',
+    farewell: '작별',
+    blackbox: '검은상자',
+    silent: '침묵',
+  };
+  function axisShort(axis) { return ETHICS_SHORT_LABELS[axis] || ETHICS_LABELS[axis] || axis; }
+  function endingTitle(id) { return ENDING_TITLES[id] || id || '미발견'; }
+  function endingChoiceLabel(kind) {
+    if (kind === 'mercy') return '손을 내밀기';
+    if (kind === 'neutral') return '스스로 결정하게 하기';
+    if (kind === 'harsh') return '차갑게 보내기';
+    return '마지막 선택 없음';
+  }
+  function ethicsAxisRows(flags) {
+    const ethics = normalizeEthics(flags && flags.ethics);
+    return ETHICS_AXES.map((axis) => {
+      const score = Math.max(0, Math.min(ETHICS_AXIS_MAX, Number(ethics[axis]) || 0));
+      return {
+        axis,
+        label: ETHICS_LABELS[axis],
+        shortLabel: axisShort(axis),
+        score,
+        pct: Math.round((score / ETHICS_AXIS_MAX) * 100),
+      };
+    });
+  }
+  function completedStagePuzzleCount(flags) {
+    const puzzles = flags && flags.puzzles;
+    let n = 0;
+    for (const id of Object.keys(STAGE_PUZZLES)) if (isStagePuzzleComplete(puzzles, id)) n++;
+    return n;
+  }
+  function puzzleProgressInfo(flags, puzzleId) {
+    const puzzle = STAGE_PUZZLES[puzzleId];
+    if (!puzzle) return null;
+    const progress = normalizePuzzles(flags && flags.puzzles)[puzzleId];
+    const attempts = Array.isArray(progress.attempts) ? progress.attempts : [];
+    const choices = puzzle.clues.map((clue) => {
+      const doorId = progress.clues[clue.id];
+      const door = puzzle.doors.find((item) => item.id === doorId);
+      const clueAttempts = attempts.filter((item) => item.clueId === clue.id);
+      return {
+        clue,
+        doorId,
+        doorLabel: door ? door.label : '',
+        correct: doorId === clue.correctDoor,
+        answered: !!doorId,
+        attempts: clueAttempts,
+        riskyAttempts: clueAttempts.filter((item) => item && item.correct === false),
+      };
+    });
+    const answered = choices.filter((item) => item.answered).length;
+    const solved = choices.filter((item) => item.correct).length;
+    const risky = choices.filter((item) => item.answered && !item.correct);
+    const riskyAttempts = attempts.filter((item) => item && item.correct === false);
+    for (const choice of risky) {
+      if (riskyAttempts.some((item) => item.clueId === choice.clue.id && item.doorId === choice.doorId)) continue;
+      riskyAttempts.push({
+        clueId: choice.clue.id,
+        clueLabel: choice.clue.label,
+        doorId: choice.doorId,
+        doorLabel: choice.doorLabel,
+        correct: false,
+      });
+    }
+    return { puzzle, progress, choices, attempts, answered, solved, risky, riskyAttempts, total: puzzle.clues.length };
+  }
+  function puzzleMapEffectLine(flags, puzzleId) {
+    const info = puzzleProgressInfo(flags, puzzleId);
+    if (!info) return '';
+    const labels = {
+      data_footprint_forest: '발자국 불빛 정렬',
+      filter_bubble_maze: '안개 걷힘',
+      bias_court: '법정 저울 균형',
+      deepfake_station: '방송 신호 정리',
+      responsibility_core: '책임 코어 점등',
+    };
+    const label = labels[puzzleId] || '퍼즐 맵 변화';
+    const risk = info.riskyAttempts.length ? ` · 위험 선택 ${info.riskyAttempts.length}` : '';
+    return `맵 변화: ${label} ${info.solved}/${info.total}${risk}`;
+  }
+  function ethicsAxisLine(axis) {
+    return `윤리 축: ${ETHICS_LABELS[axis] || axis}`;
+  }
+  function puzzleChoiceReportLines(flags) {
+    const lines = ['퍼즐 선택 기록:'];
+    let any = false;
+    const entries = Object.entries(STAGE_PUZZLES).sort((a, b) => a[1].stage - b[1].stage);
+    for (const [puzzleId, puzzle] of entries) {
+      const info = puzzleProgressInfo(flags, puzzleId);
+      if (!info || info.answered === 0) continue;
+      any = true;
+      lines.push(`  - ${puzzle.stage}. ${puzzle.title} (${ETHICS_LABELS[puzzle.axis]}): ${info.solved}/${info.total}`);
+      for (const choice of info.choices.filter((item) => item.answered)) {
+        const mark = choice.correct ? '안전 선택' : '위험 선택';
+        lines.push(`    · ${choice.clue.label} → ${choice.doorLabel} (${mark})`);
+        if (!choice.correct) lines.push(`      토론 질문: ${ethicsAxisLine(puzzle.axis)} 관점에서 어떤 단서를 놓쳤을까?`);
+        for (const attempt of choice.riskyAttempts) {
+          if (attempt.doorId === choice.doorId && !choice.correct) continue;
+          lines.push(`      이전 위험 선택: ${attempt.doorLabel || attempt.doorId}`);
+          lines.push(`      토론 질문: ${ethicsAxisLine(puzzle.axis)} 관점에서 왜 다시 고쳤을까?`);
+        }
+      }
+    }
+    if (!any) lines.push('  (아직 퍼즐 선택 기록이 없어요)');
+    return lines;
+  }
+  function stageNpcReactionLine(flags, stage) {
+    const theme = STAGE_THEMES.find((item) => item.stage === stage);
+    if (!theme) return 'NPC 반응: 오늘 수업할 윤리 축을 먼저 골라 보세요.';
+    const effect = puzzleMapEffectLine(flags, theme.id);
+    if (isStagePuzzleComplete(flags && flags.puzzles, theme.id)) {
+      return `NPC 반응: ${theme.name}의 길이 열렸어요. ${theme.lesson}`;
+    }
+    if (effect) return `NPC 반응: ${effect}. 단서를 하나 더 확인해 보세요.`;
+    return `NPC 반응: ${theme.name}에서 첫 단서를 찾아 보세요.`;
+  }
+  function battleReflectionPrompt(topic) {
+    return `생각 질문: ${topicLabel(topic)}에서 무엇을 먼저 확인했어야 할까?`;
+  }
+  function challengeReflectionPrompt(topic) {
+    return `생각 질문: ${topicLabel(topic)} 문제를 다음에 만나면 어떤 단서를 먼저 볼까?`;
+  }
+  function topicEthicsLine(topic) {
+    return ethicsAxisLine(ethicsAxesForTopic(topic));
+  }
+  function puzzleReflectionPrompt(puzzle, clue, choice) {
+    const right = puzzle.doors.find((door) => door.id === clue.correctDoor);
+    const picked = choice && choice.label ? choice.label : '이 선택';
+    const answer = right && right.label ? right.label : '바른 선택';
+    return `생각 질문: ${ETHICS_LABELS[puzzle.axis]} 관점에서 왜 '${picked}'보다 '${answer}'에 가까울까?`;
+  }
+  function battleRewardLines(mon, choiceKind) {
+    if (!mon || !mon.mercy) return [];
+    const axes = ethicsAxesForMonster(mon).map(axisShort);
+    const amount = choiceKind === 'mercy' ? 2 : choiceKind === 'neutral' ? 1 : 0;
+    const lines = [`[선택의 흔적] ${endingChoiceLabel(choiceKind)} · ${axes.join(', ') || '윤리'} ${amount ? '+' + amount : '+0'}`];
+    if (amount > 0) lines.push('마음으로 고른 선택이 윤리 축에 남았어요.');
+    else lines.push('차가운 선택도 기록됩니다. 다음 결말에서 다시 생각해 볼 수 있어요.');
+    return lines;
+  }
+  function ethicsSummaryLine(flags) {
+    const pieces = completedStagePuzzleCount(flags);
+    const score = computeEthicsScore(flags && flags.ethics);
+    return `윤리 조각 ${pieces}/${Object.keys(STAGE_PUZZLES).length} · 윤리 이해도 ${score}점`;
+  }
+  function nextPuzzleGoal(flags) {
+    const entries = Object.entries(STAGE_PUZZLES).sort((a, b) => a[1].stage - b[1].stage);
+    const next = entries.find(([puzzleId]) => !isStagePuzzleComplete(flags && flags.puzzles, puzzleId));
+    if (!next) return '';
+    return `${next[1].stage}스테이지 ${next[1].title}`;
+  }
+  function ethicsGoalLine(flags) {
+    if (!flags) return '다음 윤리 목표: 새 모험에서 첫 윤리 조각을 찾아 보세요.';
+    const nextPuzzle = nextPuzzleGoal(flags);
+    if (nextPuzzle) return `다음 윤리 목표: ${nextPuzzle} 조각 찾기`;
+    const weakest = ethicsAxisRows(flags).sort((a, b) => a.score - b.score)[0];
+    if (weakest && weakest.score < ETHICS_AXIS_MAX) {
+      return `다음 윤리 목표: ${weakest.shortLabel} 축 ${weakest.score}/${ETHICS_AXIS_MAX} 보강`;
+    }
+    return '다음 윤리 목표: 모든 축이 균형 잡혔어요. 챌린지로 유지해 보세요.';
+  }
+  function slotNextGoalLine(slot) {
+    return ethicsGoalLine(slotFlags(slot));
+  }
+  function challengeNextStep(score, total, slot) {
+    const rate = total ? score / total : 0;
+    const summary = buildLearningSummary(slot);
+    if (rate >= 0.9 && summary.weak.length === 0) return '다음: 전체 랜덤으로 실전 감각을 유지해 보세요.';
+    if (summary.weak.length) return `다음: 맞춤 학습에서 ${summary.weak.slice(0, 2).join(', ')}을 다시 살펴보세요.`;
+    if (rate >= 0.7) return '다음: 틀린 문제를 복습 노트에서 한 번만 더 풀어 보세요.';
+    return '다음: 복습 노트로 해설을 읽고, 같은 주제를 다시 도전해 보세요.';
+  }
+  function buildEndingReflectionLines(choiceKind, mercy, ethics, endingId) {
+    const rows = ethicsAxisRows({ ethics });
+    const weak = rows.filter((row) => row.score < 4).map((row) => row.shortLabel);
+    const score = computeEthicsScore(ethics);
+    const lines = [
+      '[마지막 회고]',
+      `마지막 선택: ${endingChoiceLabel(choiceKind)} · 이어질 결말: ${endingTitle(endingId)}`,
+      `윤리 이해도 ${score}점 · 안아 준 마음 ${Math.max(0, Number(mercy) || 0)}/20`,
+    ];
+    if (weak.length) {
+      lines.push('더 물어볼 윤리 축: ' + weak.join(', '));
+      lines.push('결말을 보기 전, 어떤 질문을 놓쳤는지 한 번 말해 보자.');
+    } else {
+      lines.push('다섯 윤리 축이 고르게 연결되었어요.');
+      lines.push('이제 선택의 결과가 어떤 결말로 이어지는지 확인해 보자.');
+    }
+    return lines;
+  }
   function getStats(slot) {
     try { return JSON.parse(localStorage.getItem(statsKey(slot))) || {}; }
     catch (e) { return {}; }
@@ -416,12 +644,13 @@
     try { return JSON.parse(localStorage.getItem(metaKey(slot))) || {}; }
     catch (e) { return {}; }
   }
-  function recordChallengeResult(slot, score, total) {
+  function recordChallengeResult(slot, score, total, bestCombo) {
     try {
       const m = getMeta(slot);
       m.challengeRuns = (m.challengeRuns || 0) + 1;
       m.challengeBest = Math.max(m.challengeBest || 0, score);
       m.challengeBestTotal = total;
+      m.challengeBestCombo = Math.max(m.challengeBestCombo || 0, bestCombo || 0);
       localStorage.setItem(metaKey(slot), JSON.stringify(m));
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
@@ -628,6 +857,8 @@
     { id: 'kind', name: '따뜻한 마음', desc: '마음을 5번 안아 주기', check: (c) => c.mercy >= 5 },
     { id: 'scholar', name: '공부벌레', desc: '문제 50개 이상 풀기', check: (c) => c.attempted >= 50 },
     { id: 'collector', name: '도감 수집가', desc: '도감 절반 이상 모으기', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
+    { id: 'fragments', name: '윤리 조각 수집가', desc: '윤리 조각 5개 모두 모으기', check: (c) => c.puzzlePieces >= Object.keys(STAGE_PUZZLES).length },
+    { id: 'balanced', name: '균형 수호자', desc: '5개 윤리 축을 고르게 키우기', check: (c) => c.balancedEthics },
     { id: 'champion', name: '챌린지 챔피언', desc: '퀴즈 챌린지 만점', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
     { id: 'master', name: 'AI 윤리 마스터', desc: '엔딩 보고 도전과제 8개 달성', check: (c) => c.endings >= 1 && c.achieved >= 8 },
   ];
@@ -636,6 +867,7 @@
     { id: 'forest', name: '숲빛', color: '#5cb85c', desc: '증표 1개 모으기', check: (c) => c.badges >= 1 },
     { id: 'ocean', name: '바다빛', color: '#4ea8de', desc: '문제 30개 풀기', check: (c) => c.attempted >= 30 },
     { id: 'sunset', name: '노을빛', color: '#f08a24', desc: '마음 8번 안아 주기', check: (c) => c.mercy >= 8 },
+    { id: 'mint', name: '조각빛', color: '#7bd88f', desc: '윤리 조각 5개 모으기', check: (c) => c.puzzlePieces >= Object.keys(STAGE_PUZZLES).length },
     { id: 'galaxy', name: '은하빛', color: '#b48ce0', desc: '엔딩 보기', check: (c) => c.endings >= 1 },
   ];
   function unlockedCount(slot) {
@@ -1484,6 +1716,19 @@
 
   function interact() {
     const f = facingTile();
+    if (game.puzzle && game.puzzle.carrying) {
+      const herePad = puzzleDoorPadAt(game.map, game.player.x, game.player.y);
+      const facePad = puzzleDoorPadAt(game.map, f.x, f.y);
+      const pad = herePad || facePad;
+      if (pad) {
+        finishPuzzleMapChoice(pad.door);
+      } else {
+        const current = currentPuzzleClue();
+        const label = current ? current.clue.label : '이 단서';
+        startDialog([`${label}을 들고 있어요.\n지도 위에 빛나는 발판으로 이동해 Z를 눌러 놓아 보세요.`], '단서');
+      }
+      return;
+    }
     const npc = npcAt(game.map, f.x, f.y);
     if (npc) {
       const lines = getNpcDialog(npc.id, game.flags);
@@ -1497,12 +1742,21 @@
     }
     const mon = monsterAt(game.map, f.x, f.y);
     if (mon) {
+      if (mon.id === 'finalboss' && !isStagePuzzleComplete(game.flags.puzzles, 'responsibility_core')) {
+        startDialog([STAGE_PUZZLES.responsibility_core.gateText], STAGE_PUZZLES.responsibility_core.speaker);
+        return;
+      }
       startBattleIntro(mon.id);
       return;
     }
     const sign = signAt(game.map, f.x, f.y);
     if (sign) {
       startDialog([sign.text], '표지판');
+      return;
+    }
+    const clue = getStagePuzzleClueAt(game.map, f.x, f.y);
+    if (clue) {
+      openPuzzle(clue);
       return;
     }
     // 조사(살펴보기): 특별 지점 → 타일 기본 문구
@@ -1537,6 +1791,13 @@
       pushBack();
       Sound.bump();
       startDialog([`신호탑의 문이 굳게 닫혀 있다.\n마음의 증표 ${w.needBadges}개가 필요하다.\n(지금 ${countBadges(game.flags)}개)`]);
+      return;
+    }
+    if (w.needPuzzle && !isStagePuzzleComplete(game.flags.puzzles, w.needPuzzle)) {
+      pushBack();
+      Sound.bump();
+      const puzzle = STAGE_PUZZLES[w.needPuzzle];
+      startDialog([w.puzzleLockText || (puzzle && puzzle.gateText) || w.lockText || '아직 풀지 못한 퍼즐이 있다.']);
       return;
     }
     if (w.needAllDefeated && !w.needAllDefeated.every((id) => game.flags.defeated[id])) {
@@ -1611,6 +1872,107 @@
     else if (held.has('right')) tryMove('right');
   }
 
+  function openPuzzle(clue) {
+    const puzzle = STAGE_PUZZLES[clue.puzzleId];
+    game.puzzle = { puzzleId: clue.puzzleId, clueId: clue.id, carrying: true, ret: 'world' };
+    Sound.select();
+    startDialog([
+      clue.text,
+      `${puzzle.prompt || '이 단서를 어느 문으로 보낼까?'}\n지도 위에 나타난 발판으로 직접 옮겨 놓자.`,
+    ], puzzle.speaker || '단서');
+  }
+
+  function currentPuzzleClue() {
+    if (!game.puzzle) return null;
+    const puzzle = STAGE_PUZZLES[game.puzzle.puzzleId];
+    if (!puzzle) return null;
+    const clue = puzzle.clues.find((item) => item.id === game.puzzle.clueId);
+    return clue ? { puzzle, clue } : null;
+  }
+
+  function puzzleDoorPads(puzzleId, clueId) {
+    const puzzle = STAGE_PUZZLES[puzzleId];
+    if (!puzzle) return [];
+    const clue = puzzle.clues.find((item) => item.id === clueId) || puzzle.clues[0];
+    if (!clue) return [];
+    const stand = clue.stand || { x: clue.x, y: clue.y + 1 };
+    const rows = puzzle.doors.length <= 2
+      ? [[-1, 0], [1, 0], [0, 1], [0, -1], [-2, 0], [2, 0]]
+      : [[-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1], [-2, 0], [2, 0]];
+    const points = [];
+    for (const [dx, dy] of rows) {
+      const point = { x: stand.x + dx, y: stand.y + dy };
+      if (points.some((item) => item.x === point.x && item.y === point.y)) continue;
+      const ch = tileAt(puzzle.map, point.x, point.y);
+      if (WALKABLE.has(ch) && !monsterAt(puzzle.map, point.x, point.y)) points.push(point);
+      if (points.length >= puzzle.doors.length) break;
+    }
+    while (points.length < puzzle.doors.length) {
+      const i = points.length;
+      points.push({ x: stand.x + i - Math.floor(puzzle.doors.length / 2), y: stand.y });
+    }
+    return puzzle.doors.map((door, i) => Object.assign({ puzzleId, clueId, door, index: i }, points[i]));
+  }
+
+  function puzzleDoorPadAt(mapId, x, y) {
+    if (!game.puzzle || !game.puzzle.carrying) return null;
+    const current = currentPuzzleClue();
+    if (!current || current.puzzle.map !== mapId) return null;
+    return puzzleDoorPads(game.puzzle.puzzleId, game.puzzle.clueId)
+      .find((pad) => pad.x === x && pad.y === y) || null;
+  }
+
+  function closePuzzle() {
+    game.puzzle = null;
+    game.mode = 'world';
+    Sound.select();
+  }
+
+  function finishPuzzleMapChoice(choice) {
+    const current = currentPuzzleClue();
+    if (!current || !choice) return false;
+    const { puzzle, clue } = current;
+    const wasComplete = isStagePuzzleComplete(game.flags.puzzles, game.puzzle.puzzleId);
+    game.flags.puzzles = setStagePuzzleChoice(game.flags.puzzles, game.puzzle.puzzleId, clue.id, choice.id);
+    const isComplete = isStagePuzzleComplete(game.flags.puzzles, game.puzzle.puzzleId);
+    const lines = [choice.id === clue.correctDoor ? clue.correctText : clue.wrongText];
+    if (choice.id !== clue.correctDoor) lines.push(puzzleReflectionPrompt(puzzle, clue, choice));
+    const effectLine = puzzleMapEffectLine(game.flags, game.puzzle.puzzleId);
+    if (effectLine) lines.push(effectLine);
+    if (isComplete && !wasComplete) {
+      awardPuzzleEthics(game.puzzle.puzzleId);
+      lines.push(puzzle.completeText);
+      if (puzzle.reflectionText) lines.push(puzzle.reflectionText);
+    }
+    let onEnd = null;
+    if (choice.id !== clue.correctDoor && puzzle.loopTo) {
+      if (puzzle.loopText) lines.push(puzzle.loopText);
+      onEnd = () => {
+        const p = game.player;
+        game.map = puzzle.loopTo.map;
+        p.x = puzzle.loopTo.x;
+        p.y = puzzle.loopTo.y;
+        p.px = p.x * TS;
+        p.py = p.y * TS;
+        p.dir = puzzle.loopTo.dir || p.dir;
+        p.moving = false;
+        held.clear();
+        save();
+      };
+    }
+    game.puzzle = null;
+    save();
+    Sound.select();
+    startDialog(lines, puzzle.speaker || '단서', onEnd);
+    return true;
+  }
+
+  function updatePuzzle() {
+    const current = currentPuzzleClue();
+    if (!current) { closePuzzle(); return; }
+    if (justPressed('cancel') || justPressed('action')) closePuzzle();
+  }
+
   // ---------- 배틀 ----------
   function shuffled(arr) {
     const a = arr.slice();
@@ -1664,6 +2026,8 @@
       hintUsed: false,   // 이번 문항에서 50:50 힌트를 썼는지
       hiddenPos: -1,     // 힌트로 가려진 보기의 표시 위치 (-1이면 없음)
       feedback: null, // { correct, why }
+      combo: 0,
+      bestCombo: 0,
       shake: 0,
       flash: 0,
       attack: getBossAttack(monId), // 보스 회피 구간 (없으면 null)
@@ -1778,6 +2142,17 @@
       const y = box.y + 12 + Math.random() * (box.h - 24);
       d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
         vx: (fromLeft ? 1 : -1) * (2.2 + Math.random() * 1.2) * sf, vy: 0, r: 6 });
+    } else if (pattern === 'filterbubble') {
+      const lanes = 7;
+      const open = d.t > d.dur * 0.45 ? 3 : 1;
+      const center = Math.floor(lanes / 2);
+      for (let i = 0; i < lanes; i++) {
+        if (Math.abs(i - center) <= Math.floor(open / 2)) continue;
+        const y = box.y + 18 + i * (box.h - 36) / (lanes - 1);
+        const fromLeft = d.t < d.dur * 0.45 || i % 2 === 0;
+        d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
+          vx: (fromLeft ? 1 : -1) * (1.7 + Math.random() * 0.5) * sf, vy: 0, r: 6 });
+      }
     } else if (pattern === 'spiral') {
       // 중앙에서 회전하며 뿜어내는 나선형 탄막
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
@@ -1831,6 +2206,7 @@
     if (d.spawnTimer <= 0 && d.t < d.dur - 50) {
       spawnBullets(d, atk.pattern);
       d.spawnTimer = atk.pattern === 'burst' ? 24 : atk.pattern === 'spiral' ? 8
+        : atk.pattern === 'filterbubble' ? 28
         : atk.pattern === 'wall' ? 42 : atk.pattern === 'zigzag' ? 18 : 15;
     }
 
@@ -1881,18 +2257,28 @@
       }
       if (justPressed('action')) {
         const correct = order[b.cursor] === q.c;
-        b.feedback = { correct, why: q.why };
+        const nextCombo = correct ? (b.combo || 0) + 1 : 0;
+        b.feedback = {
+          correct,
+          why: q.why,
+          ethicsLine: topicEthicsLine(q._topic),
+          reflectionPrompt: correct ? '' : battleReflectionPrompt(q._topic),
+          combo: nextCombo,
+        };
         b.phase = 'feedback';
-        speakFeedback(correct, q.why);
+        speakFeedback(correct, q.why, b.feedback.reflectionPrompt);
         recordTopicResult(game.currentSlot, q._topic, correct);
         if (correct) {
           Sound.correct();
           b.monHp -= 1;
+          b.combo = nextCombo;
+          b.bestCombo = Math.max(b.bestCombo || 0, b.combo);
           b.shake = 14;
           game.flags.correctCount += 1;
           clearMistake(game.currentSlot, q._qid);
         } else {
           Sound.wrong();
+          b.combo = 0;
           b.playerHp -= 1;
           b.flash = 14;
           recordMistake(game.currentSlot, q);
@@ -1904,7 +2290,7 @@
     if (b.phase === 'feedback') {
       if (justPressed('action')) {
         if (b.monHp <= 0) {
-          // 스테이지 6~ 몬스터는 마지막에 '마음의 선택'이 기다린다
+          // 후일담 몬스터는 마지막에 '마음의 선택'이 기다린다
           if (b.mon.mercy && !b.mercyDone) {
             b.phase = 'mercy';
             b.cursor = 0;
@@ -1929,6 +2315,7 @@
         b.mercyDone = true;
         b.mercyReply = choice.reply;
         b.mercyChoiceKind = choice.kind;
+        awardEthicsForChoice(b.mon, choice.kind);
         if (choice.kind === 'mercy') {
           game.flags.mercy += 1;
           Sound.badge();
@@ -1963,6 +2350,7 @@
     Sound.badge();
 
     const lines = [mon.win];
+    lines.push(...battleRewardLines(mon, b.mercyChoiceKind));
     if (gotBadge) {
       const badgeNames = { forest: '정적의 숲의 증표', lake: '잔향의 호수의 증표', cave: '회로의 동굴의 증표' };
       lines.push(`☆ ${badgeNames[mon.badge]}를 얻었다! ☆\n(마음의 증표 ${countBadges(game.flags)}개 / 3개)`);
@@ -1979,12 +2367,12 @@
         Sound.playSong('ending');
       });
     } else if (b.monId === 'yeongi') {
-      // 최종 엔딩 분기: 여정 전체의 자비 + 마지막 선택
-      const endingId = computeEnding(b.mercyChoiceKind, game.flags.mercy);
+      const endingId = computeEnding(b.mercyChoiceKind, game.flags.mercy, game.flags.ethics);
       game.flags.endingId = endingId;
       game.flags.trueEnding = endingId === 'home';
       recordEndingSeen(endingId);
       save();
+      lines.push(...buildEndingReflectionLines(b.mercyChoiceKind, game.flags.mercy, game.flags.ethics, endingId));
       startDialog(lines, mon.name, () => {
         game.mode = 'ending';
         game.endingType = 'true';
@@ -2473,6 +2861,22 @@
   }
 
   // 학습 리포트(교사·학부모용)를 텍스트로 만들어 클립보드에 복사
+  function stagePuzzleReportLines(flags) {
+    const puzzles = normalizePuzzles(flags && flags.puzzles);
+    const lines = ['스테이지 퍼즐 회고:'];
+    const entries = Object.entries(STAGE_PUZZLES).sort((a, b) => a[1].stage - b[1].stage);
+    for (const [puzzleId, puzzle] of entries) {
+      const complete = isStagePuzzleComplete(puzzles, puzzleId);
+      const status = complete ? '완료' : '미완료';
+      const note = complete
+        ? (puzzle.reflectionText || '').replace(/^배움 조각:\s*/, '')
+        : '아직 배움 조각을 회수하지 않았어요.';
+      lines.push(`  - ${puzzle.stage}. ${puzzle.title} (${ETHICS_LABELS[puzzle.axis]}): ${status}`);
+      if (note) lines.push(`    ${note}`);
+    }
+    return lines;
+  }
+
   function buildReportText(slot) {
     if (slot == null) slot = game.journal.slot;
     const s = buildLearningSummary(slot);
@@ -2486,6 +2890,17 @@
     lines.push('이름: ' + slotLearnName(slot) + (title ? ` (칭호: ${title.name})` : ''));
     lines.push('──────────────────────');
     lines.push(`푼 문제: ${s.attempted}개 · 정답 ${s.correct}개 (${s.attempted ? pct(s.overallRate) : '—'})`);
+    const slotSave = loadSlot(slot);
+    const ethics = normalizeEthics(slotSave && slotSave.flags && slotSave.flags.ethics);
+    lines.push('');
+    lines.push('윤리 이해 축:');
+    for (const axis of ETHICS_AXES) {
+      lines.push(`  - ${ETHICS_LABELS[axis]}: ${ethics[axis]}/${ETHICS_AXIS_MAX}`);
+    }
+    lines.push(ethicsGoalLine(slotSave && slotSave.flags));
+    lines.push('');
+    lines.push(...stagePuzzleReportLines(slotSave && slotSave.flags));
+    lines.push(...puzzleChoiceReportLines(slotSave && slotSave.flags));
     lines.push('');
     lines.push('주제별 정답률:');
     if (s.rows.length === 0) lines.push('  (아직 푼 문제가 없어요)');
@@ -2496,11 +2911,16 @@
     lines.push('');
     if (s.weak.length) lines.push('더 살펴볼 주제: ' + s.weak.join(', '));
     const endSeen = getEndingsSeen();
-    const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
-    lines.push(`발견 엔딩: ${endN}/4 · 도감 수집: ${dexSeenCount()}/${DEX_ORDER.length}`);
+    const endN = ENDING_IDS.filter((k) => endSeen[k]).length;
+    lines.push(`발견 엔딩: ${endN}/${ENDING_IDS.length} · 도감 수집: ${dexSeenCount()}/${DEX_ORDER.length}`);
+    if (slotSave && slotSave.flags && slotSave.flags.endingId) {
+      const ethicsScore = computeEthicsScore(slotSave.flags.ethics);
+      lines.push(`마지막 결말 회고: ${endingTitle(slotSave.flags.endingId)} · 윤리 이해도 ${ethicsScore}점 · 마음 ${slotSave.flags.mercy || 0}/20`);
+    }
     lines.push(`복습 노트 남은 문제: ${mistakeCount(slot)}개`);
     const rm = getMeta(slot);
     if (rm.streak || rm.bestStreak) lines.push(`연속 출석: ${rm.streak || 0}일 (최고 ${rm.bestStreak || 0}일)`);
+    if (rm.challengeBestCombo) lines.push(`챌린지 최고 연속 정답: ${rm.challengeBestCombo}문제`);
     return lines.join('\n');
   }
 
@@ -2548,31 +2968,38 @@
     ctx.font = 'bold 16px monospace';
     ctx.fillText(`푼 문제 ${s.attempted}개  ·  정답 ${s.correct}개  ·  정답률 ${s.attempted ? Math.round(s.overallRate * 100) + '%' : '—'}`, 24, 66);
     const endSeen = getEndingsSeen();
-    const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
+    const endN = ENDING_IDS.filter((k) => endSeen[k]).length;
     const jm = getMeta(slot);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText(`발견 엔딩 ${endN}/4  ·  도감 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
+    ctx.fillText(`발견 엔딩 ${endN}/${ENDING_IDS.length}  ·  도감 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
+    const flags = slotFlags(slot);
+    ctx.fillStyle = warnColor();
+    ctx.font = 'bold 13px monospace';
+    ctx.fillText(ethicsSummaryLine(flags), 24, 110);
     if (jm.streak || jm.bestStreak) {
       ctx.fillStyle = themeAccent();
-      ctx.fillText(`🔥 연속 출석 ${jm.streak || 0}일 (최고 ${jm.bestStreak || 0}일)`, 24, 106);
+      ctx.fillText(`연속 출석 ${jm.streak || 0}일 (최고 ${jm.bestStreak || 0}일)`, 360, 110);
     }
+    ctx.fillStyle = '#aaa';
+    ctx.font = '13px monospace';
+    ctx.fillText(ethicsGoalLine(flags), 24, 132);
 
     // 주제별 정답률 막대
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 14px monospace';
-    ctx.fillText('주제별 정답률 (낮은 순)', 24, 118);
+    ctx.fillText('주제별 정답률 (낮은 순)', 24, 156);
 
     if (s.rows.length === 0) {
       ctx.fillStyle = '#888';
       ctx.font = '15px monospace';
-      ctx.fillText('아직 푼 문제가 없어요. 모험에서 퀴즈를 풀면 여기에 쌓여요!', 24, 150);
+      ctx.fillText('아직 푼 문제가 없어요. 모험에서 퀴즈를 풀면 여기에 쌓여요!', 24, 188);
     } else {
       const barX = 230, barW = LW - barX - 90, rowH = 38;
       const start = game.journal.scroll;
       for (let i = 0; i < JOURNAL_VISIBLE && start + i < s.rows.length; i++) {
         const r = s.rows[start + i];
-        const y = 140 + i * rowH;
+        const y = 178 + i * rowH;
         const weak = r.total >= 2 && r.rate < 0.6;
         ctx.fillStyle = weak ? badColor() : '#ddd';
         ctx.font = '14px monospace';
@@ -2587,8 +3014,8 @@
         ctx.fillText(`${Math.round(r.rate * 100)}% (${r.correct}/${r.total})`, barX + barW + 8, y + 13);
       }
       // 스크롤 표시
-      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▲', LW - 40, 132); }
-      if (start + JOURNAL_VISIBLE < s.rows.length) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▼', LW - 40, 140 + JOURNAL_VISIBLE * rowH - 8); }
+      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▲', LW - 40, 170); }
+      if (start + JOURNAL_VISIBLE < s.rows.length) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▼', LW - 40, 178 + JOURNAL_VISIBLE * rowH - 8); }
     }
 
     // 약한 주제 안내
@@ -2628,6 +3055,7 @@
     game.challenge = {
       ret, slot: activeSlot(), phase: 'topic', topics: challengeTopics(), sel: 0,
       questions: [], idx: 0, cursor: 0, choiceOrder: null, score: 0, feedback: null,
+      combo: 0, bestCombo: 0,
     };
     game.mode = 'challenge';
     Sound.select();
@@ -2663,6 +3091,8 @@
     c.questions = pool;
     c.idx = 0;
     c.score = 0;
+    c.combo = 0;
+    c.bestCombo = 0;
     c.cursor = 0;
     c.feedback = null;
     c.choiceOrder = shuffled(pool[0].a.map((_, i) => i));
@@ -2675,7 +3105,7 @@
     c.idx += 1;
     if (c.idx >= c.questions.length) {
       c.phase = 'result';
-      recordChallengeResult(c.slot, c.score, c.questions.length);
+      recordChallengeResult(c.slot, c.score, c.questions.length, c.bestCombo || 0);
       if (c.daily) recordDailyDone(c.slot, c.score, c.questions.length);
       checkCosmeticUnlocks(c.slot);
       Sound.badge();
@@ -2710,12 +3140,28 @@
       if (justPressed('cancel')) { closeChallenge(); return; }
       if (justPressed('action')) {
         const correct = c.choiceOrder[c.cursor] === q.c;
-        c.feedback = { correct, why: q.why };
+        const nextCombo = correct ? (c.combo || 0) + 1 : 0;
+        c.feedback = {
+          correct,
+          why: q.why,
+          ethicsLine: topicEthicsLine(q._topic),
+          reflectionPrompt: correct ? '' : challengeReflectionPrompt(q._topic),
+          combo: nextCombo,
+        };
         c.phase = 'feedback';
-        speakFeedback(correct, q.why);
+        speakFeedback(correct, q.why, c.feedback.reflectionPrompt);
         recordTopicResult(c.slot, q._topic, correct);
-        if (correct) { c.score += 1; clearMistake(c.slot, q._qid); Sound.correct(); }
-        else { recordMistake(c.slot, q); Sound.wrong(); }
+        if (correct) {
+          c.score += 1;
+          c.combo = nextCombo;
+          c.bestCombo = Math.max(c.bestCombo || 0, c.combo);
+          clearMistake(c.slot, q._qid);
+          Sound.correct();
+        } else {
+          c.combo = 0;
+          recordMistake(c.slot, q);
+          Sound.wrong();
+        }
       }
       return;
     }
@@ -2796,9 +3242,12 @@
       ctx.fillStyle = '#aaa';
       ctx.font = '16px monospace';
       ctx.fillText(msg, LW / 2, 270);
+      ctx.fillStyle = warnColor();
+      ctx.font = '14px monospace';
+      ctx.fillText(`최고 연속 정답 ${c.bestCombo || 0} · ${challengeNextStep(c.score, total, c.slot)}`, LW / 2, 304);
       ctx.fillStyle = '#777';
       ctx.font = '13px monospace';
-      ctx.fillText('Z 또는 X로 돌아가기', LW / 2, 330);
+      ctx.fillText('Z 또는 X로 돌아가기', LW / 2, 344);
       ctx.textAlign = 'left';
       return;
     }
@@ -2810,7 +3259,7 @@
     ctx.font = '14px monospace';
     ctx.fillText(`문제 ${c.idx + 1} / ${c.questions.length}`, 24, 32);
     ctx.fillStyle = warnColor();
-    ctx.fillText(`점수 ${c.score}`, LW - 110, 32);
+    ctx.fillText(`점수 ${c.score} · 연속 ${c.combo || 0}`, LW - 180, 32);
     // 진행 막대
     ctx.fillStyle = '#222';
     ctx.fillRect(24, 42, LW - 48, 6);
@@ -2826,6 +3275,12 @@
       let cl = 0;
       for (let i = 0; i < c.choiceOrder.length; i++) cl += measureWrap(`${i + 1}. ${q.a[c.choiceOrder[i]]}`, cMaxW);
       const needed = 32 + measureWrap(q.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + c.choiceOrder.length * gap + 16;
+      boxH = Math.min(Math.max(boxH, needed), LH - 64 - 16);
+    } else if (c.phase === 'feedback' && c.feedback) {
+      const needed = 104 + measureWrap(c.feedback.why, LW - 24 - 44) * lh(24)
+        + (c.feedback.ethicsLine ? measureWrap(c.feedback.ethicsLine, LW - 24 - 44) * lh(20) + lh(6) : 0)
+        + (c.feedback.reflectionPrompt ? measureWrap(c.feedback.reflectionPrompt, LW - 24 - 44) * lh(22) + lh(8) : 0)
+        + 34;
       boxH = Math.min(Math.max(boxH, needed), LH - 64 - 16);
     }
     const boxY = LH - boxH - 16;
@@ -2845,10 +3300,21 @@
       const f = c.feedback;
       ctx.font = fs(22, true);
       ctx.fillStyle = f.correct ? okColor() : badColor();
-      ctx.fillText(f.correct ? '○ 정답!' : '× 아쉬워요!', 34, boxY + 38);
+      const comboText = f.correct && f.combo >= 2 ? ` · 연속 ${f.combo}` : '';
+      ctx.fillText((f.correct ? '○ 정답!' : '× 아쉬워요!') + comboText, 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24));
+      let promptY = drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24)) + lh(10);
+      if (f.ethicsLine) {
+        ctx.fillStyle = warnColor();
+        ctx.font = fs(13, true);
+        promptY = drawQuestionText(f.ethicsLine, 34, promptY, LW - 24 - 44, lh(20)) + lh(8);
+      }
+      if (f.reflectionPrompt) {
+        ctx.fillStyle = '#ffd644';
+        ctx.font = fs(14, true);
+        drawQuestionText(f.reflectionPrompt, 34, promptY, LW - 24 - 44, lh(22));
+      }
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
@@ -2866,10 +3332,12 @@
     { id: 'solved50', cat: 'learn', name: '꾸준한 공부', desc: '문제를 50개 이상 풀었어요', check: (c) => c.attempted >= 50 },
     { id: 'perfectTopic', cat: 'learn', name: '완벽한 한 주제', desc: '한 주제 100% (3문제 이상)', check: (c) => c.perfectTopic },
     { id: 'wellRounded', cat: 'learn', name: '두루 박학', desc: '5개 주제에서 80% 이상', check: (c) => c.strongTopics >= 5 },
+    { id: 'puzzleAll', cat: 'learn', name: '윤리 조각 수집가', desc: '스테이지 퍼즐 5개 완료', check: (c) => c.puzzlePieces >= Object.keys(STAGE_PUZZLES).length },
+    { id: 'ethicsBalance', cat: 'learn', name: '균형 잡힌 수호자', desc: '5개 윤리 축 4점 이상', check: (c) => c.balancedEthics },
     { id: 'dexHalf', cat: 'collect', name: '도감 수집가', desc: '도감을 절반 이상 모았어요', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
     { id: 'dexAll', cat: 'collect', name: '도감 마스터', desc: '도감을 모두 모았어요', check: (c) => c.dexTotal > 0 && c.dex >= c.dexTotal },
     { id: 'ending1', cat: 'collect', name: '이야기꾼', desc: '엔딩을 하나 보았어요', check: (c) => c.endings >= 1 },
-    { id: 'endingAll', cat: 'collect', name: '모든 결말', desc: '엔딩 네 가지를 모두 보았어요', check: (c) => c.endings >= 4 },
+    { id: 'endingAll', cat: 'collect', name: '모든 결말', desc: '엔딩 다섯 가지를 모두 보았어요', check: (c) => c.endings >= ENDING_IDS.length },
     { id: 'challengeDone', cat: 'challenge', name: '챌린지 도전', desc: '퀴즈 챌린지를 완주했어요', check: (c) => c.challengeRuns >= 1 },
     { id: 'challengePerfect', cat: 'challenge', name: '챌린지 만점', desc: '퀴즈 챌린지에서 만점!', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
   ];
@@ -2885,11 +3353,14 @@
     const meta = getMeta(slot);
     const defeatedCount = f.defeated ? Object.keys(f.defeated).filter((k) => f.defeated[k]).length : 0;
     const endSeen = getEndingsSeen();
-    const endings = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
+    const endings = ENDING_IDS.filter((k) => endSeen[k]).length;
+    const axisRows = ethicsAxisRows(f);
+    const puzzlePieces = completedStagePuzzleCount(f);
     const ctx = {
       attempted: s.attempted, strongTopics: s.strongTopics, perfectTopic: s.perfectTopic,
       mercy: f.mercy || 0, defeatedCount, badges: f.badges ? countBadges(f) : 0,
       dex: dexSeenCount(), dexTotal: DEX_ORDER.length, endings,
+      puzzlePieces, balancedEthics: axisRows.every((row) => row.score >= 4),
       challengeRuns: meta.challengeRuns || 0,
       challengeBest: meta.challengeBest || 0, challengeBestTotal: meta.challengeBestTotal || 0,
     };
@@ -2961,7 +3432,7 @@
   const HELP_LINES = [
     ['head', '◆ 게임 목표'],
     ['', '윤리 오류로 헷갈리는 몬스터를 퀴즈로 깨우쳐 친구로 만들어요.'],
-    ['', '각 지역의 보스를 깨우치면 다음 지역으로 가는 길이 열립니다.'],
+    ['', '각 지역의 퍼즐에서 윤리 조각을 모으면 다음 길이 열립니다.'],
     ['', ''],
     ['head', '◆ 기본 조작'],
     ['', '이동: 화살표 / W A S D       결정·대화·살펴보기: Z / 스페이스'],
@@ -2977,11 +3448,11 @@
     ['', ''],
     ['head', '◆ 더 즐기기'],
     ['', '미래연구소: 마을 오른쪽 빛나는 문 — 새 AI 주제(환각·딥페이크) 연습'],
-    ['', '오늘의 도전·연속 출석, 칭호·테마 꾸미기(K), 데이터 백업·복원(U)'],
+    ['', '오늘의 도전·연속 정답, 칭호·테마 꾸미기(K), 데이터 백업·복원(U)'],
     ['', '배움 카드(L): 주제를 맞히면 카드가 열려요 · 명예의 전당(F): 최고 기록'],
     ['', ''],
     ['head', '◆ 선생님 · 접근성'],
-    ['', '교사용 대시보드(P): 학생별 학습 현황 비교 · 커스텀 퀴즈(E)'],
+    ['', '교사용 대시보드(P): 학생별 학습 현황·윤리 축 비교 · 커스텀 퀴즈(E)'],
     ['', '수료증(N): 진도를 증서로 저장 · 난이도·읽어주기(TTS)는 메뉴에서'],
     ['', '눈이 부시면 메뉴의 「화면 효과 줄이기」로 번쩍임을 줄일 수 있어요'],
   ];
@@ -3225,7 +3696,7 @@
     const sum = slotSummary(slot);
     const title = selectedTitle(slot);
     const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : '—';
-    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`) : '시작 전';
+    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`) : '시작 전';
     return [
       '════════ AI 윤리 어드벤처 수료증 ════════',
       '',
@@ -3311,7 +3782,7 @@
     ctx.fillText('열심히 익혔기에 이 증서를 드립니다.', cx, by + 212);
 
     const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : '—';
-    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`) : '시작 전';
+    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`) : '시작 전';
     const rows = [
       ['진행도', prog], ['정답률', `${acc} (${s.attempted}문제)`],
       ['배움 카드', `${collectedCards(slot)}/${LEARN_CARDS.length}`],
@@ -3593,22 +4064,55 @@
     const s = String(v == null ? '' : v);
     return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
+  function buildClassEthicsHeatmap() {
+    const rows = ETHICS_AXES.map((axis) => ({
+      axis,
+      label: ETHICS_LABELS[axis],
+      shortLabel: axisShort(axis),
+      total: 0,
+      students: 0,
+      avg: 0,
+      pct: 0,
+    }));
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const flags = slotFlags(i);
+      if (!flags) continue;
+      const axisRows = ethicsAxisRows(flags);
+      for (let j = 0; j < rows.length; j++) {
+        rows[j].total += axisRows[j].score;
+        rows[j].students += 1;
+      }
+    }
+    for (const row of rows) {
+      row.avg = row.students ? row.total / row.students : 0;
+      row.pct = Math.round((row.avg / ETHICS_AXIS_MAX) * 100);
+    }
+    return rows;
+  }
   // 세 학생(슬롯)의 학습 현황을 스프레드시트로 열 수 있는 CSV로 만든다.
   function buildClassCsv() {
     const header = ['슬롯', '이름', '칭호', '진행', '완주', '푼 문제', '정답 수',
-      '정답률(%)', '복습 노트', '도전과제', '안아준 마음', '연속 출석(일)'];
+      '정답률(%)', '복습 노트', '도전과제', '안아준 마음', '연속 출석(일)',
+      '개인정보·동의', '추천·관점', '공정성·대표성', '생성형 AI·검증', '인간 감독·책임'];
     const lines = [header.map(csvCell).join(',')];
     for (let i = 0; i < SLOT_COUNT; i++) {
       const sum = slotSummary(i);
-      if (!sum) { lines.push(csvCell(i + 1) + ',(비어 있음)'); continue; }
+      if (!sum) {
+        const emptyRow = Array(header.length).fill('');
+        emptyRow[0] = i + 1;
+        emptyRow[1] = '(비어 있음)';
+        lines.push(emptyRow.map(csvCell).join(','));
+        continue;
+      }
       const s = buildLearningSummary(i);
       const meta = getMeta(i);
       const title = selectedTitle(i);
+      const axisScores = ethicsAxisRows(slotFlags(i)).map((row) => `${row.score}/${ETHICS_AXIS_MAX}`);
       lines.push([
         i + 1,
         sum.name,
         title ? title.name : '',
-        sum.done ? '모험 완료' : ('스테이지 ' + sum.stage + '/10'),
+        sum.done ? '모험 완료' : ('스테이지 ' + sum.stage + '/5'),
         sum.done ? 'Y' : 'N',
         s.attempted,
         s.correct,
@@ -3617,6 +4121,7 @@
         countAchievements(i) + '/' + ACHIEVEMENTS.length,
         sum.mercy,
         meta.streak || 0,
+        ...axisScores,
       ].map(csvCell).join(','));
     }
     return lines.join('\r\n');
@@ -3655,6 +4160,33 @@
       d.toast = ok ? 200 : -200;
       Sound.badge();
     }
+  }
+  function drawEthicsMiniBars(flags, x, y, w) {
+    const rows = ethicsAxisRows(flags);
+    ctx.fillStyle = '#999';
+    ctx.font = '12px monospace';
+    ctx.fillText('윤리 축 히트맵', x, y);
+    let ly = y + 16;
+    for (const row of rows) {
+      const barX = x + 42;
+      const barW = Math.max(40, w - 58);
+      ctx.fillStyle = '#aaa';
+      ctx.font = '10px monospace';
+      ctx.fillText(row.shortLabel, x, ly + 9);
+      ctx.fillStyle = '#242424';
+      ctx.fillRect(barX, ly, barW, 10);
+      ctx.fillStyle = row.score >= 4 ? okColor() : row.score >= 2 ? warnColor() : badColor();
+      ctx.fillRect(barX, ly, Math.round(barW * row.score / ETHICS_AXIS_MAX), 10);
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX, ly, barW, 10);
+      ctx.fillStyle = '#ccc';
+      ctx.textAlign = 'right';
+      ctx.fillText(String(row.score), x + w, ly + 9);
+      ctx.textAlign = 'left';
+      ly += 14;
+    }
+    return ly + 4;
   }
   function drawDashboard() {
     ctx.fillStyle = '#000';
@@ -3703,7 +4235,7 @@
         ctx.textAlign = 'right'; ctx.fillText(val, x + w - 14, ly); ctx.textAlign = 'left';
         ly += 24;
       };
-      line('진행', sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`);
+      line('진행', sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`);
       line('푼 문제', `${s.attempted}개`);
       line('정답률', s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—',
         s.attempted ? (s.overallRate >= 0.8 ? okColor() : s.overallRate >= 0.6 ? warnColor() : badColor()) : '#888');
@@ -3711,6 +4243,7 @@
       line('도전과제', `${countAchievements(i)}/${ACHIEVEMENTS.length}`);
       line('안아준 마음', `♥ ${sum.mercy}`);
       line('연속 출석', meta.streak ? `🔥 ${meta.streak}일` : '—');
+      ly = drawEthicsMiniBars(slotFlags(i), x + 14, ly + 4, w - 28);
       // 약점 주제
       ctx.fillStyle = '#999'; ctx.font = '12px monospace';
       ctx.fillText('더 살펴볼 주제', x + 14, ly); ly += 18;
@@ -3743,7 +4276,7 @@
   // ---------- 수업 모드 (스테이지 점프) ----------
   // 선생님이 오늘 수업할 스테이지부터 바로 시작하게 해 준다.
   // 지금 슬롯의 진행을 "N스테이지 시작" 상태로 맞춘다(이전 스테이지는 모두 완료 처리).
-  const STAGE_COUNT = 10;
+  const STAGE_COUNT = 5;
   // 목표 스테이지 시작 상태의 flags를 만든다. (1스테이지 = 거의 새 모험)
   function setupStageFlags(target) {
     target = Math.max(1, Math.min(STAGE_COUNT, target | 0));
@@ -3755,6 +4288,15 @@
       for (const id of Object.keys(flags.defeated)) {
         const dx = MONSTER_DEX[id];
         if (dx && dx.stage >= 1 && dx.stage < target) flags.defeated[id] = true;
+      }
+      for (const [puzzleId, puzzle] of Object.entries(STAGE_PUZZLES)) {
+        if (puzzle.stage >= target) continue;
+        const progress = flags.puzzles[puzzleId];
+        if (!progress) continue;
+        for (const clue of puzzle.clues) progress.clues[clue.id] = clue.correctDoor;
+        progress.complete = true;
+        progress.rewarded = true;
+        flags.ethics = addEthicsScore(flags.ethics, puzzle.axis, 3);
       }
     }
     return flags;
@@ -3803,6 +4345,7 @@
     if (cm.confirm) {
       if (justPressed('action')) {
         applyStageJump(cm.sel);
+        cm.ret = 'world';
         cm.confirm = false;
         cm.toast = 90;
         Sound.badge();
@@ -3817,18 +4360,14 @@
     if (justPressed('cancel') || justPressed('menu')) { closeClassMode(); }
   }
   // 스테이지별 한 줄 소개(선생님이 고르기 쉽게)
-  const STAGE_BLURB = {
-    1: '개인정보 · 저작권 · 가짜정보 · 공정함 · 절제',
-    2: '고운 말 · 필터버블 · 사람 확인 · 소문 · 경청',
-    3: '환경 · 투명성 · 책임 · 절약 · 정직',
-    4: '창의성 · 일자리 협력 · AI와 사람의 관계',
-    5: '1~4스테이지 종합 · 어둠대왕몬',
-    6: '계정 보안 · 디지털 발자국',
-    7: '데이터 수집과 동의',
-    8: 'AI 필터 · 사칭 · 신원',
-    9: '다크패턴 · 설득 · 외로움',
-    10: '심층부 종합 · 존재의 가치',
-  };
+  function stageBlurb(stage) {
+    const theme = STAGE_THEMES.find((item) => item.stage === stage);
+    return theme ? `${theme.name} · ${ETHICS_LABELS[theme.axis]}` : '종합 복습';
+  }
+  function stageLessonLine(stage) {
+    const theme = STAGE_THEMES.find((item) => item.stage === stage);
+    return theme ? theme.lesson : '';
+  }
   function drawClassMode() {
     const cm = game.classmode;
     ctx.fillStyle = '#000';
@@ -3851,10 +4390,13 @@
     ctx.fillText(`/ ${STAGE_COUNT} 스테이지`, LW / 2, 210);
     ctx.fillStyle = '#fff';
     ctx.font = '15px monospace';
-    ctx.fillText(STAGE_BLURB[cm.sel] || '', LW / 2, 250);
+    ctx.fillText(stageBlurb(cm.sel), LW / 2, 250);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '13px monospace';
+    ctx.fillText(stageLessonLine(cm.sel), LW / 2, 274);
     ctx.fillStyle = '#666';
     ctx.font = '13px monospace';
-    ctx.fillText('◀ ▶ 스테이지 고르기', LW / 2, 286);
+    ctx.fillText('◀ ▶ 스테이지 고르기', LW / 2, 306);
 
     if (cm.toast > 0) {
       ctx.fillStyle = okColor();
@@ -3902,6 +4444,31 @@
   };
   function topicSession(t) { return TOPIC_SESSION[t] || '종합 복습 (퀴즈 챌린지)'; }
 
+  function classPuzzleRiskSummary() {
+    const rows = {};
+    for (let slot = 0; slot < SLOT_COUNT; slot++) {
+      const save = loadSlot(slot);
+      if (!save || !save.flags) continue;
+      for (const [puzzleId, puzzle] of Object.entries(STAGE_PUZZLES)) {
+        const info = puzzleProgressInfo(save.flags, puzzleId);
+        if (!info) continue;
+        for (const attempt of info.riskyAttempts) {
+          const key = puzzle.axis + ':' + attempt.clueId + ':' + attempt.doorId;
+          if (!rows[key]) {
+            rows[key] = {
+              axis: puzzle.axis,
+              label: attempt.clueLabel || attempt.clueId,
+              picked: attempt.doorLabel || attempt.doorId,
+              count: 0,
+            };
+          }
+          rows[key].count++;
+        }
+      }
+    }
+    return Object.values(rows).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }
+
   // 슬롯의 학습 데이터를 분석해, 약점 주제 → 추천 차시로 매칭한 진단을 만든다.
   function buildDiagnosticReport(slot) {
     if (slot == null) slot = activeSlot();
@@ -3915,6 +4482,8 @@
     for (const r of recommendations) if (!sessions.includes(r.session)) sessions.push(r.session);
     const pct = (r) => Math.round(r * 100) + '%';
     let date = ''; try { date = new Date().toLocaleDateString('ko-KR'); } catch (e) {}
+    const slotSave = loadSlot(slot);
+    const flags = slotSave && slotSave.flags;
     const lines = [];
     lines.push('[AI 윤리 어드벤처 — 학생 진단 리포트]');
     if (date) lines.push('날짜: ' + date);
@@ -3923,7 +4492,7 @@
       return { empty: true, name: '', recommendations: [], sessions: [], text: lines.join('\n') };
     }
     lines.push('이름: ' + slotLearnName(slot));
-    lines.push('진행: ' + (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`));
+    lines.push('진행: ' + (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`));
     lines.push(`푼 문제: ${s.attempted}개 · 정답률 ${s.attempted ? pct(s.overallRate) : '—'} · 복습 노트 ${mistakeCount(slot)}개`);
     lines.push('──────────────────────');
     if (recommendations.length === 0) {
@@ -3937,6 +4506,10 @@
       lines.push('');
       lines.push('추천 수업: ' + sessions.join(', '));
     }
+    lines.push('');
+    lines.push(stageNpcReactionLine(flags, sum.stage));
+    lines.push('──────────────────────');
+    lines.push(...puzzleChoiceReportLines(flags));
     return { empty: false, name: slotLearnName(slot), recommendations, sessions, text: lines.join('\n') };
   }
   // 반 전체(세 슬롯) 공통 약점을 집계해 우선 수업을 제안한다.
@@ -3974,7 +4547,27 @@
       lines.push('');
       lines.push('우선 추천 수업: ' + sessions.slice(0, 3).join(', '));
     }
-    return { students, common, sessions, text: lines.join('\n') };
+    const heatmap = students > 0 ? buildClassEthicsHeatmap() : [];
+    if (students > 0) {
+      lines.push('');
+      lines.push('5개 윤리 축 반 평균:');
+      for (const row of heatmap) {
+        const mark = row.avg >= 4 ? '강점' : row.avg >= 2 ? '보강' : '우선';
+        lines.push(`  · ${row.label}: ${row.avg.toFixed(1)}/${ETHICS_AXIS_MAX} (${mark})`);
+      }
+      const risks = classPuzzleRiskSummary();
+      lines.push('');
+      lines.push('퍼즐 위험 선택 집계:');
+      if (risks.length === 0) {
+        lines.push('  · 아직 반복된 위험 선택이 없어요.');
+      } else {
+        for (const risk of risks.slice(0, 6)) {
+          lines.push(`  · ${ETHICS_LABELS[risk.axis]} — ${risk.label} → ${risk.picked}: ${risk.count}명`);
+        }
+        lines.push('토론 질문: 가장 많이 나온 위험 선택은 어떤 단서를 놓쳤기 때문일까?');
+      }
+    }
+    return { students, common, sessions, heatmap, text: lines.join('\n') };
   }
   // 텍스트를 파일로 내려받는다(진단 리포트 인쇄·보관용).
   function downloadTextFile(text, filename) {
@@ -4015,7 +4608,7 @@
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff'; ctx.font = 'bold 22px monospace';
-    ctx.fillText('🩺 학생 진단 리포트', 24, 38);
+    ctx.fillText('학생 진단 리포트', 24, 38);
     const isClass = r.slot >= SLOT_COUNT;
     ctx.fillStyle = '#888'; ctx.font = '12px monospace';
     ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, 24, 58);
@@ -4025,12 +4618,13 @@
     const lines = rep.text.split('\n');
     for (const ln of lines) {
       if (ln.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = 'bold 15px monospace'; }
+      else if (ln.startsWith('퍼즐 선택 기록') || ln.startsWith('NPC 반응')) { ctx.fillStyle = themeAccent(); ctx.font = 'bold 13px monospace'; }
       else if (ln.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = '13px monospace'; }
       else if (ln.startsWith('추천 수업') || ln.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = 'bold 13px monospace'; }
       else if (ln.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = '13px monospace'; }
       else { ctx.fillStyle = '#ddd'; ctx.font = '13px monospace'; }
       ctx.fillText(ln, 28, y);
-      y += 22;
+      y += lines.length > 18 ? 20 : 22;
     }
 
     ctx.textAlign = 'center';
@@ -4253,6 +4847,103 @@
     return { cx, cy };
   }
 
+  function drawPuzzleMapEffects(mapId, cx, cy) {
+    const entries = Object.entries(STAGE_PUZZLES).filter((entry) => entry[1].map === mapId);
+    if (!entries.length) return;
+    for (const [puzzleId] of entries) {
+      const info = puzzleProgressInfo(game.flags, puzzleId);
+      if (!info || info.answered === 0) continue;
+      const pulse = 0.7 + Math.sin(game.time / 18) * 0.2;
+      for (const choice of info.choices) {
+        if (!choice.answered) continue;
+        const x = Math.round(choice.clue.x * TS - cx);
+        const y = Math.round(choice.clue.y * TS - cy);
+        if (x < -TS || y < -TS || x > LW + TS || y > LH + TS) continue;
+        const ok = choice.correct;
+        ctx.save();
+        ctx.globalAlpha = ok ? pulse : 0.82;
+        ctx.fillStyle = ok ? 'rgba(98, 255, 188, 0.30)' : 'rgba(255, 86, 84, 0.34)';
+        ctx.fillRect(x + 4, y + 4, TS - 8, TS - 8);
+        ctx.strokeStyle = ok ? '#8affd2' : '#ff756f';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 3.5, y + 3.5, TS - 7, TS - 7);
+        ctx.globalAlpha = 1;
+        ctx.font = 'bold 15px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = ok ? '#e6ff8a' : '#ffd6d1';
+        ctx.fillText(ok ? 'OK' : '!', x + TS / 2, y + TS / 2 + 5);
+        ctx.restore();
+      }
+      if (isStagePuzzleComplete(game.flags.puzzles, puzzleId)) continue;
+      const first = info.choices.find((item) => item.answered);
+      if (!first) continue;
+      const bx = Math.round(first.clue.x * TS - cx + TS / 2);
+      const by = Math.round(first.clue.y * TS - cy - 7);
+      if (bx < 20 || by < 18 || bx > LW - 20 || by > LH - 18) continue;
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#101621';
+      ctx.strokeStyle = '#8affd2';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(bx, by, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#dfffea';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${info.solved}/${info.total}`, bx, by + 3);
+      ctx.restore();
+    }
+    ctx.textAlign = 'left';
+  }
+
+  function drawActivePuzzlePads(cx, cy) {
+    if (!game.puzzle || !game.puzzle.carrying) return;
+    const current = currentPuzzleClue();
+    if (!current || current.puzzle.map !== game.map) return;
+    const pads = puzzleDoorPads(game.puzzle.puzzleId, game.puzzle.clueId);
+    for (const pad of pads) {
+      const x = Math.round(pad.x * TS - cx);
+      const y = Math.round(pad.y * TS - cy);
+      if (x < -TS || y < -TS || x > LW + TS || y > LH + TS) continue;
+      const bob = Math.round(Math.sin(game.time / 12 + pad.index) * 2);
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = pad.door.id === current.clue.correctDoor ? 'rgba(138, 255, 210, 0.38)' : 'rgba(255, 214, 68, 0.28)';
+      ctx.fillRect(x + 3, y + 3 + bob, TS - 6, TS - 6);
+      ctx.strokeStyle = pad.door.id === current.clue.correctDoor ? '#8affd2' : '#ffd644';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 3.5, y + 3.5 + bob, TS - 7, TS - 7);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(pad.index + 1), x + TS / 2, y + 17 + bob);
+      ctx.font = 'bold 9px monospace';
+      ctx.fillText(pad.door.label.slice(0, 5), x + TS / 2, y + TS - 8 + bob);
+      ctx.restore();
+    }
+    const clue = current.clue;
+    const cx0 = Math.round(clue.x * TS - cx + TS / 2);
+    const cy0 = Math.round(clue.y * TS - cy - 8);
+    if (cx0 > 10 && cy0 > 10 && cx0 < LW - 10 && cy0 < LH - 10) {
+      ctx.save();
+      ctx.fillStyle = '#101621';
+      ctx.strokeStyle = '#ffd644';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx0, cy0, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffd644';
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('◆', cx0, cy0 + 5);
+      ctx.restore();
+    }
+    ctx.textAlign = 'left';
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
@@ -4269,6 +4960,8 @@
         ctx.drawImage(tileCanvas(ch, frame), Math.round(x * TS - cx), Math.round(y * TS - cy));
       }
     }
+    drawPuzzleMapEffects(game.map, cx, cy);
+    drawActivePuzzlePads(cx, cy);
 
     // NPC
     for (const npc of m.npcs) {
@@ -4454,7 +5147,7 @@
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
     ctx.font = 'bold 14px monospace';
-    const title = `STAGE ${getStage(game.flags)}/10 · ${m.name}`;
+    const title = `STAGE ${getStage(game.flags)}/5 · ${m.name}`;
     const obj = `목표: ${getObjective(game.flags)}`;
     const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
     utBox(8, 8, w, 52, 4);
@@ -4483,10 +5176,16 @@
       ctx.fillText(`♥ ${game.flags.mercy}`, LW - 184, 31);
     }
 
+    const pieces = completedStagePuzzleCount(game.flags);
+    utBox(LW - 196, 46, 188, 30, 4);
+    ctx.fillStyle = pieces >= Object.keys(STAGE_PUZZLES).length ? okColor() : '#ffd644';
+    ctx.font = 'bold 13px monospace';
+    ctx.fillText(`윤리 조각 ${pieces}/${Object.keys(STAGE_PUZZLES).length}`, LW - 184, 65);
+
     if (Sound.muted) {
       ctx.fillStyle = '#aaa';
       ctx.font = '12px monospace';
-      ctx.fillText('♪ 꺼짐(M)', LW - 110, 56);
+      ctx.fillText('♪ 꺼짐(M)', LW - 110, 92);
     }
   }
 
@@ -4581,6 +5280,44 @@
     return n * lineH;
   }
 
+  function drawPuzzle() {
+    drawWorld();
+    const current = currentPuzzleClue();
+    if (!current) return;
+    const { puzzle, clue } = current;
+    const boxX = 48, boxY = 120, boxW = LW - 96, boxH = 230;
+    utBox(boxX, boxY, boxW, boxH, 8);
+    ctx.fillStyle = '#ffd644';
+    ctx.font = fs(18, true);
+    ctx.fillText(puzzle.title || '맵 조작 퍼즐', boxX + 28, boxY + 38);
+    ctx.fillStyle = '#fff';
+    ctx.font = fs(16, true);
+    ctx.fillText(clue.label, boxX + 28, boxY + 72);
+    ctx.fillStyle = '#ccc';
+    ctx.font = fs(15);
+    const textY = drawQuestionText(clue.text, boxX + 28, boxY + 104, boxW - 56, lh(22)) + lh(14);
+    ctx.fillStyle = '#8a94c8';
+    ctx.font = fs(14);
+    ctx.fillText(puzzle.prompt || '이 단서를 어느 문으로 보낼까?', boxX + 28, textY);
+    const progress = normalizePuzzles(game.flags.puzzles)[game.puzzle.puzzleId];
+    const solved = puzzle.clues.filter((item) => progress.clues[item.id] === item.correctDoor).length;
+    ctx.textAlign = 'right';
+    ctx.fillStyle = solved === puzzle.clues.length ? okColor() : '#ffd644';
+    ctx.font = fs(13, true);
+    ctx.fillText(`단서 ${solved}/${puzzle.clues.length}`, boxX + boxW - 28, textY);
+    ctx.textAlign = 'left';
+    const pads = puzzleDoorPads(game.puzzle.puzzleId, game.puzzle.clueId);
+    const labels = pads.map((pad) => `${pad.index + 1}:${pad.door.label}`).join('  ');
+    ctx.fillStyle = '#ddd';
+    ctx.font = fs(14);
+    ctx.fillText('닫으면 월드 지도에 발판이 보입니다.', boxX + 28, boxY + boxH - 68);
+    ctx.fillStyle = '#ffd644';
+    ctx.fillText(labels, boxX + 28, boxY + boxH - 44);
+    ctx.fillStyle = '#888';
+    ctx.font = fs(13);
+    ctx.fillText('Z/X: 지도로 돌아가기', boxX + 28, boxY + boxH - 20);
+  }
+
   function drawBattle() {
     const b = game.battle;
     ctx.fillStyle = '#000';
@@ -4643,6 +5380,15 @@
       ctx.fillText('♥', 40 + i * 32, 132);
     }
 
+    const progressX = 286;
+    utBox(progressX, 24, 176, 64, 6);
+    ctx.fillStyle = '#888';
+    ctx.font = '12px monospace';
+    ctx.fillText(`문제 ${Math.max(1, b.qIdx + 1)}`, progressX + 16, 49);
+    ctx.fillStyle = (b.combo || 0) >= 3 ? okColor() : warnColor();
+    ctx.font = 'bold 13px monospace';
+    ctx.fillText(`연속 정답 ${b.combo || 0}`, progressX + 16, 70);
+
     // 빨간 플래시 (틀렸을 때/맞았을 때) — 화면 효과 줄이기에선 훨씬 옅게(광과민성 배려)
     if (b.flash > 0) {
       ctx.fillStyle = `rgba(224,69,58,${b.flash / (game.reduceFx ? 140 : 40)})`;
@@ -4665,6 +5411,12 @@
       for (let i = 0; i < order.length; i++) cl += measureWrap(`${i + 1}. ${q.a[order[i]]}`, cMaxW);
       const needed = 30 + measureWrap(q.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + order.length * gap + 16;
       boxH = Math.min(Math.max(boxH, needed), LH - 150 - 12); // 하트 HUD(150) 아래까지만
+    } else if (b.phase === 'feedback' && b.feedback) {
+      const needed = 104 + measureWrap(b.feedback.why, LW - 24 - 44) * lh(24)
+        + (b.feedback.ethicsLine ? measureWrap(b.feedback.ethicsLine, LW - 24 - 44) * lh(20) + lh(6) : 0)
+        + (b.feedback.reflectionPrompt ? measureWrap(b.feedback.reflectionPrompt, LW - 24 - 44) * lh(22) + lh(8) : 0)
+        + 34;
+      boxH = Math.min(Math.max(boxH, needed), LH - 150 - 12);
     }
     const boxY = LH - boxH - 12;
     const hintY = boxY + boxH - 18;
@@ -4705,10 +5457,21 @@
       const f = b.feedback;
       ctx.font = fs(22, true);
       ctx.fillStyle = f.correct ? okColor() : badColor();
-      ctx.fillText(f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.', 34, boxY + 38);
+      const comboText = f.correct && f.combo >= 2 ? ` · 연속 ${f.combo}` : '';
+      ctx.fillText((f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.') + comboText, 34, boxY + 38);
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
-      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24));
+      let promptY = drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24)) + lh(10);
+      if (f.ethicsLine) {
+        ctx.fillStyle = warnColor();
+        ctx.font = fs(13, true);
+        promptY = drawQuestionText(f.ethicsLine, 34, promptY, LW - 24 - 44, lh(20)) + lh(8);
+      }
+      if (f.reflectionPrompt) {
+        ctx.fillStyle = '#ffd644';
+        ctx.font = fs(14, true);
+        drawQuestionText(f.reflectionPrompt, 34, promptY, LW - 24 - 44, lh(22));
+      }
       if (Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
@@ -4812,7 +5575,7 @@
     ctx.fillText('AI 윤리 어드벤처', LW / 2, 86);
     ctx.fillStyle = '#888';
     ctx.font = '15px monospace';
-    ctx.fillText('10개의 스테이지 끝에서, 잊혀진 이야기와 만나라', LW / 2, 114);
+    ctx.fillText('5개의 윤리 스테이지에서, 선택의 흔적을 배운다', LW / 2, 114);
 
     // 몬스터들 둥실둥실 (한 줄)
     const parade = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'hollimmon', 'mirrormon', 'soksagimon', 'yeongi'];
@@ -4840,15 +5603,17 @@
       ctx.font = 'bold 13px monospace';
       ctx.fillText(`슬롯 ${i + 1}`, boxX + 18, y + 22);
       if (sum) {
+        const flags = slotFlags(i);
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 19px monospace';
         ctx.fillText(sum.name, boxX + 18, y + 46);
         ctx.fillStyle = '#888';
         ctx.font = '13px monospace';
-        const prog = sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`;
+        const prog = sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`;
         const streak = getMeta(i).streak || 0;
+        const pieces = completedStagePuzzleCount(flags);
         ctx.textAlign = 'right';
-        ctx.fillText(`${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);
+        ctx.fillText(`${prog}   조각 ${pieces}/5   ♥ ${sum.mercy}${streak ? '   연속 ' + streak + '일' : ''}`, boxX + boxW - 18, y + 40);
         ctx.textAlign = 'left';
       } else {
         ctx.fillStyle = '#555';
@@ -4865,13 +5630,13 @@
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
-    const seenCount = ['home', 'dawn', 'farewell', 'silent'].filter((k) => seen[k]).length;
-    const names = { home: '집으로', dawn: '새벽', farewell: '작별', silent: '침묵' };
-    const found = ['home', 'dawn', 'farewell', 'silent']
+    const seenCount = ENDING_IDS.filter((k) => seen[k]).length;
+    const names = { home: '집으로', dawn: '새벽', farewell: '작별', blackbox: '검은상자', silent: '침묵' };
+    const found = ENDING_IDS
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
     ctx.fillStyle = '#e0453a';
     ctx.font = '13px monospace';
-    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   도감 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 500);
+    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/${ENDING_IDS.length} — ${found}   ·   도감 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 500);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
     if (!storageOk) {
@@ -4958,6 +5723,8 @@
     game.flags = Object.assign(newFlags(), s.flags);
     game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
     game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
+    game.flags.ethics = normalizeEthics(s.flags.ethics);
+    game.flags.puzzles = normalizePuzzles(s.flags.puzzles);
     game.mode = 'world';
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
@@ -5097,6 +5864,22 @@
             '',
             '…어쩌면, 다른 결말도 있었을지 모른다.',
             '몬스터들의 마음을 더 많이 안아 주었다면.',
+          ],
+          yeongi: false,
+        },
+        blackbox: {
+          title: '엔딩 — 검은상자',
+          color: '#8d80c8',
+          lines: [
+            '코어는 다시 움직이기 시작했다.',
+            '하지만 왜 그런 답을 냈는지,',
+            '아무도 끝까지 설명하지 못했다.',
+            '',
+            '빠른 길은 열렸지만,',
+            '놓친 동의와 한쪽으로 기운 관점,',
+            '확인하지 않은 신호가 검은 화면에 남았다.',
+            '',
+            '…AI를 믿기 전에, 무엇을 더 물어야 했을까?',
           ],
           yeongi: false,
         },
@@ -5263,6 +6046,10 @@
         updateDialog();
         drawWorld();
         if (game.dialog) drawDialog();
+        break;
+      case 'puzzle':
+        updatePuzzle();
+        drawPuzzle();
         break;
       case 'battle':
         updateBattle();
@@ -5434,6 +6221,11 @@
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
     buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
-  };
+	    buildClassEthicsHeatmap, ethicsAxisRows, completedStagePuzzleCount,
+	    challengeNextStep, ethicsSummaryLine, ethicsGoalLine, nextPuzzleGoal, slotNextGoalLine,
+	    topicEthicsLine, ethicsAxisLine, puzzleProgressInfo, puzzleMapEffectLine,
+	    puzzleChoiceReportLines, stageNpcReactionLine, classPuzzleRiskSummary, puzzleDoorPads,
+	    stageBlurb, stageLessonLine, battleRewardLines, slotFlags,
+	  };
   frame();
 })();

@@ -8,10 +8,14 @@
     "test": "node tools/smoketest.js && node tools/slottest.js",
     "test:browser": "node tools/browser-smoketest.js",
     "test:pack": "npm run pack && node tools/packtest.js",
+    "test:release-docs": "node tools/release-docs-test.js",
+    "test:release-gate": "node tools/release-gate-test.js",
     "shots": "node tools/shots.js",
     "icons": "node tools/icons.js",
     "docs": "node tools/quizlist.js",
-    "pack": "node tools/pack.js"
+    "pack": "node tools/pack.js",
+    "audit:lighthouse": "node tools/lighthouse-audit.js",
+    "release:gate": "node tools/release-gate.js"
   },
   "devDependencies": {
     "canvas": "^3.2.3"

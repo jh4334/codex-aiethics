@@ -1,6 +1,7 @@
 node_modules/
 .claude/
 .superpowers/
+.omo/
 ai-ethics-adventure-offline.zip
 
 # ouroboros 런타임 산출물(이벤트 DB·세션)은 추적하지 않고, 기계적 게이트 설정만 커밋

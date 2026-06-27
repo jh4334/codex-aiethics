@@ -33,6 +33,14 @@ const seedFlags = {
   defeated: { hondonmon: true, meotdaeromon: true, tteonemgimon: true,
     bekkyeomon: true, mollaemon: true, jungdokmon: true, geojitmon: true, pyeonhyangmon: true,
     akpeulmon: true, gatimmon: true, pungpungmon: true, kkamkkammon: true },
+  ethics: { privacy: 6, perspective: 4, fairness: 2, verification: 5, responsibility: 3 },
+  puzzles: {
+    data_footprint_forest: { clues: { photo_name_tag: 'needs_consent', home_location: 'do_not_share', favorite_color: 'share_ok' }, complete: true, rewarded: true },
+    filter_bubble_maze: { clues: { class_chat_same: 'same_view', opposing_comment: 'opposite_view', evidence_report: 'evidence_view' }, complete: true, rewarded: true },
+    bias_court: { clues: { age_sample: 'representative_evidence', region_sample: 'representative_evidence', device_access: 'representative_evidence', language_sample: 'representative_evidence' }, complete: true, rewarded: true },
+    deepfake_station: { clues: {}, complete: false, rewarded: false },
+    responsibility_core: { clues: {}, complete: false, rewarded: false },
+  },
   mercy: 14, visited: {}, trueEnding: false, correctCount: 52, battleCount: 16,
   endingId: null,
 };
@@ -41,7 +49,10 @@ storage.set('ai-ethics-adventure-slot-0', JSON.stringify({
 }));
 storage.set('ai-ethics-adventure-slot-1', JSON.stringify({
   name: '하늘', map: 'village', x: 13, y: 16,
-  flags: { badges: {}, defeated: {}, mercy: 2, visited: {} }, updatedAt: Date.now(),
+  flags: {
+    badges: {}, defeated: {}, mercy: 2, visited: {},
+    ethics: { privacy: 2, perspective: 3, fairness: 1, verification: 4, responsibility: 1 },
+  }, updatedAt: Date.now(),
 }));
 storage.set('ai-ethics-adventure-endings', JSON.stringify({ farewell: true, silent: true }));
 // 도감 22/28 수집 상태 (로드 전에 심어야 타이틀에도 반영)
@@ -78,8 +89,9 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 }
 const g = windowObj.__game;
-const { QUIZZES, MONSTERS, BOSS_ATTACKS, DEX_ORDER } =
-  vm.runInContext('({QUIZZES,MONSTERS,BOSS_ATTACKS,DEX_ORDER})', sandbox);
+const TR = windowObj.__test;
+const { QUIZZES, MONSTERS, BOSS_ATTACKS, DEX_ORDER, STAGE_PUZZLES } =
+  vm.runInContext('({QUIZZES,MONSTERS,BOSS_ATTACKS,DEX_ORDER,STAGE_PUZZLES})', sandbox);
 
 function step(n = 1) { for (let i = 0; i < n; i++) { const cb = rafCb; rafCb = null; cb(); } }
 function shot(name) {
@@ -248,6 +260,7 @@ storage.set('ai-ethics-adventure-meta-0', JSON.stringify({
 }));
 g.mode = 'dashboard';
 g.dashboard = { ret: 'title', cursor: 0 };
+g.currentSlot = 2;
 g.time = 20;
 shot('17-dashboard.png');
 
@@ -293,4 +306,142 @@ g.report = { ret: 'title', slot: 0, toast: 0 };
 g.time = 20;
 shot('23-report.png');
 
-console.log('완료. shots/ 폴더에 23장 생성.');
+g.mode = 'world';
+g.map = 'forest';
+g.flags.defeated.hondonmon = false;
+g.flags.puzzles = g.flags.puzzles || {};
+g.flags.puzzles.data_footprint_forest = {
+  clues: { photo_name_tag: 'needs_consent' },
+  complete: false,
+  rewarded: false,
+};
+g.puzzle = { puzzleId: 'data_footprint_forest', clueId: 'home_location', carrying: true, ret: 'world' };
+setPlayer(STAGE_PUZZLES.data_footprint_forest.clues[1].stand.x, STAGE_PUZZLES.data_footprint_forest.clues[1].stand.y, 'up');
+g.time = 22;
+shot('24-puzzle-progress.png');
+
+g.mode = 'battle';
+g.battle = makeBattle('mollaemon', 'feedback');
+g.battle.feedback = {
+  correct: false,
+  why: '사진과 이름표는 친구의 개인정보를 드러낼 수 있어요.',
+  reflectionPrompt: '생각 질문: 개인정보 보호에서 무엇을 먼저 확인했어야 할까?',
+};
+g.time = 24;
+shot('25-feedback-reflection.png');
+
+g.mode = 'dialog';
+g.dialog = {
+  lines: [
+    '[마지막 회고]',
+    '마지막 선택: 손을 내밀기 · 이어질 결말: 집으로',
+    '윤리 이해도 88점 · 안아 준 마음 20/20',
+    '다섯 윤리 축이 고르게 연결되었어요.',
+  ],
+  idx: 1,
+  chars: 999,
+  speaker: '영이',
+  onEnd: null,
+};
+g.time = 20;
+shot('26-ending-reflection.png');
+
+g.mode = 'report';
+g.report = { ret: 'title', slot: 3, toast: 0 };
+g.time = 20;
+shot('27-class-report-heatmap.png');
+
+g.mode = 'battle';
+g.battle = makeBattle('mollaemon', 'feedback');
+g.battle.combo = 3;
+g.battle.bestCombo = 3;
+g.battle.feedback = {
+  correct: true,
+  why: '개인정보는 먼저 동의와 맥락을 확인해야 해요.',
+  reflectionPrompt: '',
+  combo: 3,
+};
+g.time = 24;
+shot('28-battle-combo.png');
+
+const challengeQuestion = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#shot' });
+g.mode = 'challenge';
+g.challenge = {
+  ret: 'title', slot: 0, phase: 'feedback', topics: [], sel: 0,
+  questions: [challengeQuestion], idx: 0, cursor: 1, choiceOrder: [0, 1, 2],
+  score: 0, feedback: {
+    correct: false,
+    why: '친구의 얼굴과 이름표가 함께 있으면 먼저 동의를 확인해야 해요.',
+    reflectionPrompt: '생각 질문: 개인정보 문제를 다음에 만나면 어떤 단서를 먼저 볼까?',
+    combo: 0,
+  },
+  combo: 0, bestCombo: 2,
+};
+g.time = 24;
+shot('29-challenge-reflection.png');
+
+g.mode = 'challenge';
+g.challenge = {
+  ret: 'title', slot: 0, phase: 'result', topics: [], sel: 0,
+  questions: Array.from({ length: 10 }, () => challengeQuestion), idx: 10, cursor: 0,
+  choiceOrder: [0, 1, 2], score: 6, feedback: null, combo: 0, bestCombo: 4,
+};
+g.time = 24;
+shot('30-challenge-next-step.png');
+
+g.mode = 'journal';
+g.journal = { ret: 'title', slot: 0, scroll: 0, toast: 0 };
+g.time = 24;
+shot('31-journal-ethics-summary.png');
+
+g.mode = 'classmode';
+g.classmode = { ret: 'title', sel: 4, confirm: false, toast: 0 };
+g.time = 24;
+shot('32-classmode-stage-theme.png');
+
+g.mode = 'title';
+g.titleScreen = 'slots';
+g.slotCursor = 0;
+g.time = 48;
+shot('33-title-puzzle-pieces.png');
+
+g.mode = 'world';
+g.map = 'fogswamp';
+g.flags = TR.setupStageFlags(2);
+g.flags.defeated.somunmon = true;
+g.flags.defeated.musimon = true;
+g.flags.puzzles.filter_bubble_maze = {
+  clues: {
+    class_chat_same: 'same_view',
+    opposing_comment: 'same_view',
+  },
+  attempts: [
+    { clueId: 'class_chat_same', clueLabel: '내 생각과 같은 교실 채팅', doorId: 'same_view', doorLabel: '같은 의견', correct: true },
+    { clueId: 'opposing_comment', clueLabel: '불편하지만 다른 댓글', doorId: 'same_view', doorLabel: '같은 의견', correct: false },
+  ],
+  complete: false,
+  rewarded: false,
+};
+g.puzzle = { puzzleId: 'filter_bubble_maze', clueId: 'evidence_report', carrying: true, ret: 'world' };
+setPlayer(17, 9, 'up');
+g.time = 42;
+shot('34-puzzle-map-effect.png');
+
+g.puzzle = null;
+storage.set('ai-ethics-adventure-slot-0', JSON.stringify({
+  name: '도도',
+  map: 'fogswamp',
+  x: 17,
+  y: 9,
+  flags: g.flags,
+  updatedAt: Date.now(),
+}));
+storage.delete('ai-ethics-adventure-stats-0');
+storage.delete('ai-ethics-adventure-mistakes-0');
+g.currentSlot = 0;
+g.mode = 'report';
+g.report = { ret: 'title', slot: 0, toast: 0 };
+g.time = 24;
+shot('35-puzzle-choice-report.png');
+
+console.log('완료. shots/ 폴더에 35장 생성.');
