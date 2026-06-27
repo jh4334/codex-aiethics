@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "validate": "node tools/validate.js",
-    "test": "node tools/smoketest.js && node tools/slottest.js",
+    "test:invariant": "node tools/puzzle-only-invariant.js",
+    "test": "npm run test:invariant && node tools/smoketest.js && node tools/slottest.js",
     "test:browser": "node tools/browser-smoketest.js",
     "test:pack": "npm run pack && node tools/packtest.js",
     "test:release-docs": "node tools/release-docs-test.js",
@@ -18,6 +19,6 @@
     "release:gate": "node tools/release-gate.js"
   },
   "devDependencies": {
-    "canvas": "^3.2.3"
+    "playwright": "^1.61.1"
   }
 }

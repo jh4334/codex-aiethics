@@ -56,7 +56,7 @@ printf 'https://<actual-deploy-host>/<actual-path>/\n' > reports/audits/deploy-u
 날짜: 2026-06-27
 확인자:
 기기/브라우저:
-확인 항목: 시작, 이동, 퍼즐, 배틀, 리포트, 오프라인 재접속
+확인 항목: 시작, 이동, 지도 퍼즐, 윤리 축 선택 기록, 리포트, 오프라인 재접속
 이슈:
 ```
 

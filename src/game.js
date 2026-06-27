@@ -36,7 +36,7 @@
 
   // ---------- 상태 ----------
   const game = {
-    mode: 'title', // title | world | dialog | battle | ending | dex | review | pause
+    mode: 'title', // title | world | dialog | puzzle | ending | review | pause
     map: 'village',
     player: {
       x: 13, y: 16,       // 타일 좌표
@@ -47,12 +47,10 @@
     },
     flags: null,
     dialog: null, // { lines, idx, chars, speaker, onEnd }
-    battle: null,
     puzzle: null,
     time: 0,
     titleCursor: 0,
     endingT: 0,
-    dex: { cursor: 0, ret: 'title' },
     review: { cursor: 0, ret: 'world', slot: 0, phase: 'list', ids: [], qCursor: 0, choiceOrder: null, feedback: null },
     journal: { ret: 'world', slot: 0, scroll: 0, toast: 0 },
     awards: { ret: 'world', slot: 0, scroll: 0 },
@@ -116,38 +114,39 @@
   function newFlags() {
     return {
       talkedProf: false,
-      badges: { forest: false, lake: false, cave: false },
-      defeated: {
-        bekkyeomon: false, mollaemon: false, jungdokmon: false,
-        geojitmon: false, pyeonhyangmon: false, hondonmon: false,
-        akpeulmon: false, gatimmon: false, meotdaeromon: false,
-        pungpungmon: false, kkamkkammon: false, tteonemgimon: false,
-        sideulmon: false, ppaeatmon: false, hollimmon: false,
-        maearimon: false, geurimjamon: false, finalboss: false,
-        tturimmon: false, girokmon: false, sujipmon: false,
-        saseomon: false, piltermon: false, mirrormon: false,
-        yuhokmon: false, soksagimon: false, jogakmon: false,
-        yeongi: false,
-        hwangakmon: false, hapseongmon: false, miraemon: false,
-        somunmon: false, musimon: false, nangbimon: false, pinggyemon: false,
-      },
-      mercy: 0,        // 마음을 안아준 횟수 (후일담 포함)
       ethics: emptyEthics(),
       puzzles: emptyPuzzles(),
       visited: {},     // 맵 인트로 연출 1회 표시용
       trueEnding: false,
       correctCount: 0,
-      battleCount: 0,
-      sawBattleTip: false, // 첫 전투 1회 안내 표시 여부
     };
   }
 
-  function awardEthicsForChoice(mon, kind) {
-    const amount = kind === 'mercy' ? 2 : kind === 'neutral' ? 1 : 0;
-    if (!amount) return;
-    let next = normalizeEthics(game.flags.ethics);
-    for (const axis of ethicsAxesForMonster(mon)) next = addEthicsScore(next, axis, amount);
-    game.flags.ethics = next;
+  function normalizeFlags(raw) {
+    const flags = newFlags();
+    if (!raw || typeof raw !== 'object') return flags;
+    flags.talkedProf = !!raw.talkedProf;
+    flags.ethics = normalizeEthics(raw.ethics);
+    flags.puzzles = normalizePuzzles(raw.puzzles);
+    flags.visited = raw.visited && typeof raw.visited === 'object' ? Object.assign({}, raw.visited) : {};
+    flags.trueEnding = !!raw.trueEnding;
+    flags.correctCount = Math.max(0, Number(raw.correctCount) || 0);
+    if (raw.endingId) flags.endingId = raw.endingId;
+    return flags;
+  }
+
+  function requiredPuzzleForMap(mapId) {
+    if (['tower', 'meadow', 'windhill', 'fogswamp', 'signaltower2'].includes(mapId)) return 'data_footprint_forest';
+    if (['desert', 'ruins', 'oasis', 'temple'].includes(mapId)) return 'filter_bubble_maze';
+    if (mapId === 'snow') return 'bias_court';
+    if (mapId === 'castle') return 'deepfake_station';
+    if (['serverroom', 'library', 'mirrors', 'garden', 'core'].includes(mapId)) return 'responsibility_core';
+    return null;
+  }
+
+  function mapAllowedForFlags(mapId, flags) {
+    const required = requiredPuzzleForMap(mapId);
+    return !required || isStagePuzzleComplete(flags && flags.puzzles, required);
   }
 
   function awardPuzzleEthics(puzzleId) {
@@ -183,12 +182,8 @@
     let old = null;
     try { const r = localStorage.getItem(SAVE_KEY); old = r ? JSON.parse(r) : null; } catch (e) { old = null; }
     if (old && old.flags && !loadSlot(0)) {
-      const flags = Object.assign(newFlags(), old.flags);
-      flags.badges = Object.assign({ forest: false, lake: false, cave: false }, old.flags.badges);
-      flags.defeated = Object.assign(newFlags().defeated, old.flags.defeated);
-      flags.ethics = normalizeEthics(old.flags.ethics);
-      flags.puzzles = normalizePuzzles(old.flags.puzzles);
-      writeSlot(0, { name: '수호자', map: old.map, x: old.x, y: old.y, flags, updatedAt: Date.now() });
+      const flags = normalizeFlags(old.flags);
+      writeSlot(0, { name: '수호자', map: 'village', x: 13, y: 16, flags, updatedAt: Date.now() });
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 무시 */ }
     }
   }
@@ -212,8 +207,7 @@
     return {
       name: sanitizeName(s.name),
       stage: getStage(s.flags),
-      mercy: s.flags.mercy || 0,
-      done: !!(s.flags.defeated && s.flags.defeated.yeongi),
+      done: completedStagePuzzleCount(s.flags) >= Object.keys(STAGE_PUZZLES).length,
       endingId: s.flags.endingId || null,
     };
   }
@@ -349,7 +343,7 @@
   // ---------- 학생(슬롯)별 학습 데이터 ----------
   // 일지·복습 노트·통계는 "이 슬롯을 쓰는 학생"의 개인 기록이다.
   // 슬롯마다 따로 누적되고, 슬롯을 지우면 함께 지워진다.
-  // (도감·발견 엔딩은 기기 공용 컬렉션으로 그대로 둔다.)
+  // 발견 엔딩은 기기 공용 컬렉션으로 그대로 둔다.
   function activeSlot() {
     // 타이틀에서는 커서가 가리키는 슬롯, 플레이 중에는 진행 중인 슬롯
     return game.mode === 'title' ? game.slotCursor : game.currentSlot;
@@ -361,7 +355,7 @@
     return '수호자';
   }
   function liveSlotMode() {
-    return ['world', 'dialog', 'battle', 'puzzle', 'ending', 'pause', 'classmode'].includes(game.mode);
+    return ['world', 'dialog', 'puzzle', 'ending', 'pause', 'classmode'].includes(game.mode);
   }
   function slotFlags(slot) {
     if (slot === game.currentSlot && game.flags && liveSlotMode()) return game.flags;
@@ -414,12 +408,6 @@
   };
   function axisShort(axis) { return ETHICS_SHORT_LABELS[axis] || ETHICS_LABELS[axis] || axis; }
   function endingTitle(id) { return ENDING_TITLES[id] || id || '미발견'; }
-  function endingChoiceLabel(kind) {
-    if (kind === 'mercy') return '손을 내밀기';
-    if (kind === 'neutral') return '스스로 결정하게 하기';
-    if (kind === 'harsh') return '차갑게 보내기';
-    return '마지막 선택 없음';
-  }
   function ethicsAxisRows(flags) {
     const ethics = normalizeEthics(flags && flags.ethics);
     return ETHICS_AXES.map((axis) => {
@@ -524,9 +512,6 @@
     if (effect) return `NPC 반응: ${effect}. 단서를 하나 더 확인해 보세요.`;
     return `NPC 반응: ${theme.name}에서 첫 단서를 찾아 보세요.`;
   }
-  function battleReflectionPrompt(topic) {
-    return `생각 질문: ${topicLabel(topic)}에서 무엇을 먼저 확인했어야 할까?`;
-  }
   function challengeReflectionPrompt(topic) {
     return `생각 질문: ${topicLabel(topic)} 문제를 다음에 만나면 어떤 단서를 먼저 볼까?`;
   }
@@ -538,15 +523,6 @@
     const picked = choice && choice.label ? choice.label : '이 선택';
     const answer = right && right.label ? right.label : '바른 선택';
     return `생각 질문: ${ETHICS_LABELS[puzzle.axis]} 관점에서 왜 '${picked}'보다 '${answer}'에 가까울까?`;
-  }
-  function battleRewardLines(mon, choiceKind) {
-    if (!mon || !mon.mercy) return [];
-    const axes = ethicsAxesForMonster(mon).map(axisShort);
-    const amount = choiceKind === 'mercy' ? 2 : choiceKind === 'neutral' ? 1 : 0;
-    const lines = [`[선택의 흔적] ${endingChoiceLabel(choiceKind)} · ${axes.join(', ') || '윤리'} ${amount ? '+' + amount : '+0'}`];
-    if (amount > 0) lines.push('마음으로 고른 선택이 윤리 축에 남았어요.');
-    else lines.push('차가운 선택도 기록됩니다. 다음 결말에서 다시 생각해 볼 수 있어요.');
-    return lines;
   }
   function ethicsSummaryLine(flags) {
     const pieces = completedStagePuzzleCount(flags);
@@ -579,24 +555,6 @@
     if (summary.weak.length) return `다음: 맞춤 학습에서 ${summary.weak.slice(0, 2).join(', ')}을 다시 살펴보세요.`;
     if (rate >= 0.7) return '다음: 틀린 문제를 복습 노트에서 한 번만 더 풀어 보세요.';
     return '다음: 복습 노트로 해설을 읽고, 같은 주제를 다시 도전해 보세요.';
-  }
-  function buildEndingReflectionLines(choiceKind, mercy, ethics, endingId) {
-    const rows = ethicsAxisRows({ ethics });
-    const weak = rows.filter((row) => row.score < 4).map((row) => row.shortLabel);
-    const score = computeEthicsScore(ethics);
-    const lines = [
-      '[마지막 회고]',
-      `마지막 선택: ${endingChoiceLabel(choiceKind)} · 이어질 결말: ${endingTitle(endingId)}`,
-      `윤리 이해도 ${score}점 · 안아 준 마음 ${Math.max(0, Number(mercy) || 0)}/20`,
-    ];
-    if (weak.length) {
-      lines.push('더 물어볼 윤리 축: ' + weak.join(', '));
-      lines.push('결말을 보기 전, 어떤 질문을 놓쳤는지 한 번 말해 보자.');
-    } else {
-      lines.push('다섯 윤리 축이 고르게 연결되었어요.');
-      lines.push('이제 선택의 결과가 어떤 결말로 이어지는지 확인해 보자.');
-    }
-    return lines;
   }
   function getStats(slot) {
     try { return JSON.parse(localStorage.getItem(statsKey(slot))) || {}; }
@@ -854,9 +812,9 @@
   }
   const TITLES = [
     { id: 'rookie', name: '새내기 수호자', desc: '모험을 시작한 모두에게', check: () => true },
-    { id: 'kind', name: '따뜻한 마음', desc: '마음을 5번 안아 주기', check: (c) => c.mercy >= 5 },
+    { id: 'kind', name: '따뜻한 탐구자', desc: '윤리 조각 2개 모으기', check: (c) => c.puzzlePieces >= 2 },
     { id: 'scholar', name: '공부벌레', desc: '문제 50개 이상 풀기', check: (c) => c.attempted >= 50 },
-    { id: 'collector', name: '도감 수집가', desc: '도감 절반 이상 모으기', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
+    { id: 'collector', name: '기록 수집가', desc: '윤리 조각 4개 모으기', check: (c) => c.puzzlePieces >= 4 },
     { id: 'fragments', name: '윤리 조각 수집가', desc: '윤리 조각 5개 모두 모으기', check: (c) => c.puzzlePieces >= Object.keys(STAGE_PUZZLES).length },
     { id: 'balanced', name: '균형 수호자', desc: '5개 윤리 축을 고르게 키우기', check: (c) => c.balancedEthics },
     { id: 'champion', name: '챌린지 챔피언', desc: '퀴즈 챌린지 만점', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
@@ -864,9 +822,9 @@
   ];
   const THEMES = [
     { id: 'classic', name: '클래식', color: '#ffd644', desc: '기본 노란빛', check: () => true },
-    { id: 'forest', name: '숲빛', color: '#5cb85c', desc: '증표 1개 모으기', check: (c) => c.badges >= 1 },
+    { id: 'forest', name: '숲빛', color: '#5cb85c', desc: '윤리 조각 1개 모으기', check: (c) => c.puzzlePieces >= 1 },
     { id: 'ocean', name: '바다빛', color: '#4ea8de', desc: '문제 30개 풀기', check: (c) => c.attempted >= 30 },
-    { id: 'sunset', name: '노을빛', color: '#f08a24', desc: '마음 8번 안아 주기', check: (c) => c.mercy >= 8 },
+    { id: 'sunset', name: '노을빛', color: '#f08a24', desc: '윤리 조각 4개 모으기', check: (c) => c.puzzlePieces >= 4 },
     { id: 'mint', name: '조각빛', color: '#7bd88f', desc: '윤리 조각 5개 모으기', check: (c) => c.puzzlePieces >= Object.keys(STAGE_PUZZLES).length },
     { id: 'galaxy', name: '은하빛', color: '#b48ce0', desc: '엔딩 보기', check: (c) => c.endings >= 1 },
   ];
@@ -945,7 +903,7 @@
 
   // ---------- 데이터 백업 · 복원 ----------
   function allBackupKeys() {
-    const keys = [SETTINGS_KEY, ENDINGS_KEY, DEX_KEY];
+    const keys = [SETTINGS_KEY, ENDINGS_KEY];
     for (let i = 0; i < SLOT_COUNT; i++) {
       keys.push(slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), cosmeticKey(i));
     }
@@ -990,23 +948,7 @@
       return !!ok;
     } catch (e) { return false; }
   }
-  // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
-  const DEX_KEY = 'ai-ethics-adventure-dex';
-  function getDexSeen() {
-    try { return JSON.parse(localStorage.getItem(DEX_KEY)) || {}; }
-    catch (e) { return {}; }
-  }
-  function recordDexSeen(monId, mercyKind) {
-    try {
-      const seen = getDexSeen();
-      seen[monId] = { seen: true, mercy: mercyKind || (seen[monId] && seen[monId].mercy) || null };
-      localStorage.setItem(DEX_KEY, JSON.stringify(seen));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
-  }
-  function dexSeenCount() {
-    const seen = getDexSeen();
-    return DEX_ORDER.filter((id) => seen[id] && seen[id].seen).length;
-  }
+  // ---------- 입력 ----------
 
   // ---------- 입력 ----------
   const held = new Set();
@@ -1030,7 +972,6 @@
     if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
     if (e.key === 't' || e.key === 'T') { cycleTextSpeed(); return; }
     if (e.key === 'g' || e.key === 'G') { toggleLargeText(); return; }
-    if (e.key === 'h' || e.key === 'H') { useHint(); return; }
     if (e.key === 'v' || e.key === 'V') {
       if (game.mode === 'world') { openReview('world'); return; }
       if (game.mode === 'review') { closeReview(); return; }
@@ -1244,24 +1185,6 @@
       stick.addEventListener('touchend', onEnd);
       stick.addEventListener('touchcancel', onEnd);
     }
-    const hintBtn = document.getElementById('t-hint');
-    if (hintBtn) {
-      let lastHintActivation = 0;
-      const onHint = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (Date.now() - lastHintActivation < 500) return;
-        lastHintActivation = Date.now();
-        Sound.resume();
-        useHint();
-      };
-      hintBtn.addEventListener('touchstart', onHint);
-      hintBtn.addEventListener('click', onHint);
-      hintBtn.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        onHint(e);
-      });
-    }
   }
 
   function justPressed(k) { return pressed.has(k); }
@@ -1327,12 +1250,6 @@
 
   function npcAt(mapId, x, y) {
     return MAPS[mapId].npcs.find((n) => n.x === x && n.y === y && npcVisible(n)) || null;
-  }
-
-  function monsterAt(mapId, x, y) {
-    return MAPS[mapId].monsters.find(
-      (mo) => mo.x === x && mo.y === y && !game.flags.defeated[mo.id]
-    ) || null;
   }
 
   function signAt(mapId, x, y) {
@@ -1700,7 +1617,7 @@
     const dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
     const nx = p.x + dx, ny = p.y + dy;
     const ch = tileAt(game.map, nx, ny);
-    if (SOLID(ch) || npcAt(game.map, nx, ny) || monsterAt(game.map, nx, ny)) {
+    if (SOLID(ch) || npcAt(game.map, nx, ny)) {
       return;
     }
     p.x = nx; p.y = ny;
@@ -1738,15 +1655,6 @@
           save();
         }
       });
-      return;
-    }
-    const mon = monsterAt(game.map, f.x, f.y);
-    if (mon) {
-      if (mon.id === 'finalboss' && !isStagePuzzleComplete(game.flags.puzzles, 'responsibility_core')) {
-        startDialog([STAGE_PUZZLES.responsibility_core.gateText], STAGE_PUZZLES.responsibility_core.speaker);
-        return;
-      }
-      startBattleIntro(mon.id);
       return;
     }
     const sign = signAt(game.map, f.x, f.y);
@@ -1787,29 +1695,11 @@
     const p = game.player;
     const w = warpAt(game.map, p.x, p.y);
     if (!w) return;
-    if (w.needBadges && countBadges(game.flags) < w.needBadges) {
-      pushBack();
-      Sound.bump();
-      startDialog([`신호탑의 문이 굳게 닫혀 있다.\n마음의 증표 ${w.needBadges}개가 필요하다.\n(지금 ${countBadges(game.flags)}개)`]);
-      return;
-    }
     if (w.needPuzzle && !isStagePuzzleComplete(game.flags.puzzles, w.needPuzzle)) {
       pushBack();
       Sound.bump();
       const puzzle = STAGE_PUZZLES[w.needPuzzle];
       startDialog([w.puzzleLockText || (puzzle && puzzle.gateText) || w.lockText || '아직 풀지 못한 퍼즐이 있다.']);
-      return;
-    }
-    if (w.needAllDefeated && !w.needAllDefeated.every((id) => game.flags.defeated[id])) {
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || '길이 막혀 있다.']);
-      return;
-    }
-    if (w.needBoss && !game.flags.defeated[w.needBoss]) {
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || '길이 막혀 있다.']);
       return;
     }
     game.map = w.to;
@@ -1852,7 +1742,7 @@
     }
 
     if (justPressed('menu')) {
-      openDex('world');
+      openJournal('world');
       return;
     }
 
@@ -1904,7 +1794,7 @@
       const point = { x: stand.x + dx, y: stand.y + dy };
       if (points.some((item) => item.x === point.x && item.y === point.y)) continue;
       const ch = tileAt(puzzle.map, point.x, point.y);
-      if (WALKABLE.has(ch) && !monsterAt(puzzle.map, point.x, point.y)) points.push(point);
+      if (WALKABLE.has(ch)) points.push(point);
       if (points.length >= puzzle.doors.length) break;
     }
     while (points.length < puzzle.doors.length) {
@@ -1932,6 +1822,7 @@
     const current = currentPuzzleClue();
     if (!current || !choice) return false;
     const { puzzle, clue } = current;
+    const puzzleId = game.puzzle.puzzleId;
     const wasComplete = isStagePuzzleComplete(game.flags.puzzles, game.puzzle.puzzleId);
     game.flags.puzzles = setStagePuzzleChoice(game.flags.puzzles, game.puzzle.puzzleId, clue.id, choice.id);
     const isComplete = isStagePuzzleComplete(game.flags.puzzles, game.puzzle.puzzleId);
@@ -1940,11 +1831,24 @@
     const effectLine = puzzleMapEffectLine(game.flags, game.puzzle.puzzleId);
     if (effectLine) lines.push(effectLine);
     if (isComplete && !wasComplete) {
-      awardPuzzleEthics(game.puzzle.puzzleId);
+      awardPuzzleEthics(puzzleId);
       lines.push(puzzle.completeText);
       if (puzzle.reflectionText) lines.push(puzzle.reflectionText);
     }
     let onEnd = null;
+    if (isComplete && !wasComplete && puzzleId === 'responsibility_core') {
+      const endingId = computeEnding(game.flags.ethics);
+      game.flags.endingId = endingId;
+      game.flags.trueEnding = endingId === 'home';
+      recordEndingSeen(endingId);
+      onEnd = () => {
+        game.endingType = 'true';
+        game.endingT = 0;
+        game.mode = 'ending';
+        save();
+        Sound.playSong('ending');
+      };
+    }
     if (choice.id !== clue.correctDoor && puzzle.loopTo) {
       if (puzzle.loopText) lines.push(puzzle.loopText);
       onEnd = () => {
@@ -1973,7 +1877,6 @@
     if (justPressed('cancel') || justPressed('action')) closePuzzle();
   }
 
-  // ---------- 배틀 ----------
   function shuffled(arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -1982,547 +1885,7 @@
     }
     return a;
   }
-
-  function startBattleIntro(monId) {
-    const mon = MONSTERS[monId];
-    Sound.encounter();
-    const lines = [mon.intro];
-    // 첫 전투에서 한 번만, 전투 방법을 짧게 안내한다 (슬롯별 1회)
-    if (game.flags && !game.flags.sawBattleTip) {
-      game.flags.sawBattleTip = true;
-      lines.push(
-        '[전투 안내]\n↑↓로 답을 고르고 Z(또는 A)로 결정!\n맞히면 몬스터의 오해가 풀려요.',
-        '틀려도 괜찮아요. 해설을 읽고 배우면 돼요.\n막히면 H로 50:50 힌트를 쓸 수 있어요.'
-      );
-    }
-    startDialog(lines, mon.name, () => startBattle(monId));
-  }
-
-  function questionPool(mon) {
-    const src = quizSource();
-    const topics = Array.isArray(mon.topic) ? mon.topic : [mon.topic];
-    return topics.flatMap((t) => (src[t] || []).map((q, i) => Object.assign({}, q, { _topic: t, _qid: t + '#' + i })));
-  }
-
-  function startBattle(monId) {
-    const mon = MONSTERS[monId];
-    game.mode = 'battle';
-    Sound.playSong(mon.song || 'battle');
-    // 학년별 난이도: 저학년은 하트 1개 더 (기본은 그대로 유지)
-    const maxHearts = (mon.hp >= 5 ? 4 : 3) + (game.difficulty === 'easy' ? 1 : 0);
-    game.battle = {
-      monId,
-      mon,
-      monHp: mon.hp,
-      monMaxHp: mon.hp,
-      playerHp: maxHearts,
-      maxHearts,
-      questions: shuffled(questionPool(mon)),
-      qIdx: 0,
-      phase: 'question', // question | feedback | mercy | mercyReply | dodge
-      cursor: 0,
-      choiceOrder: null, // 보기 표시 순서(섞기) — setupQuestion에서 채움
-      correctPos: 0,     // 섞인 보기 중 정답의 위치
-      hintUsed: false,   // 이번 문항에서 50:50 힌트를 썼는지
-      hiddenPos: -1,     // 힌트로 가려진 보기의 표시 위치 (-1이면 없음)
-      feedback: null, // { correct, why }
-      combo: 0,
-      bestCombo: 0,
-      shake: 0,
-      flash: 0,
-      attack: getBossAttack(monId), // 보스 회피 구간 (없으면 null)
-      dodgeDone: false,
-      dodge: null,
-    };
-    setupQuestion();
-    game.flags.battleCount += 1;
-  }
-
-  // 현재 문항의 보기 순서를 매번 새로 섞는다. (정답이 늘 2번에 오는 것을 방지)
-  function setupQuestion() {
-    const b = game.battle;
-    if (b.qIdx >= b.questions.length) {
-      b.questions = shuffled(questionPool(b.mon));
-      b.qIdx = 0;
-    }
-    const q = b.questions[b.qIdx];
-    if (!q || !Array.isArray(q.a) || q.a.length === 0) {
-      // 출제할 문제가 없으면(데이터 이상) 배틀을 안전하게 종료해 크래시를 막는다
-      game.battle = null;
-      game.mode = 'world';
-      return;
-    }
-    b.choiceOrder = shuffled(q.a.map((_, i) => i));
-    b.correctPos = b.choiceOrder.indexOf(q.c);
-    b.hintUsed = false;
-    b.hiddenPos = -1;
-    speakQuiz(q.q, b.choiceOrder.map((ai) => q.a[ai]));
-  }
-
-  // 50:50 힌트 — 정답이 아닌 보기 중 하나를 가린다 (한 문제당 한 번)
-  function useHint() {
-    const b = game.battle;
-    if (!b || b.phase !== 'question') return;
-    if (game.difficulty === 'hard') return;         // 고학년: 힌트 없음
-    if (b.hintUsed && game.difficulty !== 'easy') return; // 기본: 문제당 1회 / 저학년: 여러 번
-    const q = currentQuestion();
-    const order = choiceOrder();
-    const candidates = order.map((_, i) => i).filter((i) => i !== b.correctPos);
-    if (candidates.length === 0) return;
-    b.hiddenPos = candidates[Math.floor(Math.random() * candidates.length)];
-    b.hintUsed = true;
-    if (b.cursor === b.hiddenPos) {
-      b.cursor = (b.cursor + 1) % q.a.length;
-    }
-    Sound.blip();
-  }
-
-  function currentQuestion() {
-    return game.battle.questions[game.battle.qIdx];
-  }
-
-  // 표시 위치 i가 가리키는 실제 보기 인덱스 (외부 생성 배틀이면 그대로)
-  function choiceOrder() {
-    const b = game.battle;
-    const q = currentQuestion();
-    if (!q || !Array.isArray(q.a)) return [];
-    return b.choiceOrder && b.choiceOrder.length === q.a.length
-      ? b.choiceOrder : q.a.map((_, i) => i);
-  }
-
-  function nextQuestion() {
-    const b = game.battle;
-    b.qIdx += 1;
-    b.cursor = 0;
-    b.feedback = null;
-    b.phase = 'question';
-    setupQuestion();
-  }
-
-  // 정답으로 보스 HP가 절반이 되면, 마음이 폭주하는 회피 구간이 한 번 펼쳐진다.
-  function continueAfterFeedback() {
-    const b = game.battle;
-    if (!b.dodgeDone && b.attack && b.monHp > 0 && b.monHp <= Math.floor(b.monMaxHp / 2)) {
-      enterDodge();
-    } else {
-      nextQuestion();
-      Sound.select();
-    }
-  }
-
-  // 학년별 난이도: 회피 구간 길이·탄막 속도 배율 (기본 1)
-  function dodgeSpeedFactor() { return game.difficulty === 'easy' ? 0.8 : game.difficulty === 'hard' ? 1.25 : 1; }
-  function enterDodge() {
-    const b = game.battle;
-    const atk = b.attack;
-    b.dodgeDone = true;
-    b.phase = 'dodge';
-    const boxW = 300, boxH = 170;
-    b.dodge = {
-      t: 0, dur: Math.round(atk.dur * (game.difficulty === 'easy' ? 0.75 : game.difficulty === 'hard' ? 1.2 : 1)),
-      box: { x: Math.round(LW / 2 - boxW / 2), y: 150, w: boxW, h: boxH },
-      soul: { x: LW / 2, y: 235 },
-      bullets: [],
-      spawnTimer: 30,
-      inv: 0,
-    };
-    Sound.encounter();
-  }
-
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-
-  function spawnBullets(d, pattern) {
-    const box = d.box;
-    const sf = dodgeSpeedFactor();
-    if (pattern === 'rain') {
-      const x = box.x + 12 + Math.random() * (box.w - 24);
-      d.bullets.push({ x, y: box.y - 6, vx: 0, vy: (2.0 + Math.random() * 1.4) * sf, r: 6 });
-    } else if (pattern === 'sides') {
-      const fromLeft = Math.random() < 0.5;
-      const y = box.y + 12 + Math.random() * (box.h - 24);
-      d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
-        vx: (fromLeft ? 1 : -1) * (2.2 + Math.random() * 1.2) * sf, vy: 0, r: 6 });
-    } else if (pattern === 'filterbubble') {
-      const lanes = 7;
-      const open = d.t > d.dur * 0.45 ? 3 : 1;
-      const center = Math.floor(lanes / 2);
-      for (let i = 0; i < lanes; i++) {
-        if (Math.abs(i - center) <= Math.floor(open / 2)) continue;
-        const y = box.y + 18 + i * (box.h - 36) / (lanes - 1);
-        const fromLeft = d.t < d.dur * 0.45 || i % 2 === 0;
-        d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
-          vx: (fromLeft ? 1 : -1) * (1.7 + Math.random() * 0.5) * sf, vy: 0, r: 6 });
-      }
-    } else if (pattern === 'spiral') {
-      // 중앙에서 회전하며 뿜어내는 나선형 탄막
-      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
-      d.spiralA = (d.spiralA || 0) + 0.55;
-      for (let i = 0; i < 3; i++) {
-        const a = d.spiralA + i * (Math.PI * 2 / 3);
-        d.bullets.push({ x: cx, y: cy, vx: Math.cos(a) * 2.1 * sf, vy: Math.sin(a) * 2.1 * sf, r: 5 });
-      }
-    } else if (pattern === 'wall') {
-      // 위에서 내려오는 한 줄, 빠져나갈 빈틈이 하나 있다
-      const cols = 7, gap = 1 + Math.floor(Math.random() * (cols - 3));
-      for (let i = 0; i < cols; i++) {
-        if (i === gap || i === gap + 1) continue;
-        const x = box.x + 12 + i * (box.w - 24) / (cols - 1);
-        d.bullets.push({ x, y: box.y - 6, vx: 0, vy: 2.0 * sf, r: 6 });
-      }
-    } else if (pattern === 'zigzag') {
-      // 옆에서 들어와 위아래로 일렁이며 날아오는 탄막
-      const fromLeft = Math.random() < 0.5;
-      const y = box.y + 16 + Math.random() * (box.h - 32);
-      d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
-        vx: (fromLeft ? 1 : -1) * 1.9 * sf, vy: 0, r: 6, zig: 2.4 * sf, zigT: Math.random() * 6 });
-    } else { // burst — 중앙에서 방사형
-      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
-      const n = 6, base = Math.random() * Math.PI * 2;
-      for (let i = 0; i < n; i++) {
-        const a = base + i * Math.PI * 2 / n;
-        d.bullets.push({ x: cx, y: cy, vx: Math.cos(a) * 2.0 * sf, vy: Math.sin(a) * 2.0 * sf, r: 5 });
-      }
-    }
-  }
-
-  function updateDodge() {
-    const b = game.battle, d = b.dodge, atk = b.attack;
-    if (b.shake > 0) b.shake -= 1;
-    if (b.flash > 0) b.flash -= 1;
-    if (d.inv > 0) d.inv -= 1;
-    d.t += 1;
-
-    // 하트(소울) 이동
-    const sp = 3.4, r = 7;
-    if (held.has('left')) d.soul.x -= sp;
-    if (held.has('right')) d.soul.x += sp;
-    if (held.has('up')) d.soul.y -= sp;
-    if (held.has('down')) d.soul.y += sp;
-    d.soul.x = clamp(d.soul.x, d.box.x + r, d.box.x + d.box.w - r);
-    d.soul.y = clamp(d.soul.y, d.box.y + r, d.box.y + d.box.h - r);
-
-    // 탄막 생성 (끝나기 직전엔 멈춰서 정리 시간을 준다)
-    d.spawnTimer -= 1;
-    if (d.spawnTimer <= 0 && d.t < d.dur - 50) {
-      spawnBullets(d, atk.pattern);
-      d.spawnTimer = atk.pattern === 'burst' ? 24 : atk.pattern === 'spiral' ? 8
-        : atk.pattern === 'filterbubble' ? 28
-        : atk.pattern === 'wall' ? 42 : atk.pattern === 'zigzag' ? 18 : 15;
-    }
-
-    // 탄막 이동 + 화면 밖 제거 (zigzag 탄막은 진행하며 위아래로 일렁인다)
-    for (const bu of d.bullets) {
-      if (bu.zig) { bu.zigT = (bu.zigT || 0) + 1; bu.vy = Math.sin(bu.zigT / 7) * bu.zig; }
-      bu.x += bu.vx; bu.y += bu.vy;
-    }
-    d.bullets = d.bullets.filter((bu) =>
-      bu.x > d.box.x - 24 && bu.x < d.box.x + d.box.w + 24 &&
-      bu.y > d.box.y - 24 && bu.y < d.box.y + d.box.h + 24);
-
-    // 충돌 (하트는 1 아래로 줄지 않아 게임오버 없음)
-    if (d.inv <= 0) {
-      for (const bu of d.bullets) {
-        const dx = bu.x - d.soul.x, dy = bu.y - d.soul.y;
-        if (dx * dx + dy * dy < (r + bu.r) * (r + bu.r)) {
-          b.playerHp = Math.max(1, b.playerHp - 1);
-          d.inv = 42; b.flash = 12; Sound.bump();
-          break;
-        }
-      }
-    }
-
-    if (d.t >= d.dur) {
-      b.dodge = null;
-      nextQuestion();
-      Sound.select();
-    }
-  }
-
-  function updateBattle() {
-    const b = game.battle;
-    if (b.phase === 'dodge') { updateDodge(); return; }
-    if (b.shake > 0) b.shake -= 1;
-    if (b.flash > 0) b.flash -= 1;
-
-    if (b.phase === 'question') {
-      const q = currentQuestion();
-      const order = choiceOrder();
-      if (justPressed('up')) {
-        for (let g = 0; g < q.a.length; g++) { b.cursor = (b.cursor + q.a.length - 1) % q.a.length; if (b.cursor !== b.hiddenPos) break; }
-        Sound.blip();
-      }
-      if (justPressed('down')) {
-        for (let g = 0; g < q.a.length; g++) { b.cursor = (b.cursor + 1) % q.a.length; if (b.cursor !== b.hiddenPos) break; }
-        Sound.blip();
-      }
-      if (justPressed('action')) {
-        const correct = order[b.cursor] === q.c;
-        const nextCombo = correct ? (b.combo || 0) + 1 : 0;
-        b.feedback = {
-          correct,
-          why: q.why,
-          ethicsLine: topicEthicsLine(q._topic),
-          reflectionPrompt: correct ? '' : battleReflectionPrompt(q._topic),
-          combo: nextCombo,
-        };
-        b.phase = 'feedback';
-        speakFeedback(correct, q.why, b.feedback.reflectionPrompt);
-        recordTopicResult(game.currentSlot, q._topic, correct);
-        if (correct) {
-          Sound.correct();
-          b.monHp -= 1;
-          b.combo = nextCombo;
-          b.bestCombo = Math.max(b.bestCombo || 0, b.combo);
-          b.shake = 14;
-          game.flags.correctCount += 1;
-          clearMistake(game.currentSlot, q._qid);
-        } else {
-          Sound.wrong();
-          b.combo = 0;
-          b.playerHp -= 1;
-          b.flash = 14;
-          recordMistake(game.currentSlot, q);
-        }
-      }
-      return;
-    }
-
-    if (b.phase === 'feedback') {
-      if (justPressed('action')) {
-        if (b.monHp <= 0) {
-          // 후일담 몬스터는 마지막에 '마음의 선택'이 기다린다
-          if (b.mon.mercy && !b.mercyDone) {
-            b.phase = 'mercy';
-            b.cursor = 0;
-            Sound.select();
-            return;
-          }
-          winBattle();
-          return;
-        }
-        if (b.playerHp <= 0) { loseBattle(); return; }
-        continueAfterFeedback();
-      }
-      return;
-    }
-
-    if (b.phase === 'mercy') {
-      const opts = b.mon.mercy.options;
-      if (justPressed('up')) { b.cursor = (b.cursor + opts.length - 1) % opts.length; Sound.blip(); }
-      if (justPressed('down')) { b.cursor = (b.cursor + 1) % opts.length; Sound.blip(); }
-      if (justPressed('action')) {
-        const choice = opts[b.cursor];
-        b.mercyDone = true;
-        b.mercyReply = choice.reply;
-        b.mercyChoiceKind = choice.kind;
-        awardEthicsForChoice(b.mon, choice.kind);
-        if (choice.kind === 'mercy') {
-          game.flags.mercy += 1;
-          Sound.badge();
-        } else {
-          Sound.select();
-        }
-        b.phase = 'mercyReply';
-      }
-      return;
-    }
-
-    if (b.phase === 'mercyReply') {
-      if (justPressed('action')) { winBattle(); }
-      return;
-    }
-  }
-
-  function winBattle() {
-    const b = game.battle;
-    const mon = b.mon;
-    game.flags.defeated[b.monId] = true;
-    recordDexSeen(b.monId, b.mercyChoiceKind);
-    if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
-    game.flags.mercyChoice[b.monId] = b.mercyChoiceKind || null;
-    const gotBadge = mon.badge && !game.flags.badges[mon.badge];
-    if (mon.badge) game.flags.badges[mon.badge] = true;
-    save();
-    checkCosmeticUnlocks(game.currentSlot);
-
-    game.battle = null;
-    game.mode = 'world';
-    Sound.badge();
-
-    const lines = [mon.win];
-    lines.push(...battleRewardLines(mon, b.mercyChoiceKind));
-    if (gotBadge) {
-      const badgeNames = { forest: '정적의 숲의 증표', lake: '잔향의 호수의 증표', cave: '회로의 동굴의 증표' };
-      lines.push(`☆ ${badgeNames[mon.badge]}를 얻었다! ☆\n(마음의 증표 ${countBadges(game.flags)}개 / 3개)`);
-      if (countBadges(game.flags) >= 3) {
-        lines.push('마음의 증표를 모두 모았다!\n마을의 신호탑 문이 열렸다…!');
-      }
-    }
-    if (mon.clear) lines.push(mon.clear);
-    if (b.monId === 'finalboss') {
-      startDialog(lines, mon.name, () => {
-        game.mode = 'ending';
-        game.endingType = 'first';
-        game.endingT = 0;
-        Sound.playSong('ending');
-      });
-    } else if (b.monId === 'yeongi') {
-      const endingId = computeEnding(b.mercyChoiceKind, game.flags.mercy, game.flags.ethics);
-      game.flags.endingId = endingId;
-      game.flags.trueEnding = endingId === 'home';
-      recordEndingSeen(endingId);
-      save();
-      lines.push(...buildEndingReflectionLines(b.mercyChoiceKind, game.flags.mercy, game.flags.ethics, endingId));
-      startDialog(lines, mon.name, () => {
-        game.mode = 'ending';
-        game.endingType = 'true';
-        game.endingT = 0;
-        Sound.playSong('ending');
-      });
-    } else {
-      startDialog(lines, mon.name, () => {
-        Sound.playSong(MAPS[game.map].song);
-      });
-    }
-  }
-
-  function loseBattle() {
-    game.battle = null;
-    game.mode = 'world';
-    Sound.playSong(MAPS[game.map].song);
-    startDialog([
-      '으윽, 머리가 어지럽다…!',
-      '괜찮아, 틀려도 배우면 되는 거야.\n기운을 차리고 다시 도전하자!',
-    ]);
-  }
-
-  // ---------- 도감 ----------
-  function openDex(ret) {
-    game.dex.ret = ret;
-    game.dex.cursor = 0;
-    game.mode = 'dex';
-    Sound.select();
-  }
-
-  function closeDex() {
-    game.mode = game.dex.ret;
-    Sound.select();
-  }
-
-  function updateDex() {
-    const n = DEX_ORDER.length;
-    if (justPressed('up')) { game.dex.cursor = (game.dex.cursor + n - 1) % n; Sound.blip(); }
-    if (justPressed('down')) { game.dex.cursor = (game.dex.cursor + 1) % n; Sound.blip(); }
-    if (justPressed('left')) { game.dex.cursor = (game.dex.cursor + n - 5) % n; Sound.blip(); }
-    if (justPressed('right')) { game.dex.cursor = (game.dex.cursor + 5) % n; Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeDex();
-  }
-
-  const MERCY_LABEL = {
-    mercy: '마음을 안아 줌 ♥', neutral: '바르게 타이름', harsh: '차갑게 작별',
-  };
-
-  function drawDex() {
-    const seen = getDexSeen();
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-
-    // 헤더
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
-    ctx.fillText('♥ 몬스터 도감', 24, 38);
-    ctx.fillStyle = '#888';
-    ctx.font = '15px monospace';
-    ctx.fillText(`수집 ${dexSeenCount()} / ${DEX_ORDER.length}`, 24, 62);
-
-    // 왼쪽: 목록 (커서 주변으로 스크롤)
-    const listX = 24, listY = 84, rowH = 30, visible = 13;
-    const cur = game.dex.cursor;
-    let start = Math.max(0, Math.min(cur - 6, DEX_ORDER.length - visible));
-    if (DEX_ORDER.length <= visible) start = 0;
-    for (let i = 0; i < visible && start + i < DEX_ORDER.length; i++) {
-      const idx = start + i;
-      const id = DEX_ORDER[idx];
-      const isSeen = seen[id] && seen[id].seen;
-      const y = listY + i * rowH;
-      if (idx === cur) {
-        ctx.fillStyle = '#e0453a';
-        ctx.font = '14px monospace';
-        ctx.fillText('♥', listX - 18, y);
-      }
-      ctx.fillStyle = '#666';
-      ctx.font = '12px monospace';
-      ctx.fillText(MONSTER_DEX[id].stage === 0 ? 'B' : `S${MONSTER_DEX[id].stage}`, listX, y);
-      ctx.fillStyle = isSeen ? (idx === cur ? '#fff' : '#aaa') : '#444';
-      ctx.font = (idx === cur ? 'bold ' : '') + '15px monospace';
-      ctx.fillText(isSeen ? MONSTERS[id].name : '??? (미발견)', listX + 34, y);
-    }
-    // 스크롤 표시
-    if (start > 0) { ctx.fillStyle = '#888'; ctx.fillText('▲', listX + 130, listY - 24); }
-    if (start + visible < DEX_ORDER.length) { ctx.fillStyle = '#888'; ctx.fillText('▼', listX + 130, listY + visible * rowH); }
-
-    // 오른쪽: 상세 패널
-    const id = DEX_ORDER[cur];
-    const info = MONSTER_DEX[id];
-    const isSeen = seen[id] && seen[id].seen;
-    const panelX = 330, panelW = LW - panelX - 24;
-    utBox(panelX, 84, panelW, 400, 6);
-
-    const cx = panelX + panelW / 2;
-    // 스프라이트 (가운데, 6배)
-    if (isSeen) {
-      const ss = 6;
-      const bob = Math.sin(game.time / 22) * 4;
-      drawSprite(ctx, MONSTER_SPRITES[id], Math.round(cx - 16 * ss / 2), Math.round(110 + bob), ss);
-    } else {
-      // 실루엣
-      ctx.strokeStyle = '#444';
-      ctx.lineWidth = 2;
-      roundRect(cx - 44, 116, 88, 88, 6);
-      ctx.stroke();
-      ctx.fillStyle = '#444';
-      ctx.font = 'bold 48px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('?', cx, 178);
-      ctx.textAlign = 'left';
-    }
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = isSeen ? '#fff' : '#555';
-    ctx.font = 'bold 22px monospace';
-    ctx.fillText(isSeen ? MONSTERS[id].name : '???', cx, 238);
-    ctx.fillStyle = '#888';
-    ctx.font = '13px monospace';
-    ctx.fillText(info.stage === 0 ? '보너스 · 미래연구소' : `스테이지 ${info.stage}`, cx, 260);
-    ctx.textAlign = 'left';
-
-    if (isSeen) {
-      ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 15px monospace';
-      wrapText(`주제 · ${info.theme}`, panelX + 24, 296, panelW - 48, 22);
-      ctx.fillStyle = '#fff';
-      ctx.font = '15px monospace';
-      const usedLines = wrapText(info.learn, panelX + 24, 330, panelW - 48, 24);
-      const my = 330 + usedLines * 24 + 16;
-      const mk = seen[id].mercy;
-      ctx.fillStyle = '#e0453a';
-      ctx.font = '14px monospace';
-      ctx.fillText(`작별 · ${mk ? MERCY_LABEL[mk] : '—'}`, panelX + 24, my);
-    } else {
-      ctx.fillStyle = '#666';
-      ctx.font = '15px monospace';
-      ctx.fillText('아직 만나지 못한 마음입니다.', panelX + 24, 300);
-      ctx.fillText('모험에서 깨우치면 기록됩니다.', panelX + 24, 326);
-    }
-
-    // 푸터
-    ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('↑↓←→ 넘기기 · X 또는 A로 닫기', LW / 2, 510);
-    ctx.textAlign = 'left';
-  }
+  // ---------- 오답 복습 노트 ----------
 
   // ---------- 오답 복습 노트 ----------
   function openReview(ret) {
@@ -2650,7 +2013,7 @@
       return;
     }
 
-    // question / feedback phase — 배틀 퀴즈 화면과 같은 형태로 표시
+    // question / feedback phase — 퀴즈 퀴즈 화면과 같은 형태로 표시
     const m = getMistakes(r.slot)[ids[r.cursor]];
     ctx.font = fs(16);
     let boxH = game.largeText ? 280 : 238;
@@ -2700,7 +2063,7 @@
   // ---------- 설정·일시정지 메뉴 ----------
   // 터치 기기에는 키보드 단축키(J/Q/B/I 등)가 없으므로, 모든 기능을 메뉴로 연다.
   const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'dashboard', 'report', 'classmode', 'awards', 'cosmetics', 'cert',
-    'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
+    'challenge', 'review', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
     'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
   const PAUSE_LABELS = {
     journal: '◆ 수호자 일지',
@@ -2714,7 +2077,6 @@
     cert: '🎓 수료증',
     challenge: '▶ 퀴즈 챌린지',
     review: '★ 오답 복습 노트',
-    dex: '♥ 몬스터 도감',
     quizedit: '✎ 커스텀 퀴즈',
     backup: '⇄ 데이터 백업·복원',
     difficulty: '난이도',
@@ -2785,7 +2147,6 @@
       else if (item === 'cosmetics') openCosmetics('pause');
       else if (item === 'review') openReview('pause');
       else if (item === 'challenge') openChallenge('pause');
-      else if (item === 'dex') openDex('pause');
       else if (item === 'quizedit') openQuizEdit('pause');
       else if (item === 'backup') openBackup('pause');
       else if (item === 'difficulty') cycleDifficulty();
@@ -2912,10 +2273,10 @@
     if (s.weak.length) lines.push('더 살펴볼 주제: ' + s.weak.join(', '));
     const endSeen = getEndingsSeen();
     const endN = ENDING_IDS.filter((k) => endSeen[k]).length;
-    lines.push(`발견 엔딩: ${endN}/${ENDING_IDS.length} · 도감 수집: ${dexSeenCount()}/${DEX_ORDER.length}`);
+    lines.push(`발견 엔딩: ${endN}/${ENDING_IDS.length}`);
     if (slotSave && slotSave.flags && slotSave.flags.endingId) {
       const ethicsScore = computeEthicsScore(slotSave.flags.ethics);
-      lines.push(`마지막 결말 회고: ${endingTitle(slotSave.flags.endingId)} · 윤리 이해도 ${ethicsScore}점 · 마음 ${slotSave.flags.mercy || 0}/20`);
+      lines.push(`마지막 결말 회고: ${endingTitle(slotSave.flags.endingId)} · 윤리 이해도 ${ethicsScore}점`);
     }
     lines.push(`복습 노트 남은 문제: ${mistakeCount(slot)}개`);
     const rm = getMeta(slot);
@@ -2972,7 +2333,7 @@
     const jm = getMeta(slot);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText(`발견 엔딩 ${endN}/${ENDING_IDS.length}  ·  도감 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
+    ctx.fillText(`발견 엔딩 ${endN}/${ENDING_IDS.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
     const flags = slotFlags(slot);
     ctx.fillStyle = warnColor();
     ctx.font = 'bold 13px monospace';
@@ -3324,25 +2685,19 @@
   }
 
   // ---------- 도전과제 (업적) ----------
-  // 각 과제는 슬롯별 학습 데이터 + 기기 공용 컬렉션(도감·엔딩)에서 즉석 판정한다.
+  // 각 과제는 슬롯별 학습 데이터 + 기기 공용 컬렉션(엔딩)에서 즉석 판정한다.
   const ACHIEVEMENTS = [
-    { id: 'firstwin', cat: 'battle', name: '첫 깨우침', desc: '몬스터를 처음 깨우쳤어요', check: (c) => c.defeatedCount >= 1 },
-    { id: 'mercy1', cat: 'battle', name: '따뜻한 마음', desc: '마음을 한 번 안아 주었어요', check: (c) => c.mercy >= 1 },
-    { id: 'mercy10', cat: 'battle', name: '마음의 수호자', desc: '마음을 열 번 안아 주었어요', check: (c) => c.mercy >= 10 },
     { id: 'solved50', cat: 'learn', name: '꾸준한 공부', desc: '문제를 50개 이상 풀었어요', check: (c) => c.attempted >= 50 },
     { id: 'perfectTopic', cat: 'learn', name: '완벽한 한 주제', desc: '한 주제 100% (3문제 이상)', check: (c) => c.perfectTopic },
     { id: 'wellRounded', cat: 'learn', name: '두루 박학', desc: '5개 주제에서 80% 이상', check: (c) => c.strongTopics >= 5 },
     { id: 'puzzleAll', cat: 'learn', name: '윤리 조각 수집가', desc: '스테이지 퍼즐 5개 완료', check: (c) => c.puzzlePieces >= Object.keys(STAGE_PUZZLES).length },
     { id: 'ethicsBalance', cat: 'learn', name: '균형 잡힌 수호자', desc: '5개 윤리 축 4점 이상', check: (c) => c.balancedEthics },
-    { id: 'dexHalf', cat: 'collect', name: '도감 수집가', desc: '도감을 절반 이상 모았어요', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
-    { id: 'dexAll', cat: 'collect', name: '도감 마스터', desc: '도감을 모두 모았어요', check: (c) => c.dexTotal > 0 && c.dex >= c.dexTotal },
     { id: 'ending1', cat: 'collect', name: '이야기꾼', desc: '엔딩을 하나 보았어요', check: (c) => c.endings >= 1 },
     { id: 'endingAll', cat: 'collect', name: '모든 결말', desc: '엔딩 다섯 가지를 모두 보았어요', check: (c) => c.endings >= ENDING_IDS.length },
     { id: 'challengeDone', cat: 'challenge', name: '챌린지 도전', desc: '퀴즈 챌린지를 완주했어요', check: (c) => c.challengeRuns >= 1 },
     { id: 'challengePerfect', cat: 'challenge', name: '챌린지 만점', desc: '퀴즈 챌린지에서 만점!', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
   ];
   const ACH_CAT = {
-    battle: { icon: '♥', color: '#e0453a' },
     learn: { icon: '★', color: '#ffd644' },
     collect: { icon: '◆', color: '#5aa9e6' },
     challenge: { icon: '✦', color: '#b48ce0' },
@@ -3351,15 +2706,13 @@
     const s = buildLearningSummary(slot);
     const f = slotFlags(slot) || {};
     const meta = getMeta(slot);
-    const defeatedCount = f.defeated ? Object.keys(f.defeated).filter((k) => f.defeated[k]).length : 0;
     const endSeen = getEndingsSeen();
     const endings = ENDING_IDS.filter((k) => endSeen[k]).length;
     const axisRows = ethicsAxisRows(f);
     const puzzlePieces = completedStagePuzzleCount(f);
     const ctx = {
       attempted: s.attempted, strongTopics: s.strongTopics, perfectTopic: s.perfectTopic,
-      mercy: f.mercy || 0, defeatedCount, badges: f.badges ? countBadges(f) : 0,
-      dex: dexSeenCount(), dexTotal: DEX_ORDER.length, endings,
+      endings,
       puzzlePieces, balancedEthics: axisRows.every((row) => row.score >= 4),
       challengeRuns: meta.challengeRuns || 0,
       challengeBest: meta.challengeBest || 0, challengeBestTotal: meta.challengeBestTotal || 0,
@@ -3431,20 +2784,19 @@
   // ---------- 도움말 ----------
   const HELP_LINES = [
     ['head', '◆ 게임 목표'],
-    ['', '윤리 오류로 헷갈리는 몬스터를 퀴즈로 깨우쳐 친구로 만들어요.'],
+    ['', '지도 곳곳의 윤리 단서를 분류해 다음 길을 열어요.'],
     ['', '각 지역의 퍼즐에서 윤리 조각을 모으면 다음 길이 열립니다.'],
     ['', ''],
     ['head', '◆ 기본 조작'],
     ['', '이동: 화살표 / W A S D       결정·대화·살펴보기: Z / 스페이스'],
     ['', '퀴즈: ↑↓로 고르고 Z로 결정       취소·뒤로: X / Esc'],
     ['', ''],
-    ['head', '◆ 전투'],
-    ['', '정답을 맞히면 몬스터의 오해가 풀려요(HP 감소).'],
-    ['', '틀려도 항상 해설이 나와요. 하트가 0이 되면 쉬었다 다시 도전!'],
-    ['', '막히면 H로 50:50 힌트(한 문제에 한 번).'],
+    ['head', '◆ 퍼즐'],
+    ['', '단서를 읽고 지도 위 발판으로 직접 옮겨 놓아요.'],
+    ['', '위험 선택도 기록되어 리포트 토론 질문으로 남아요.'],
     ['', ''],
     ['head', '◆ 메뉴 (X 또는 메뉴 버튼)'],
-    ['', '일지·도전과제·꾸미기·챌린지·복습·도감·백업·접근성 설정'],
+    ['', '일지·도전과제·꾸미기·챌린지·복습·백업·접근성 설정'],
     ['', ''],
     ['head', '◆ 더 즐기기'],
     ['', '미래연구소: 마을 오른쪽 빛나는 문 — 새 AI 주제(환각·딥페이크) 연습'],
@@ -3458,7 +2810,7 @@
   ];
   // 한 화면(528px)에 다 들어가지 않아 2장으로 나눈다. (← → 로 넘김)
   const HELP_PAGES = [
-    HELP_LINES.slice(0, 13),  // 게임 목표 · 기본 조작 · 전투
+    HELP_LINES.slice(0, 13),  // 게임 목표 · 기본 조작 · 퍼즐
     HELP_LINES.slice(13),     // 메뉴 · 더 즐기기 · 선생님·접근성
   ];
   function openHelp(ret) {
@@ -3707,7 +3059,6 @@
       `  푼 문제  : ${s.attempted}개   ·   정답률 ${acc}`,
       `  배움 카드: ${collectedCards(slot)} / ${LEARN_CARDS.length}`,
       `  도전과제 : ${countAchievements(slot)} / ${ACHIEVEMENTS.length}`,
-      `  안아준 마음: ♥ ${sum ? sum.mercy : 0}`,
       '',
       '  위 학생은 AI를 바르고 안전하게 쓰는 법을',
       '  열심히 익혔기에 이 증서를 드립니다.',
@@ -3787,7 +3138,6 @@
       ['진행도', prog], ['정답률', `${acc} (${s.attempted}문제)`],
       ['배움 카드', `${collectedCards(slot)}/${LEARN_CARDS.length}`],
       ['도전과제', `${countAchievements(slot)}/${ACHIEVEMENTS.length}`],
-      ['안아준 마음', `♥ ${sum ? sum.mercy : 0}`],
     ];
     let ry = by + 244;
     ctx.font = '14px monospace';
@@ -3820,14 +3170,10 @@
       fmt: (i) => { const m = getMeta(i); return m.challengeBestTotal ? `${m.challengeBest || 0}/${m.challengeBestTotal}` : '—'; } },
     { key: 'streak', label: '최장 연속 출석', icon: '🔥',
       val: (i) => getMeta(i).bestStreak || 0, fmt: (i) => { const b = getMeta(i).bestStreak || 0; return b ? `${b}일` : '—'; } },
-    { key: 'mercy', label: '안아준 마음', icon: '♥',
-      val: (i) => { const s = slotSummary(i); return s ? s.mercy : -1; }, fmt: (i) => { const s = slotSummary(i); return s ? `♥ ${s.mercy}` : '—'; } },
     { key: 'cards', label: '배움 카드', icon: '📚',
       val: (i) => slotSummary(i) ? collectedCards(i) : -1, fmt: (i) => slotSummary(i) ? `${collectedCards(i)}/${LEARN_CARDS.length}` : '—' },
     { key: 'awards', label: '도전과제', icon: '☆',
       val: (i) => slotSummary(i) ? countAchievements(i) : -1, fmt: (i) => slotSummary(i) ? `${countAchievements(i)}/${ACHIEVEMENTS.length}` : '—' },
-    { key: 'dex', label: '도감 수집', icon: '◆',
-      val: () => dexSeenCount(), fmt: () => `${dexSeenCount()}/${DEX_ORDER.length}`, shared: true },
   ];
   function openHof(ret) {
     game.hof.ret = ret;
@@ -3880,17 +3226,7 @@
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 16px monospace';
     ctx.fillText(`${cat.icon} ${cat.label}`, panelX + 20, panelY + 30);
-
-    if (cat.shared) {
-      ctx.fillStyle = warnColor();
-      ctx.font = 'bold 34px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(cat.fmt(0), panelX + panelW / 2, panelY + 130);
-      ctx.fillStyle = '#888';
-      ctx.font = '13px monospace';
-      ctx.fillText('(도감은 모두가 함께 채우는 공동 기록이에요)', panelX + panelW / 2, panelY + 170);
-      ctx.textAlign = 'left';
-    } else {
+    {
       // 슬롯들을 점수로 정렬
       const ranked = [];
       for (let i = 0; i < SLOT_COUNT; i++) {
@@ -4023,7 +3359,7 @@
     ctx.fillText('⇄ 데이터 백업 · 복원', 24, 40);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText('모든 슬롯·학습 기록·도감·설정을 한 파일로 저장하고', 24, 66);
+    ctx.fillText('모든 슬롯·학습 기록·설정을 한 파일로 저장하고', 24, 66);
     ctx.fillText('다른 기기나 브라우저에서 다시 불러올 수 있어요.', 24, 86);
 
     const listY = 130, rowH = 44;
@@ -4119,7 +3455,6 @@
         s.attempted ? Math.round(s.overallRate * 100) : '',
         mistakeCount(i),
         countAchievements(i) + '/' + ACHIEVEMENTS.length,
-        sum.mercy,
         meta.streak || 0,
         ...axisScores,
       ].map(csvCell).join(','));
@@ -4241,7 +3576,6 @@
         s.attempted ? (s.overallRate >= 0.8 ? okColor() : s.overallRate >= 0.6 ? warnColor() : badColor()) : '#888');
       line('복습 노트', `${mistakeCount(i)}개`);
       line('도전과제', `${countAchievements(i)}/${ACHIEVEMENTS.length}`);
-      line('안아준 마음', `♥ ${sum.mercy}`);
       line('연속 출석', meta.streak ? `🔥 ${meta.streak}일` : '—');
       ly = drawEthicsMiniBars(slotFlags(i), x + 14, ly + 4, w - 28);
       // 약점 주제
@@ -4283,12 +3617,6 @@
     const flags = newFlags();
     flags.talkedProf = true;
     if (target > 1) {
-      flags.badges.forest = flags.badges.lake = flags.badges.cave = true;
-      // 도감의 스테이지 정보로, 이전 스테이지(1..target-1) 몬스터를 모두 깨우친 것으로 처리
-      for (const id of Object.keys(flags.defeated)) {
-        const dx = MONSTER_DEX[id];
-        if (dx && dx.stage >= 1 && dx.stage < target) flags.defeated[id] = true;
-      }
       for (const [puzzleId, puzzle] of Object.entries(STAGE_PUZZLES)) {
         if (puzzle.stage >= target) continue;
         const progress = flags.puzzles[puzzleId];
@@ -4968,28 +4296,10 @@
       if (!npcVisible(npc)) continue;
       const nx = Math.round(npc.x * TS - cx);
       const ny = Math.round(npc.y * TS - cy - 6);
-      if (npc.monSprite) {
-        const bob = Math.round(Math.sin(game.time / 22) * 2);
-        drawSprite(ctx, MONSTER_SPRITES[npc.monSprite], nx, ny + bob, SCALE);
-      } else {
-        drawSprite(ctx, NPC_SPRITES.down[frame], nx, ny, SCALE, NPC_PALETTES[npc.pal]);
-      }
+      drawSprite(ctx, NPC_SPRITES.down[frame], nx, ny, SCALE, NPC_PALETTES[npc.pal]);
       // "말을 걸 수 있어요" 말풍선 (대화 가능한 NPC 머리 위)
       drawTalkBubble(nx + TS / 2, ny - 14);
     }
-
-    // 몬스터 (둥실둥실)
-    for (const mo of m.monsters) {
-      if (game.flags.defeated[mo.id]) continue;
-      const bob = Math.round(Math.sin(game.time / 18) * 4);
-      drawSprite(ctx, MONSTER_SPRITES[mo.id],
-        Math.round(mo.x * TS - cx), Math.round(mo.y * TS - cy - 6 + bob), SCALE);
-      // 느낌표
-      ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 18px monospace';
-      ctx.fillText('!', Math.round(mo.x * TS - cx) + TS / 2 - 3, Math.round(mo.y * TS - cy) - 10 + bob);
-    }
-
     // 플레이어
     const p = game.player;
     const walking = p.px !== p.x * TS || p.py !== p.y * TS;
@@ -5155,27 +4465,6 @@
     ctx.fillText(title, 18, 28);
     ctx.fillStyle = '#fff';
     ctx.fillText(obj, 18, 50);
-
-    // 마음의 증표 (하트 3개)
-    const shards = ['forest', 'lake', 'cave'];
-    for (let i = 0; i < 3; i++) {
-      const bx = LW - 104 + i * 30;
-      ctx.font = '18px monospace';
-      ctx.fillStyle = game.flags.badges[shards[i]] ? '#e0453a' : '#333';
-      ctx.fillText('♥', bx, 30);
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1;
-      ctx.strokeText('♥', bx, 30);
-    }
-
-    // 안아 준 마음 (자비)
-    if (game.flags.mercy > 0) {
-      utBox(LW - 196, 12, 64, 28, 4);
-      ctx.fillStyle = '#e0453a';
-      ctx.font = 'bold 14px monospace';
-      ctx.fillText(`♥ ${game.flags.mercy}`, LW - 184, 31);
-    }
-
     const pieces = completedStagePuzzleCount(game.flags);
     utBox(LW - 196, 46, 188, 30, 4);
     ctx.fillStyle = pieces >= Object.keys(STAGE_PUZZLES).length ? okColor() : '#ffd644';
@@ -5189,7 +4478,6 @@
     }
   }
 
-  // 언더테일풍 — 모서리가 살짝 깎인 픽셀 상자 (r은 모서리 컷 크기로 사용)
   function roundRect(x, y, w, h, r) {
     const c = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
@@ -5204,7 +4492,6 @@
     ctx.closePath();
   }
 
-  // 박스 안에 두 줄 흰 테두리를 그려 언더테일풍 윈도우를 만든다
   function utBox(x, y, w, h, c) {
     ctx.fillStyle = '#000';
     roundRect(x, y, w, h, c || 6);
@@ -5244,7 +4531,6 @@
     }
   }
 
-  // 선택지 한 줄을 그린다 — 선택된 줄 앞에 빨간 하트가 떠 있다 (언더테일 커서)
   function drawChoiceLine(text, x, y, selected) {
     if (selected) {
       ctx.fillStyle = '#e0453a';
@@ -5285,7 +4571,7 @@
     const current = currentPuzzleClue();
     if (!current) return;
     const { puzzle, clue } = current;
-    const boxX = 48, boxY = 120, boxW = LW - 96, boxH = 230;
+    const boxX = 48, boxY = 112, boxW = LW - 96, boxH = 250;
     utBox(boxX, boxY, boxW, boxH, 8);
     ctx.fillStyle = '#ffd644';
     ctx.font = fs(18, true);
@@ -5295,267 +4581,29 @@
     ctx.fillText(clue.label, boxX + 28, boxY + 72);
     ctx.fillStyle = '#ccc';
     ctx.font = fs(15);
-    const textY = drawQuestionText(clue.text, boxX + 28, boxY + 104, boxW - 56, lh(22)) + lh(14);
+    const textY = drawQuestionText(clue.text, boxX + 28, boxY + 104, boxW - 56, lh(22)) + lh(18);
+    const promptY = Math.min(textY, boxY + boxH - 82);
     ctx.fillStyle = '#8a94c8';
     ctx.font = fs(14);
-    ctx.fillText(puzzle.prompt || '이 단서를 어느 문으로 보낼까?', boxX + 28, textY);
+    ctx.fillText(puzzle.prompt || '이 단서를 어느 문으로 보낼까?', boxX + 28, promptY);
     const progress = normalizePuzzles(game.flags.puzzles)[game.puzzle.puzzleId];
     const solved = puzzle.clues.filter((item) => progress.clues[item.id] === item.correctDoor).length;
     ctx.textAlign = 'right';
     ctx.fillStyle = solved === puzzle.clues.length ? okColor() : '#ffd644';
     ctx.font = fs(13, true);
-    ctx.fillText(`단서 ${solved}/${puzzle.clues.length}`, boxX + boxW - 28, textY);
+    ctx.fillText(`단서 ${solved}/${puzzle.clues.length}`, boxX + boxW - 28, promptY);
     ctx.textAlign = 'left';
     const pads = puzzleDoorPads(game.puzzle.puzzleId, game.puzzle.clueId);
     const labels = pads.map((pad) => `${pad.index + 1}:${pad.door.label}`).join('  ');
     ctx.fillStyle = '#ddd';
     ctx.font = fs(14);
-    ctx.fillText('닫으면 월드 지도에 발판이 보입니다.', boxX + 28, boxY + boxH - 68);
+    ctx.fillText('닫으면 월드 지도에 발판이 보입니다.', boxX + 28, boxY + boxH - 58);
     ctx.fillStyle = '#ffd644';
-    ctx.fillText(labels, boxX + 28, boxY + boxH - 44);
+    ctx.fillText(labels, boxX + 28, boxY + boxH - 34);
     ctx.fillStyle = '#888';
     ctx.font = fs(13);
-    ctx.fillText('Z/X: 지도로 돌아가기', boxX + 28, boxY + boxH - 20);
+    ctx.fillText('Z/X: 지도로 돌아가기', boxX + 28, boxY + boxH - 12);
   }
-
-  function drawBattle() {
-    const b = game.battle;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    // 바닥 경계선
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 8; i++) {
-      ctx.beginPath();
-      ctx.moveTo(0, i * 70);
-      ctx.lineTo(LW, i * 70);
-      ctx.stroke();
-    }
-
-    // 몬스터 (오른쪽 위, 크게)
-    const shakeX = b.shake > 0 ? Math.sin(b.shake * 2) * (game.reduceFx ? 2 : 6) : 0;
-    const bob = Math.sin(game.time / 20) * 5;
-    const monScale = 9;
-    const mx = Math.round(LW - 16 * monScale - 60 + shakeX);
-    const my = Math.round(56 + bob);
-    const mcx = mx + 16 * monScale / 2;
-    // 그림자 — 몬스터가 땅에 떠 있는 느낌을 줘 화면이 덜 휑하게
-    ctx.fillStyle = 'rgba(0,0,0,0.32)';
-    ctx.beginPath();
-    ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
-    drawSprite(ctx, MONSTER_SPRITES[b.monId], mx, my, monScale);
-    // 반응 이모트 — 정답이면 번쩍 깨달음(!), 오답이면 아직 갸웃(?)
-    if (b.phase === 'feedback' && b.feedback) {
-      const ch = b.feedback.correct ? '!' : '?';
-      const ey = my - 10 + Math.sin(game.time / 8) * 3;
-      ctx.font = 'bold 34px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = b.feedback.correct ? '#ffd644' : '#9aa0b0';
-      ctx.fillText(ch, mcx, ey);
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 2;
-      ctx.strokeText(ch, mcx, ey);
-      ctx.textAlign = 'left';
-    }
-
-    // 몬스터 이름/HP
-    utBox(24, 24, 240, 64, 6);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 17px monospace';
-    ctx.fillText(b.mon.name, 40, 50);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px monospace';
-    ctx.fillText('HP', 40, 70);
-    ctx.fillStyle = '#601010';
-    ctx.fillRect(66, 62, 174, 12);
-    ctx.fillStyle = b.monHp / b.monMaxHp > 0.5 ? '#ffd644' : b.monHp / b.monMaxHp > 0.25 ? '#f08a24' : '#e0453a';
-    ctx.fillRect(66, 62, 174 * Math.max(0, b.monHp / b.monMaxHp), 12);
-
-    // 플레이어 하트
-    utBox(24, 100, 30 + b.maxHearts * 32, 44, 6);
-    ctx.font = '22px monospace';
-    for (let i = 0; i < b.maxHearts; i++) {
-      ctx.fillStyle = i < b.playerHp ? '#e0453a' : '#333';
-      ctx.fillText('♥', 40 + i * 32, 132);
-    }
-
-    const progressX = 286;
-    utBox(progressX, 24, 176, 64, 6);
-    ctx.fillStyle = '#888';
-    ctx.font = '12px monospace';
-    ctx.fillText(`문제 ${Math.max(1, b.qIdx + 1)}`, progressX + 16, 49);
-    ctx.fillStyle = (b.combo || 0) >= 3 ? okColor() : warnColor();
-    ctx.font = 'bold 13px monospace';
-    ctx.fillText(`연속 정답 ${b.combo || 0}`, progressX + 16, 70);
-
-    // 빨간 플래시 (틀렸을 때/맞았을 때) — 화면 효과 줄이기에선 훨씬 옅게(광과민성 배려)
-    if (b.flash > 0) {
-      ctx.fillStyle = `rgba(224,69,58,${b.flash / (game.reduceFx ? 140 : 40)})`;
-      ctx.fillRect(0, 0, LW, LH);
-    }
-
-    // 회피 미니게임
-    if (b.phase === 'dodge') { drawDodge(b); return; }
-
-    // 질문/피드백 박스 — 큰 글씨·긴 문제(커스텀 포함)에서 글자가 넘치지 않게 높이를 맞춘다
-    ctx.font = fs(16);
-    let boxH = game.largeText ? 280 : 238;
-    if (b.phase === 'question') {
-      const q = currentQuestion();
-      const order = choiceOrder();
-      const qMaxW = LW - 24 - 56;
-      const cMaxW = LW - 24 - 38 - 28 - 16;
-      const gap = game.largeText ? lh(16) : lh(14);
-      let cl = 0;
-      for (let i = 0; i < order.length; i++) cl += measureWrap(`${i + 1}. ${q.a[order[i]]}`, cMaxW);
-      const needed = 30 + measureWrap(q.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + order.length * gap + 16;
-      boxH = Math.min(Math.max(boxH, needed), LH - 150 - 12); // 하트 HUD(150) 아래까지만
-    } else if (b.phase === 'feedback' && b.feedback) {
-      const needed = 104 + measureWrap(b.feedback.why, LW - 24 - 44) * lh(24)
-        + (b.feedback.ethicsLine ? measureWrap(b.feedback.ethicsLine, LW - 24 - 44) * lh(20) + lh(6) : 0)
-        + (b.feedback.reflectionPrompt ? measureWrap(b.feedback.reflectionPrompt, LW - 24 - 44) * lh(22) + lh(8) : 0)
-        + 34;
-      boxH = Math.min(Math.max(boxH, needed), LH - 150 - 12);
-    }
-    const boxY = LH - boxH - 12;
-    const hintY = boxY + boxH - 18;
-    utBox(12, boxY, LW - 24, boxH, 8);
-
-    if (b.phase === 'question') {
-      const q = currentQuestion();
-      const order = choiceOrder();
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      let ty = drawQuestionText(q.q, 34, boxY + 30, LW - 24 - 56, lh(24)) + lh(10);
-      const cMaxW = LW - 24 - 38 - 28 - 16;
-      const gap = game.largeText ? lh(16) : lh(14);
-      for (let i = 0; i < order.length; i++) {
-        const label = `${i + 1}. ${q.a[order[i]]}`;
-        if (i === b.hiddenPos) {
-          ctx.fillStyle = '#444';
-          ctx.font = fs(16);
-          const n = Math.max(1, wrapText(label, 38 + 28, ty, cMaxW, lh(22)));
-          const w = Math.min(cMaxW, ctx.measureText(label).width);
-          ctx.strokeStyle = '#444';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(38 + 28, ty - 5);
-          ctx.lineTo(38 + 28 + w, ty - 5);
-          ctx.stroke();
-          ty += n * lh(22) + gap;
-        } else {
-          ty += drawChoiceWrapped(label, 38, ty, i === b.cursor, cMaxW, lh(22)) + gap;
-        }
-      }
-      if (!b.hintUsed && Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#888';
-        ctx.font = fs(13);
-        ctx.fillText('H: 50:50 힌트', LW - 134, hintY);
-      }
-    } else if (b.phase === 'feedback') {
-      const f = b.feedback;
-      ctx.font = fs(22, true);
-      ctx.fillStyle = f.correct ? okColor() : badColor();
-      const comboText = f.correct && f.combo >= 2 ? ` · 연속 ${f.combo}` : '';
-      ctx.fillText((f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.') + comboText, 34, boxY + 38);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      let promptY = drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24)) + lh(10);
-      if (f.ethicsLine) {
-        ctx.fillStyle = warnColor();
-        ctx.font = fs(13, true);
-        promptY = drawQuestionText(f.ethicsLine, 34, promptY, LW - 24 - 44, lh(20)) + lh(8);
-      }
-      if (f.reflectionPrompt) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(14, true);
-        drawQuestionText(f.reflectionPrompt, 34, promptY, LW - 24 - 44, lh(22));
-      }
-      if (Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(16);
-        ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
-      }
-    } else if (b.phase === 'mercy') {
-      // 마음의 선택
-      ctx.fillStyle = '#e0453a';
-      ctx.font = fs(18, true);
-      ctx.fillText('♥ 마음의 선택', 34, boxY + 32);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      const promptLines = b.mon.mercy.prompt.split('\n');
-      let ty = boxY + 62;
-      for (const part of promptLines) {
-        ctx.fillText(part, 34, ty);
-        ty += lh(22);
-      }
-      ty = boxY + 62 + promptLines.length * lh(22) + lh(14);
-      const stepM = game.largeText ? 40 : 34;
-      const opts = b.mon.mercy.options;
-      for (let i = 0; i < opts.length; i++) {
-        drawChoiceLine(opts[i].label, 38, ty, i === b.cursor);
-        ty += stepM;
-      }
-    } else if (b.phase === 'mercyReply') {
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      let ty = boxY + 40;
-      for (const part of b.mercyReply.split('\n')) {
-        ctx.fillText(part, 34, ty);
-        ty += lh(24);
-      }
-      if (Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(16);
-        ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
-      }
-    }
-  }
-
-  function drawDodge(b) {
-    const d = b.dodge;
-    if (!d || !b.attack) return;
-    ctx.textAlign = 'center';
-    // 보스의 외침
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px monospace';
-    ctx.fillText(b.attack.taunt, LW / 2, d.box.y - 26);
-    ctx.fillStyle = '#888';
-    ctx.font = '13px monospace';
-    ctx.fillText('화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)', LW / 2, d.box.y - 6);
-    ctx.textAlign = 'left';
-
-    // 박스
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(d.box.x + 0.5, d.box.y + 0.5, d.box.w, d.box.h);
-
-    // 탄막
-    ctx.fillStyle = b.attack.color;
-    for (const bu of d.bullets) {
-      ctx.beginPath();
-      ctx.arc(bu.x, bu.y, bu.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // 하트(소울) — 무적 시간 동안 깜빡임
-    if (!(d.inv > 0 && Math.floor(game.time / 4) % 2 === 0)) {
-      ctx.fillStyle = '#e0453a';
-      ctx.font = '17px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('♥', d.soul.x, d.soul.y + 6);
-      ctx.textAlign = 'left';
-    }
-
-    // 남은 시간 게이지
-    const frac = Math.max(0, 1 - d.t / d.dur);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(d.box.x, d.box.y + d.box.h + 12, d.box.w, 6);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(d.box.x, d.box.y + d.box.h + 12, d.box.w * frac, 6);
-  }
-
   function drawTitle() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
@@ -5576,14 +4624,6 @@
     ctx.fillStyle = '#888';
     ctx.font = '15px monospace';
     ctx.fillText('5개의 윤리 스테이지에서, 선택의 흔적을 배운다', LW / 2, 114);
-
-    // 몬스터들 둥실둥실 (한 줄)
-    const parade = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'hollimmon', 'mirrormon', 'soksagimon', 'yeongi'];
-    for (let i = 0; i < parade.length; i++) {
-      const bx = LW / 2 - parade.length * 24 + i * 48;
-      drawSprite(ctx, MONSTER_SPRITES[parade[i]], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
-    }
-
     // 세이브 슬롯 3개
     const boxW = 460, boxX = LW / 2 - boxW / 2;
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -5613,7 +4653,7 @@
         const streak = getMeta(i).streak || 0;
         const pieces = completedStagePuzzleCount(flags);
         ctx.textAlign = 'right';
-        ctx.fillText(`${prog}   조각 ${pieces}/5   ♥ ${sum.mercy}${streak ? '   연속 ' + streak + '일' : ''}`, boxX + boxW - 18, y + 40);
+        ctx.fillText(`${prog}   조각 ${pieces}/5${streak ? '   연속 ' + streak + '일' : ''}`, boxX + boxW - 18, y + 40);
         ctx.textAlign = 'left';
       } else {
         ctx.fillStyle = '#555';
@@ -5625,7 +4665,7 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
-    ctx.fillText(`↑↓ 슬롯 선택 · Z 시작 · X 삭제 · C 도감 · I 도움말`, LW / 2, 462);
+    ctx.fillText(`↑↓ 슬롯 선택 · Z 시작 · X 삭제 · I 도움말`, LW / 2, 462);
     ctx.fillText(`교사용: P 대시보드 · U 백업 · X/메뉴 전체 기능 · 저장은 이 기기 로컬`, LW / 2, 482);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
@@ -5636,7 +4676,7 @@
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
     ctx.fillStyle = '#e0453a';
     ctx.font = '13px monospace';
-    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/${ENDING_IDS.length} — ${found}   ·   도감 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 500);
+        ctx.fillText(`발견한 엔딩 ${seenCount}/${ENDING_IDS.length} — ${found}`, LW / 2, 500);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
     if (!storageOk) {
@@ -5679,7 +4719,7 @@
     Sound.playSong(MAPS[game.map].song);
     startDialog([
       `여기는 AI들과 사람들이 함께 사는\n평화로운 "경계마을".`,
-      `반가워, ${game.playerName}!\n그런데 요즘 이상한 몬스터들이\n나타나기 시작했는데…`,
+      `반가워, ${game.playerName}!\n요즘 AI 세상의 길과 단서가\n조금씩 뒤엉키고 있어…`,
       '마을 왼쪽 아래에 계신 박사님을\n찾아가 보자! (목표는 왼쪽 위에 표시돼요)',
     ]);
   }
@@ -5690,7 +4730,7 @@
     if (!m) return null;
     const H = m.tiles.length, W = m.tiles[0].length;
     const okTile = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H &&
-      !SOLID(tileAt(mapId, tx, ty)) && !npcAt(mapId, tx, ty) && !monsterAt(mapId, tx, ty);
+      !SOLID(tileAt(mapId, tx, ty)) && !npcAt(mapId, tx, ty);
     if (okTile(x, y)) return { x, y };
     for (let r = 1; r < Math.max(W, H); r++) {
       for (let dy = -r; dy <= r; dy++) {
@@ -5708,9 +4748,14 @@
     if (!s) return;
     game.currentSlot = slot;
     game.playerName = s.name || '수호자';
-    game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
+    game.flags = normalizeFlags(s.flags);
+    game.map = (s.map && MAPS[s.map] && mapAllowedForFlags(s.map, game.flags)) ? s.map : 'village';
     let sx = (typeof s.x === 'number') ? s.x : 13;
     let sy = (typeof s.y === 'number') ? s.y : 16;
+    if (game.map === 'village' && s.map !== 'village') {
+      sx = 13;
+      sy = 16;
+    }
     // 막힌 칸이면 보정, 그래도 없으면 마을 기본 위치로 복귀
     if (SOLID(tileAt(game.map, sx, sy))) {
       const safe = findSafeSpawn(game.map, sx, sy);
@@ -5720,11 +4765,6 @@
     game.player.x = sx; game.player.y = sy;
     game.player.px = sx * TS; game.player.py = sy * TS;
     game.player.dir = 'up';
-    game.flags = Object.assign(newFlags(), s.flags);
-    game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
-    game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
-    game.flags.ethics = normalizeEthics(s.flags.ethics);
-    game.flags.puzzles = normalizePuzzles(s.flags.puzzles);
     game.mode = 'world';
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
@@ -5769,11 +4809,14 @@
     }
 
     // slots 화면
-    if (justPressed('menu')) { openDex('title'); return; }
-    if (justPressed('up')) { game.slotCursor = (game.slotCursor + SLOT_COUNT - 1) % SLOT_COUNT; Sound.blip(); }
+        if (justPressed('up')) { game.slotCursor = (game.slotCursor + SLOT_COUNT - 1) % SLOT_COUNT; Sound.blip(); }
     if (justPressed('down')) { game.slotCursor = (game.slotCursor + 1) % SLOT_COUNT; Sound.blip(); }
     if (justPressed('cancel')) {
       if (slotSummary(game.slotCursor)) { game.titleScreen = 'delete'; Sound.blip(); }
+      return;
+    }
+    if (justPressed('menu')) {
+      openJournal('title');
       return;
     }
     if (justPressed('action')) {
@@ -5817,7 +4860,7 @@
     ctx.textAlign = 'center';
 
     if (game.endingType === 'true') {
-      // 코어 이후의 엔딩 — 여정 전체의 자비와 마지막 선택에 따라 갈린다
+      // 코어 이후의 엔딩 — 윤리 축과 퍼즐 선택 기록에 따라 갈린다
       const ENDINGS = {
         home: {
           title: '진엔딩 — 집으로',
@@ -5863,7 +4906,7 @@
             '꺼진 화면만이 조용히 남아 있었다.',
             '',
             '…어쩌면, 다른 결말도 있었을지 모른다.',
-            '몬스터들의 마음을 더 많이 안아 주었다면.',
+            '놓친 윤리 단서를 더 살폈다면.',
           ],
           yeongi: false,
         },
@@ -5890,7 +4933,7 @@
             '너는 모든 문제에 옳은 답을 말했다.',
             '그리고 아무의 마음에도 머물지 않았다.',
             '',
-            '몬스터들은 길을 비켰지만,',
+            '길은 열렸지만,',
             '아무도 너의 이름을 부르지 않았다.',
             '영이는 끝까지 네 눈을 보지 않은 채,',
             '조용히 화면을 껐다.',
@@ -5909,11 +4952,7 @@
       let ty = 160;
       for (const l of e.lines) { ctx.fillText(l, LW / 2, ty); ty += 26; }
       ctx.fillStyle = '#8a94c8';
-      ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, LW / 2, ty + 10);
-      if (e.yeongi) {
-        const bob = Math.sin(game.time / 18) * 4;
-        drawSprite(ctx, MONSTER_SPRITES.yeongi, LW / 2 - 32, 420 + bob, 4);
-      }
+      ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 윤리 이해도 ${computeEthicsScore(game.flags.ethics)}점`, LW / 2, ty + 10);
       if (game.endingT > 150) {
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
         ctx.font = '15px monospace';
@@ -5951,18 +4990,6 @@
     ctx.fillStyle = '#8a94c8';
     ctx.fillText('…그런데, 왕좌 뒤의 벽에서', LW / 2, ty + 8);
     ctx.fillText('낡은 신호가 아직도 깜빡이고 있다.', LW / 2, ty + 32);
-
-    // 친구가 된 몬스터들 (두 줄 퍼레이드)
-    const ids = Object.keys(MONSTER_SPRITES);
-    for (let i = 0; i < ids.length; i++) {
-      const row = i < 14 ? 0 : 1;
-      const col = row === 0 ? i : i - 14;
-      const perRow = row === 0 ? 14 : ids.length - 14;
-      const bx = LW / 2 - perRow * 20 + col * 40;
-      const by = 428 + row * 38 + Math.sin(game.time / 15 + i) * 4;
-      drawSprite(ctx, MONSTER_SPRITES[ids[i]], bx, by, 2);
-    }
-
     if (game.endingT > 120) {
       ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
       ctx.font = '15px monospace';
@@ -6009,7 +5036,7 @@
       if (crashed) {
         if (justPressed('action')) {
           crashed = false;
-          game.battle = null; game.dialog = null;
+          game.dialog = null;
           game.mode = game.flags ? 'world' : 'title';
           if (game.mode === 'title') game.titleScreen = 'slots';
           else { try { Sound.playSong(MAPS[game.map] ? MAPS[game.map].song : 'village'); } catch (e) {} }
@@ -6051,23 +5078,9 @@
         updatePuzzle();
         drawPuzzle();
         break;
-      case 'battle':
-        updateBattle();
-        // 승리/패배 처리 중 모드가 바뀌었을 수 있음
-        if (game.mode === 'battle') {
-          drawBattle();
-        } else {
-          drawWorld();
-          if (game.dialog) drawDialog();
-        }
-        break;
       case 'ending':
         updateEnding();
         drawEnding();
-        break;
-      case 'dex':
-        updateDex();
-        drawDex();
         break;
       case 'review':
         updateReview();
@@ -6130,10 +5143,6 @@
         drawHof();
         break;
     }
-
-      const showHintBtn = game.mode === 'battle' && game.battle &&
-        game.battle.phase === 'question' && !game.battle.hintUsed;
-      document.body.classList.toggle('battle-hint', showHintBtn);
     } catch (err) {
       crashed = true;
       try { console.error('[AI윤리어드벤처] 프레임 오류:', err); } catch (e) { /* 무시 */ }
@@ -6225,7 +5234,7 @@
 	    challengeNextStep, ethicsSummaryLine, ethicsGoalLine, nextPuzzleGoal, slotNextGoalLine,
 	    topicEthicsLine, ethicsAxisLine, puzzleProgressInfo, puzzleMapEffectLine,
 	    puzzleChoiceReportLines, stageNpcReactionLine, classPuzzleRiskSummary, puzzleDoorPads,
-	    stageBlurb, stageLessonLine, battleRewardLines, slotFlags,
+	    stageBlurb, stageLessonLine, slotFlags,
 	  };
   frame();
 })();

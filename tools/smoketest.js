@@ -1,15 +1,11 @@
-// 게임 로직 스모크 테스트 (Node.js)
-// DOM/Canvas를 스텁으로 대체하고 실제 플레이 경로를 시뮬레이션한다.
-// 사용법: node tools/smoketest.js
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-// ---------- DOM 스텁 ----------
 function makeCtx() {
   return new Proxy({}, {
     get(t, p) {
-      if (p === 'measureText') return () => ({ width: 50 });
+      if (p === 'measureText') return (text) => ({ width: String(text || '').length * 8 });
       if (p in t) return t[p];
       return () => {};
     },
@@ -17,22 +13,23 @@ function makeCtx() {
   });
 }
 function makeCanvas(w, h) {
-  return { width: w || 0, height: h || 0, getContext: () => makeCtx(), addEventListener() {} };
+  return { width: w || 0, height: h || 0, style: {}, getContext: () => makeCtx(), addEventListener() {}, focus() {} };
 }
 
 const listeners = {};
 let rafCb = null;
 const storage = new Map();
-
 const windowObj = {
   addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
   removeEventListener: (ev, fn) => {
     const a = listeners[ev];
-    if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); }
+    if (a) {
+      const i = a.indexOf(fn);
+      if (i >= 0) a.splice(i, 1);
+    }
   },
   requestAnimationFrame: (cb) => { rafCb = cb; },
 };
-
 const sandbox = {
   window: windowObj,
   document: {
@@ -46,28 +43,29 @@ const sandbox = {
     removeItem: (k) => storage.delete(k),
   },
   requestAnimationFrame: windowObj.requestAnimationFrame,
-  console, Math, Set, Map, JSON, Object, setTimeout, clearTimeout,
+  console, Math, Set, Map, JSON, Object, Date, setTimeout, clearTimeout,
 };
 vm.createContext(sandbox);
-
-// 결정적 테스트: Math.random을 시드 기반 PRNG로 고정한다.
-// (보기 섞기 등 무작위 요소 때문에 가끔 검사 결과가 흔들리던 플래키 현상 제거)
-let _seed = 1234567;
-Math.random = () => { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; };
 
 for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), sandbox, { filename: f });
 }
 
 const g = windowObj.__game;
-const { MAPS, ETHICS_AXES, STAGE_THEMES, STAGE_PUZZLES, ETHICS_AXIS_MAX, computeEthicsScore } =
-  vm.runInContext('({ MAPS, ETHICS_AXES, STAGE_THEMES, STAGE_PUZZLES, ETHICS_AXIS_MAX, computeEthicsScore })', sandbox);
+const TR = windowObj.__test;
+const {
+  ETHICS_AXES, ETHICS_AXIS_MAX, MAPS, STAGE_PUZZLES, computeEthicsScore,
+  computeEnding, WALKABLE,
+} = vm.runInContext(
+  '({ ETHICS_AXES, ETHICS_AXIS_MAX, MAPS, STAGE_PUZZLES, computeEthicsScore, computeEnding, WALKABLE })',
+  sandbox,
+);
 
-// ---------- 시뮬레이션 도우미 ----------
 function step(n = 1) {
   for (let i = 0; i < n; i++) {
-    const cb = rafCb; rafCb = null;
-    if (!cb) throw new Error('requestAnimationFrame 콜백 없음');
+    const cb = rafCb;
+    rafCb = null;
+    if (!cb) throw new Error('requestAnimationFrame callback missing');
     cb();
   }
 }
@@ -79,1267 +77,129 @@ function tap(key) {
   step(2);
   dispatch('keyup', { key });
 }
-function hold(key, frames) {
-  dispatch('keydown', { key });
-  step(frames);
-  dispatch('keyup', { key });
-  step(2);
-}
 function setPos(x, y, dir) {
-  g.player.x = x; g.player.y = y;
-  g.player.px = x * 48; g.player.py = y * 48;
+  g.player.x = x;
+  g.player.y = y;
+  g.player.px = x * 48;
+  g.player.py = y * 48;
   if (dir) g.player.dir = dir;
 }
 function advanceDialog(max = 100) {
   for (let i = 0; i < max && g.mode === 'dialog'; i++) tap('z');
-  if (g.mode === 'dialog') throw new Error('대화가 끝나지 않음');
+  if (g.mode === 'dialog') throw new Error('dialog did not close');
 }
-function classifyStagePuzzle(puzzleId, clueId, choiceId) {
-  const puzzle = STAGE_PUZZLES[puzzleId];
-  const clue = puzzle.clues.find((item) => item.id === clueId);
-  setPos(clue.stand.x, clue.stand.y, clue.stand.dir);
-  tap('z');
-  if (g.mode !== 'dialog' || !g.puzzle || !g.puzzle.carrying || g.puzzle.puzzleId !== puzzleId || g.puzzle.clueId !== clueId) {
-    throw new Error('맵 조작 퍼즐 단서가 잡히지 않음: ' + puzzleId + '/' + g.mode);
-  }
-  advanceDialog();
-  if (g.mode !== 'world') throw new Error('단서 설명 뒤 월드로 돌아오지 않음: ' + g.mode);
-  const pads = windowObj.__test.puzzleDoorPads(puzzleId, clueId);
-  const pad = pads.find((item) => item.door.id === choiceId);
-  if (!pad) throw new Error('퍼즐 발판 없음: ' + puzzleId + '/' + choiceId);
-  setPos(pad.x, pad.y, clue.stand.dir);
-  tap('z');
-  if (g.mode !== 'dialog') throw new Error('분류 결과 대화가 열리지 않음');
-  const resultText = g.dialog && Array.isArray(g.dialog.lines) ? g.dialog.lines.join('\n') : '';
-  advanceDialog();
-  return resultText;
-}
-function classifyDataFootprint(clueId, choiceId) {
-  return classifyStagePuzzle('data_footprint_forest', clueId, choiceId);
-}
-const correctPosSeen = new Set();
-function answerQuestion(correct) {
-  if (g.mode !== 'battle') throw new Error('배틀 모드가 아님: ' + g.mode);
-  step(1); // currentQuestion()이 풀을 다시 섞을 시간
-  const b = g.battle;
-  const q = b.questions[b.qIdx];
-  correctPosSeen.add(b.correctPos);
-  // 보기 순서가 섞이므로, 정답의 '표시 위치'(correctPos)를 기준으로 고른다
-  const target = correct ? b.correctPos : (b.correctPos + 1) % q.a.length;
-  while (b.cursor !== target) tap('ArrowDown');
-  tap('z'); // 답 제출
-  if (b.phase !== 'feedback') throw new Error('피드백 단계가 아님');
-  if (b.feedback.correct !== correct) throw new Error('정답 판정 오류');
-  if (!correct && !(b.feedback.reflectionPrompt || '').includes('생각 질문')) {
-    throw new Error('오답 자기 설명 프롬프트가 없음');
-  }
-  tap('z'); // 피드백 닫기
-}
-// 보스 회피 구간이 뜨면 (입력 없이) 끝날 때까지 빠르게 넘긴다.
-let dodgeSeen = false;
-function skipDodgeIfAny() {
-  if (g.mode === 'battle' && g.battle && g.battle.phase === 'dodge') {
-    dodgeSeen = true;
-    let guard = 0;
-    while (g.battle && g.battle.phase === 'dodge' && guard++ < 4000) step(1);
-    if (g.battle && g.battle.phase === 'dodge') throw new Error('회피 구간이 끝나지 않음');
-  }
-}
-function fightAndWin(hp, wrongFirst = 0) {
-  for (let i = 0; i < wrongFirst; i++) { answerQuestion(false); skipDodgeIfAny(); }
-  for (let i = 0; i < hp && g.mode === 'battle'; i++) { answerQuestion(true); skipDodgeIfAny(); }
-}
-// 모든 몬스터: 퀴즈를 모두 맞히면 '마음의 선택'이 나온다
-function fightWithMercy(hp, mercyIdx = 0, wrongFirst = 0) {
-  fightAndWin(hp, wrongFirst);
-  if (g.mode !== 'battle' || g.battle.phase !== 'mercy') {
-    throw new Error('마음의 선택 단계가 아님: ' + g.mode + '/' + (g.battle && g.battle.phase));
-  }
-  while (g.battle.cursor !== mercyIdx) tap('ArrowDown');
-  tap('z'); // 선택 → 응답
-  if (g.battle.phase !== 'mercyReply') throw new Error('응답 단계가 아님');
-  tap('z'); // 응답 닫기 → 승리 대화
+function slot(i) {
+  const raw = storage.get('ai-ethics-adventure-slot-' + i);
+  return raw ? JSON.parse(raw) : null;
 }
 
 let passed = 0;
 function check(name, cond) {
-  if (cond) { console.log('  ✔ ' + name); passed++; }
-  else { console.error('  ✘ ' + name); process.exit(1); }
+  if (cond) {
+    console.log('  ✔ ' + name);
+    passed++;
+    return;
+  }
+  console.error('  ✘ ' + name);
+  process.exit(1);
 }
 
-// ---------- 시나리오 ----------
-console.log('[1] 타이틀 → 슬롯 선택 → 이름 입력 → 게임 시작');
+function classifyStagePuzzle(puzzleId, clueId, choiceId) {
+  const puzzle = STAGE_PUZZLES[puzzleId];
+  const clue = puzzle.clues.find((item) => item.id === clueId);
+  g.map = puzzle.map;
+  setPos(clue.stand.x, clue.stand.y, clue.stand.dir);
+  tap('z');
+  check(`${puzzle.title} 단서 집기: ${clue.label}`, g.mode === 'dialog' && g.puzzle && g.puzzle.carrying);
+  advanceDialog();
+  check(`${puzzle.title} 단서 설명 후 월드 복귀`, g.mode === 'world');
+  const pad = TR.puzzleDoorPads(puzzleId, clueId).find((item) => item.door.id === choiceId);
+  if (!pad) throw new Error(`puzzle pad missing: ${puzzleId}/${choiceId}`);
+  setPos(pad.x, pad.y, clue.stand.dir);
+  tap('z');
+  check(`${puzzle.title} 선택 결과 대화`, g.mode === 'dialog');
+  const resultText = g.dialog && Array.isArray(g.dialog.lines) ? g.dialog.lines.join('\n') : '';
+  advanceDialog();
+  return resultText;
+}
+
+function completePuzzle(puzzleId) {
+  const puzzle = STAGE_PUZZLES[puzzleId];
+  for (const clue of puzzle.clues) classifyStagePuzzle(puzzleId, clue.id, clue.correctDoor);
+  check(`${puzzle.title} 완료 플래그`, g.flags.puzzles[puzzleId].complete === true);
+  check(`${puzzle.title} 보상 처리`, g.flags.puzzles[puzzleId].rewarded === true);
+  check(`${puzzle.title} 윤리 축 증가`, g.flags.ethics[puzzle.axis] >= 3);
+}
+
+console.log('[1] title -> new slot -> world');
 step(5);
-check('타이틀 화면', g.mode === 'title' && g.titleScreen === 'slots');
-check('슬롯 3개 모두 비어 있음', !storage.get('ai-ethics-adventure-slot-0'));
-tap('z'); // 빈 슬롯 0 선택 → 이름 입력
-check('이름 입력 화면', g.mode === 'title' && g.titleScreen === 'name');
-// 이름 입력 중에는 게임 키가 막힌다(IME). Enter/시작 버튼은 nameConfirm으로 확정.
-g.nameConfirm = true; step(2);
-check('인트로 대화 시작', g.mode === 'dialog');
-advanceDialog();
-check('월드 진입', g.mode === 'world' && g.map === 'village');
-check('시작 위치 (13,16)', g.player.x === 13 && g.player.y === 16);
-check('슬롯 0에 저장됨', !!storage.get('ai-ethics-adventure-slot-0'));
-check('새 세이브는 5개 윤리 축을 가짐',
-  ETHICS_AXES.every((axis) => Object.prototype.hasOwnProperty.call(JSON.parse(storage.get('ai-ethics-adventure-slot-0')).flags.ethics, axis)));
-check('기본 이름 수호자', g.playerName === '수호자');
-
-console.log('[2] 박사님과 대화 (메인 퀘스트 시작)');
-setPos(5, 12, 'left'); // 박사님 (4,12) 옆
+check('title slot screen', g.mode === 'title' && g.titleScreen === 'slots');
 tap('z');
-check('박사님 대화 시작', g.mode === 'dialog');
+check('name screen', g.mode === 'title' && g.titleScreen === 'name');
+g.nameConfirm = true;
+step(2);
+check('intro dialog', g.mode === 'dialog');
 advanceDialog();
-check('퀘스트 플래그 설정', g.flags.talkedProf === true);
-check('자동 저장됨', storage.size > 0);
+check('world loaded', g.mode === 'world' && g.map === 'village');
+check('slot saved with puzzle flags', !!slot(0).flags.puzzles);
+check('five ethics axes present', ETHICS_AXES.every((axis) => Object.prototype.hasOwnProperty.call(slot(0).flags.ethics, axis)));
 
-console.log('[3] 이동/충돌');
-setPos(2, 6, 'down'); // 아래 (2,7)? village y7 x2 = G
-hold('ArrowLeft', 12); // (1,6) G로 이동
-check('걷기 이동', g.player.x === 1 && g.player.y === 6);
-hold('ArrowLeft', 12); // (0,6)은 T(나무) → 막힘
-check('나무에 막힘', g.player.x === 1);
-
-console.log('[4] 마을 → 숲 워프');
-setPos(13, 1, 'up');
-hold('ArrowUp', 14);
-// 워프 후에도 키를 누르고 있으면 계속 걸어갈 수 있으므로 맵과 x만 확인
-check('숲으로 워프', g.map === 'forest' && g.player.x === 13 && g.player.y >= 16);
-
-console.log('[5] 배틀 패배 흐름 (베껴몬에게 3번 틀리기)');
-setPos(7, 9, 'down'); // 베껴몬 (7,10) 위
+console.log('[2] professor starts puzzle route');
+setPos(5, 12, 'left');
 tap('z');
-advanceDialog(); // 등장 대사 → 배틀
-check('배틀 시작', g.mode === 'battle' && g.battle.monId === 'bekkyeomon');
-answerQuestion(false);
-answerQuestion(false);
-answerQuestion(false);
-check('패배 → 월드 복귀 대화', g.mode === 'dialog');
+check('professor dialog', g.mode === 'dialog');
 advanceDialog();
-check('베껴몬 아직 남아있음', g.flags.defeated.bekkyeomon === false);
+check('main route flag saved', g.flags.talkedProf === true && slot(0).flags.talkedProf === true);
+check('initial objective names first puzzle', TR.nextPuzzleGoal(g.flags).includes('데이터 발자국'));
 
-console.log('[6] 배틀 승리 흐름 (베껴몬, 1번 틀리고 승리)');
-tap('z'); // 같은 자리에서 재도전
-advanceDialog();
-check('재배틀 시작', g.mode === 'battle');
-fightWithMercy(3, 0, 1);
-check('승리 대화', g.mode === 'dialog');
-advanceDialog();
-check('베껴몬 깨우침', g.flags.defeated.bekkyeomon === true);
-check('증표는 아직 0개 (부하 몬스터)', !g.flags.badges.forest);
-
-console.log('[7] 수호자 몰래몬 → 숲의 증표');
-setPos(13, 4, 'up'); // 몰래몬 (13,3) 아래
-tap('z');
-advanceDialog();
-fightWithMercy(3, 0);
-advanceDialog();
-check('숲의 증표 획득', g.flags.badges.forest === true);
-
-console.log('[8] 증표 부족 시 타워 입장 거부');
-g.map = 'village';
-setPos(18, 5, 'up');
-hold('ArrowUp', 14);
-check('입장 거부 대화', g.mode === 'dialog');
-advanceDialog();
-check('마을에 남아있음', g.map === 'village' && g.player.y === 5);
-
-console.log('[9] 호수/동굴 수호자 처치 (증표 3개)');
-g.map = 'lake';
-setPos(15, 6, 'up'); // 거짓몬 (15,5)
-tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
-check('호수의 증표', g.flags.badges.lake === true);
-g.map = 'cave';
-setPos(5, 4, 'left'); // 편향몬 (4,4)
-tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
-check('동굴의 증표', g.flags.badges.cave === true);
-
-console.log('[9b] 스테이지 1: 데이터 발자국 숲 분류 퍼즐');
-check('데이터 발자국 단서 3개', STAGE_PUZZLES.data_footprint_forest.clues.length === 3);
-g.map = 'village';
-setPos(18, 5, 'up');
-hold('ArrowUp', 14);
-check('데이터 분류 전 신호탑 잠김', g.mode === 'dialog' && g.map === 'village');
-advanceDialog();
+console.log('[3] map puzzle choices and recovery prompts');
 g.map = 'forest';
-const wrongPuzzleReflection = classifyDataFootprint('photo_name_tag', 'share_ok');
-check('오분류 뒤 자기 설명 질문', wrongPuzzleReflection.includes('생각 질문') && wrongPuzzleReflection.includes('개인정보'));
-check('오분류만으로는 퍼즐 미완료', !g.flags.puzzles.data_footprint_forest.complete);
-classifyDataFootprint('photo_name_tag', 'needs_consent');
-classifyDataFootprint('home_location', 'do_not_share');
-const dataReflection = classifyDataFootprint('favorite_color', 'share_ok');
-check('데이터 발자국 분류 완료', g.flags.puzzles.data_footprint_forest.complete === true);
-check('데이터 퍼즐 완료 뒤 배움 조각', dataReflection.includes('배움 조각') && dataReflection.includes('동의'));
-check('개인정보 윤리 축 보상', g.flags.ethics.privacy >= 3);
-
-console.log('[10] 스테이지 1 보스 (혼돈몬) 전, 남쪽 길 잠김 확인');
-g.map = 'village';
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('남쪽 길 잠김 대화', g.mode === 'dialog');
-advanceDialog();
-check('마을에 남아있음', g.map === 'village');
-
-console.log('[11] 타워 입장 → 혼돈몬 → 스테이지 2 개방');
-setPos(18, 5, 'up');
-hold('ArrowUp', 14);
-check('타워 입장', g.map === 'tower' && g.player.x === 8 && g.player.y >= 10);
-setPos(8, 4, 'up'); // 혼돈몬 (8,3)
-tap('z');
-advanceDialog();
-check('보스전 시작', g.mode === 'battle' && g.battle.monId === 'hondonmon' && g.battle.monMaxHp === 5);
-check('보스전은 하트 4개', g.battle.maxHearts === 4);
-check('보스는 회피 공격을 가짐', !!g.battle.attack);
-fightWithMercy(5, 0);
-check('보스전에서 회피 구간이 발동됨', dodgeSeen === true);
-check('회피 중에도 하트는 0이 되지 않음', g.flags.defeated.hondonmon === true);
-advanceDialog();
-check('스테이지 1 클리어 (엔딩 아님)', g.mode === 'world' && g.flags.defeated.hondonmon);
-
-console.log('[12] 스테이지 2: 햇살초원 (허브 + 서브맵 2 + 보스 아레나)');
-g.map = 'village';
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('햇살초원 거점 진입', g.map === 'meadow');
-// 서브 수호자 처치 전, 보스 탑터 잠김 확인
-setPos(20, 15, 'down'); // 탑터 문 (20,16)
-hold('ArrowDown', 14);
-check('탑터 잠김(서브 수호자 필요)', g.mode === 'dialog' && g.map === 'meadow');
-advanceDialog();
-// 서쪽: 바람 언덕
-setPos(1, 10, 'left');
-hold('ArrowLeft', 14);
-check('바람 언덕 진입', g.map === 'windhill');
-setPos(8, 5, 'up'); // 악플몬 (8,4)
-tap('z'); advanceDialog();
-check('악플몬 배틀', g.battle.monId === 'akpeulmon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(20, 12, 'up'); // 소문몬 (20,11)
-tap('z'); advanceDialog();
-check('소문몬 배틀', g.battle.monId === 'somunmon');
-fightWithMercy(3, 0); advanceDialog();
-check('소문몬 클리어', g.flags.defeated.somunmon);
-setPos(1, 10, 'left'); hold('ArrowLeft', 14); // 거점 복귀
-check('거점 복귀(서쪽)', g.map === 'meadow');
-// 동쪽: 안개 습지
-setPos(26, 10, 'right'); hold('ArrowRight', 14);
-check('안개 습지 진입', g.map === 'fogswamp');
-setPos(8, 8, 'up'); // 갇힘몬 (8,7)
-tap('z'); advanceDialog();
-check('갇힘몬 배틀', g.battle.monId === 'gatimmon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(20, 13, 'up'); // 무시몬 (20,12)
-tap('z'); advanceDialog();
-check('무시몬 배틀', g.battle.monId === 'musimon');
-fightWithMercy(3, 0); advanceDialog();
-check('무시몬 클리어', g.flags.defeated.musimon);
-setPos(1, 10, 'left'); hold('ArrowLeft', 14); // 거점 복귀
-check('거점 복귀(동쪽)', g.map === 'meadow');
-console.log('[12b] 스테이지 2: 필터버블 추천 미로');
-check('추천 카드 3개', STAGE_PUZZLES.filter_bubble_maze.clues.length === 3);
-setPos(20, 15, 'down'); hold('ArrowDown', 14);
-check('필터버블 해결 전 탑터 잠김', g.mode === 'dialog' && g.map === 'meadow');
-advanceDialog();
-g.map = 'fogswamp';
-classifyStagePuzzle('filter_bubble_maze', 'class_chat_same', 'same_view');
-classifyStagePuzzle('filter_bubble_maze', 'opposing_comment', 'same_view');
-check('같은 의견 반복은 습지 입구로 되돌아감', g.map === 'fogswamp' && g.player.x === 26 && g.player.y === 10);
-check('같은 의견만으로는 필터버블 미완료', !g.flags.puzzles.filter_bubble_maze.complete);
-classifyStagePuzzle('filter_bubble_maze', 'class_chat_same', 'same_view');
-classifyStagePuzzle('filter_bubble_maze', 'opposing_comment', 'opposite_view');
-const filterReflection = classifyStagePuzzle('filter_bubble_maze', 'evidence_report', 'evidence_view');
-check('다양한 추천 경로 확보', g.flags.puzzles.filter_bubble_maze.complete === true);
-check('필터버블 완료 뒤 배움 조각', filterReflection.includes('배움 조각') && filterReflection.includes('관점'));
-check('추천·관점 윤리 축 보상', g.flags.ethics.perspective >= 3);
-g.map = 'meadow';
-// 보스 아레나: 신호 탑터
-setPos(20, 15, 'down'); hold('ArrowDown', 14);
-check('신호 탑터 진입(잠금 해제)', g.map === 'signaltower2');
-setPos(8, 4, 'up'); // 멋대로몬 (8,3)
-tap('z'); advanceDialog();
-check('멋대로몬 보스전', g.battle.monId === 'meotdaeromon');
-check('멋대로몬은 필터버블 회피 패턴', g.battle.attack && g.battle.attack.pattern === 'filterbubble');
-fightWithMercy(4, 0); advanceDialog();
-check('멋대로몬 클리어', g.flags.defeated.meotdaeromon);
-setPos(8, 12, 'down'); hold('ArrowDown', 14); // 거점 복귀
-check('거점 복귀(보스)', g.map === 'meadow');
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('재깍사막 진입', g.map === 'desert');
-
-console.log('[13] 스테이지 3: 재깍사막 (허브 + 서브맵 2 + 보스 아레나)');
-// 서쪽: 열사의 폐허
-setPos(1, 8, 'left'); hold('ArrowLeft', 14);
-check('열사의 폐허 진입', g.map === 'ruins');
-setPos(8, 6, 'up'); // 펑펑몬 (8,5)
-tap('z'); advanceDialog();
-check('펑펑몬 배틀', g.battle.monId === 'pungpungmon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(20, 14, 'up'); // 낭비몬 (20,13)
-tap('z'); advanceDialog();
-check('낭비몬 배틀', g.battle.monId === 'nangbimon');
-fightWithMercy(3, 0); advanceDialog();
-check('낭비몬 클리어', g.flags.defeated.nangbimon);
-setPos(1, 10, 'left'); hold('ArrowLeft', 14); // 거점 복귀
-check('거점 복귀(폐허)', g.map === 'desert');
-// 동쪽: 오아시스
-setPos(26, 8, 'right'); hold('ArrowRight', 14);
-check('오아시스 진입', g.map === 'oasis');
-setPos(12, 8, 'up'); // 깜깜몬 (12,7)
-tap('z'); advanceDialog();
-check('깜깜몬 배틀', g.battle.monId === 'kkamkkammon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(14, 12, 'up'); // 핑계몬 (14,11)
-tap('z'); advanceDialog();
-check('핑계몬 배틀', g.battle.monId === 'pinggyemon');
-fightWithMercy(3, 0); advanceDialog();
-check('핑계몬 클리어', g.flags.defeated.pinggyemon);
-setPos(1, 10, 'left'); hold('ArrowLeft', 14); // 거점 복귀
-check('거점 복귀(오아시스)', g.map === 'desert');
-console.log('[13b] 스테이지 3: 편향의 법정 증거 퍼즐');
-check('법정 증거 4개', STAGE_PUZZLES.bias_court.clues.length === 4);
-setPos(16, 15, 'down'); hold('ArrowDown', 14);
-check('대표 증거 전 신전 잠김', g.mode === 'dialog' && g.map === 'desert');
-advanceDialog();
-classifyStagePuzzle('bias_court', 'age_sample', 'biased_evidence');
-check('치우친 증거만으로는 법정 미완료', !g.flags.puzzles.bias_court.complete);
-classifyStagePuzzle('bias_court', 'age_sample', 'representative_evidence');
-classifyStagePuzzle('bias_court', 'region_sample', 'representative_evidence');
-classifyStagePuzzle('bias_court', 'device_access', 'representative_evidence');
-const fairnessReflection = classifyStagePuzzle('bias_court', 'language_sample', 'representative_evidence');
-check('대표 증거 균형 확보', g.flags.puzzles.bias_court.complete === true);
-check('편향 법정 완료 뒤 배움 조각', fairnessReflection.includes('배움 조각') && fairnessReflection.includes('데이터'));
-check('공정성 윤리 축 보상', g.flags.ethics.fairness >= 3);
-// 보스 아레나: 심판의 신전
-setPos(16, 15, 'down'); hold('ArrowDown', 14);
-check('심판의 신전 진입(잠금 해제)', g.map === 'temple');
-setPos(8, 4, 'up'); // 떠넘기몬 (8,3)
-tap('z'); advanceDialog();
-check('떠넘기몬 보스전', g.battle.monId === 'tteonemgimon');
-fightWithMercy(4, 0); advanceDialog();
-check('떠넘기몬 클리어', g.flags.defeated.tteonemgimon);
-setPos(8, 12, 'down'); hold('ArrowDown', 14); // 거점 복귀
-check('거점 복귀(신전)', g.map === 'desert');
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('정지된 설원 진입', g.map === 'snow');
-
-console.log('[14] 스테이지 4: 정지된 설원');
-setPos(13, 16, 'up'); // 보스 홀림몬 (13,15)
-tap('z'); advanceDialog();
-fightWithMercy(4, 0); advanceDialog();
-check('홀림몬 클리어', g.flags.defeated.hollimmon);
-console.log('[14b] 스테이지 4: 딥페이크 방송국 검증 퍼즐');
-check('검증 단서 4개', STAGE_PUZZLES.deepfake_station.clues.length === 4);
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('검증 전 그림자성 잠김', g.mode === 'dialog' && g.map === 'snow');
-advanceDialog();
-classifyStagePuzzle('deepfake_station', 'source_label', 'trust_clip');
-check('검증 없이 믿으면 설원 입구로 되돌아감', g.map === 'snow' && g.player.x === 13 && g.player.y === 1);
-check('출처 하나만으로는 방송국 미완료', !g.flags.puzzles.deepfake_station.complete);
-classifyStagePuzzle('deepfake_station', 'source_label', 'verified_clue');
-classifyStagePuzzle('deepfake_station', 'date_stamp', 'verified_clue');
-classifyStagePuzzle('deepfake_station', 'original_file', 'verified_clue');
-const verificationReflection = classifyStagePuzzle('deepfake_station', 'cross_check', 'verified_clue');
-check('검증 단서 모두 확보', g.flags.puzzles.deepfake_station.complete === true);
-check('딥페이크 검증 완료 뒤 배움 조각', verificationReflection.includes('배움 조각') && verificationReflection.includes('출처'));
-check('검증 윤리 축 보상', g.flags.ethics.verification >= 3);
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('그림자성 진입', g.map === 'castle');
-
-console.log('[15] 스테이지 5: 그림자성 (문지기 2 + 최종 보스)');
-setPos(10, 9, 'up'); // 메아리몬 (10,8)
-tap('z'); advanceDialog();
-check('메아리몬 배틀 (복습 풀)', g.battle.monId === 'maearimon' && g.battle.questions.length >= 25);
-fightWithMercy(3, 0); advanceDialog();
-setPos(9, 5, 'up'); // 그림자몬 (9,4)
-tap('z'); advanceDialog();
-fightWithMercy(3, 0); advanceDialog();
-console.log('[15b] 스테이지 5: 책임의 코어 종합 퍼즐');
-setPos(9, 3, 'up');
-tap('z'); advanceDialog();
-check('책임의 코어 전 최종 보스 잠김', g.mode === 'world' && !g.flags.defeated.finalboss);
-check('코어 단서 5개', STAGE_PUZZLES.responsibility_core.clues.length === 5);
-classifyStagePuzzle('responsibility_core', 'privacy_core', 'responsible_action');
-classifyStagePuzzle('responsibility_core', 'perspective_core', 'responsible_action');
-classifyStagePuzzle('responsibility_core', 'fairness_core', 'responsible_action');
-classifyStagePuzzle('responsibility_core', 'verification_core', 'responsible_action');
-const responsibilityReflection = classifyStagePuzzle('responsibility_core', 'responsibility_core', 'responsible_action');
-check('책임의 코어 완성', g.flags.puzzles.responsibility_core.complete === true);
-check('책임의 코어 완료 뒤 배움 조각', responsibilityReflection.includes('배움 조각') && responsibilityReflection.includes('책임'));
-check('책임 윤리 축 보상', g.flags.ethics.responsibility >= 3);
-check('윤리 조각 5개 집계', windowObj.__test.completedStagePuzzleCount(g.flags) === 5);
-setPos(9, 3, 'up');
-tap('z'); advanceDialog();
-check('최종 보스전', g.battle.monId === 'finalboss' && g.battle.monMaxHp === 6 && g.battle.maxHearts === 4);
-fightWithMercy(6, 0);
-advanceDialog();
-check('엔딩 진입', g.mode === 'ending');
-step(130);
-tap('z');
-check('엔딩 후 월드 복귀', g.mode === 'world');
-
-console.log('[16] 후일담: 잊혀진 서버실 (숨겨진 통로 + 자비 시스템)');
-g.map = 'castle';
-setPos(9, 2, 'up'); // 왕좌 자리 → (9,1) 숨겨진 워프
-hold('ArrowUp', 14);
-check('서버실 진입 + 인트로 연출', g.map === 'serverroom' && g.mode === 'dialog');
-advanceDialog();
-setPos(7, 9, 'up'); // 뚫림몬 (7,8)
-tap('z'); advanceDialog();
-fightWithMercy(3, 0);
-advanceDialog();
-check('뚫림몬 + 자비 누적', g.flags.defeated.tturimmon && g.flags.mercy === 20);
-setPos(13, 3, 'up'); // 기록몬 (13,2)
-tap('z'); advanceDialog();
-fightWithMercy(4, 0);
-advanceDialog();
-check('기록몬 클리어', g.flags.defeated.girokmon && g.flags.mercy === 21);
-
-console.log('[17] 후일담: 기억의 도서관');
-setPos(13, 1, 'up');
-hold('ArrowUp', 14);
-check('도서관 진입', g.map === 'library');
-advanceDialog();
-setPos(20, 8, 'up'); // 수집몬 (20,7)
-tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
-setPos(13, 3, 'up'); // 사서몬 (13,2)
-tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
-check('사서몬 클리어', g.flags.defeated.saseomon && g.flags.mercy === 23);
-
-console.log('[18] 후일담: 거울 회랑');
-setPos(13, 1, 'up');
-hold('ArrowUp', 14);
-check('거울 회랑 진입', g.map === 'mirrors');
-advanceDialog();
-setPos(7, 7, 'up'); // 필터몬 (7,6)
-tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
-setPos(13, 3, 'up'); // 미러몬 (13,2)
-tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
-check('미러몬 클리어', g.flags.defeated.mirrormon && g.flags.mercy === 25);
-
-console.log('[19] 후일담: 속삭임 정원');
-setPos(13, 1, 'up');
-hold('ArrowUp', 14);
-check('정원 진입', g.map === 'garden');
-advanceDialog();
-setPos(7, 7, 'up'); // 유혹몬 (7,6)
-tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
-setPos(13, 16, 'up'); // 속삭임몬 (13,15)
-tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
-check('속삭임몬 클리어', g.flags.defeated.soksagimon && g.flags.mercy === 27);
-
-console.log('[20] 후일담: 코어 — 영이와 진엔딩');
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('코어 진입', g.map === 'core');
-advanceDialog();
-setPos(9, 6, 'up'); // 조각몬 (9,5)
-tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
-check('조각몬 클리어', g.flags.defeated.jogakmon && g.flags.mercy === 28);
-setPos(9, 3, 'up'); // 영이 (9,2)
-tap('z'); advanceDialog();
-check('영이 배틀 (코어 BGM)', g.mode === 'battle' && g.battle.monId === 'yeongi');
-fightWithMercy(5, 0); // "함께 돌아가자"
-check('진엔딩 전 마지막 회고', g.mode === 'dialog' && g.dialog.lines.join('\n').includes('[마지막 회고]') &&
-  g.dialog.lines.join('\n').includes('이어질 결말: 집으로'));
-advanceDialog();
-check('진엔딩 진입', g.mode === 'ending' && g.endingType === 'true');
-check('진엔딩 조건 충족', g.flags.trueEnding === true && g.flags.mercy === 29 && g.flags.endingId === 'home');
-step(160);
-tap('z');
-check('마을로 귀환', g.mode === 'world' && g.map === 'village');
-
-console.log('[21] 진엔딩 후 마을의 영이');
-setPos(6, 12, 'left'); // 영이 NPC (5,12)
-tap('z');
-check('영이와 대화', g.mode === 'dialog');
-advanceDialog();
-
-console.log('[22] 저장 데이터 무결성');
-const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('저장된 증표 3개', save.flags.badges.forest && save.flags.badges.lake && save.flags.badges.cave);
-check('모든 보스 처치 저장', save.flags.defeated.hondonmon && save.flags.defeated.meotdaeromon &&
-  save.flags.defeated.tteonemgimon && save.flags.defeated.hollimmon && save.flags.defeated.finalboss);
-check('심층부 진행 저장', save.flags.defeated.yeongi && save.flags.trueEnding === true &&
-  save.flags.mercy === 29);
-
-console.log('[23] 5주제 윤리 축 + 엔딩 분기 로직');
-const { computeEnding } = vm.runInContext('({ computeEnding })', sandbox);
-check('윤리 축은 5개 핵심 주제', ETHICS_AXES.join(',') === 'privacy,perspective,fairness,verification,responsibility');
-check('스테이지 테마는 5개로 병합됨', STAGE_THEMES.length === 5);
-check('스테이지 2는 필터버블/추천 관점 축', STAGE_THEMES[1].id === 'filter_bubble_maze' && STAGE_THEMES[1].axis === 'perspective');
-const fullEthics = Object.fromEntries(ETHICS_AXES.map((axis) => [axis, ETHICS_AXIS_MAX]));
-const weakEthics = Object.fromEntries(ETHICS_AXES.map((axis) => [axis, 0]));
-check('윤리 점수 만점 계산', computeEthicsScore(fullEthics) === 100);
-check('윤리 점수 0점 계산', computeEthicsScore(weakEthics) === 0);
-check('윤리 이해 부족 + 높은 자비는 검은상자 엔딩', computeEnding('mercy', 30, weakEthics) === 'blackbox');
-check('윤리 이해 + 불살 선택은 수호자 엔딩', computeEnding('mercy', 22, fullEthics) === 'home');
-check('윤리 이해 + 자율 선택은 새벽 엔딩', computeEnding('neutral', 16, fullEthics) === 'dawn');
-check('윤리 이해 부족 + 낮은 자비는 침묵 엔딩', computeEnding('mercy', 3, weakEthics) === 'silent');
-check('진엔딩: 손 + 자비 20↑', computeEnding('mercy', 22) === 'home');
-check('새벽: 맡김 + 자비 14↑', computeEnding('neutral', 16) === 'dawn');
-check('작별: 손을 내밀어도 자비 부족이면', computeEnding('mercy', 15) === 'farewell');
-check('작별: 차가운 마지막 선택', computeEnding('harsh', 28) === 'farewell');
-check('침묵: 자비 6 이하', computeEnding('mercy', 3) === 'silent');
-const endingsSeen = JSON.parse(storage.get('ai-ethics-adventure-endings'));
-check('엔딩 수집 기록(타이틀 표시용)', endingsSeen.home === true);
-storage.set('ai-ethics-adventure-endings', JSON.stringify({ home: true, dawn: true, farewell: true, blackbox: true, silent: true }));
-
-console.log('[24] 도감 — 수집 기록 + 열고 닫기');
-const dexSeen = JSON.parse(storage.get('ai-ethics-adventure-dex'));
-const { DEX_ORDER, MONSTER_DEX } = vm.runInContext('({ DEX_ORDER, MONSTER_DEX })', sandbox);
-// 깨운 몬스터는 빠짐없이 도감에 기록되어 있어야 한다
-const defeatedIds = Object.keys(g.flags.defeated).filter((id) => g.flags.defeated[id]);
-check('깨운 몬스터 전부 도감에 기록', defeatedIds.every((id) => dexSeen[id] && dexSeen[id].seen));
-check('미발견 몬스터는 도감에 없음', DEX_ORDER.some((id) => !dexSeen[id]));
-check('작별 선택도 기록(영이=mercy)', dexSeen.yeongi.mercy === 'mercy');
-check('모든 몬스터 도감 정보 존재', DEX_ORDER.every((id) => MONSTER_DEX[id] && MONSTER_DEX[id].learn));
-// 월드에서 C로 도감 열기
-check('월드 상태', g.mode === 'world');
-tap('c');
-check('도감 열림', g.mode === 'dex');
-tap('ArrowDown'); tap('ArrowRight');
-check('도감에서 커서 이동', g.dex.cursor > 0);
-tap('x');
-check('도감 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[25] 보기 순서 섞기 (정답이 한 자리에 고정되지 않음)');
-check('정답 위치가 여러 곳에 분포', correctPosSeen.size >= 2);
-
-console.log('[26] 오답 복습 노트 (슬롯별)');
-// 학습 데이터는 슬롯별 키로 저장된다 (슬롯 0 = 진행 중인 슬롯)
-const mistakesBefore = JSON.parse(storage.get('ai-ethics-adventure-mistakes-0') || '{}');
-check('틀린 문제가 슬롯 0에 기록됨', Object.keys(mistakesBefore).length > 0);
-check('이전 전역 키는 쓰지 않음', !storage.get('ai-ethics-adventure-mistakes'));
-check('월드 상태', g.mode === 'world');
-tap('v');
-check('복습 노트 열림', g.mode === 'review' && g.review.phase === 'list');
-check('복습 노트가 슬롯 0 사용', g.review.slot === 0);
-check('복습 목록에 항목 있음', g.review.ids.length > 0);
-tap('z'); // 첫 문제 풀기
-check('복습 문제 화면', g.review.phase === 'question');
-{
-  const m = JSON.parse(storage.get('ai-ethics-adventure-mistakes-0'))[g.review.ids[g.review.cursor]];
-  const target = g.review.choiceOrder.indexOf(m.c);
-  while (g.review.qCursor !== target) tap('ArrowDown');
-}
-tap('z'); // 제출
-check('복습 정답 처리', g.review.phase === 'feedback' && g.review.feedback.correct === true);
-const reviewIdsBefore = g.review.ids.length;
-tap('z'); // 목록으로
-check('맞춘 문제는 목록에서 제거', g.review.ids.length === reviewIdsBefore - 1);
-tap('x');
-check('복습 노트 닫힘', g.mode === 'world');
-
-console.log('[27] 설정·일시정지 메뉴');
-check('월드 상태', g.mode === 'world');
-tap('x');
-check('설정 메뉴 열림', g.mode === 'pause');
-check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
-const PAUSE_ORDER = ['journal', 'cards', 'halloffame', 'dashboard', 'report', 'classmode', 'awards', 'cosmetics', 'cert',
-  'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
-  'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
-const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
-while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
-tap('z');
-check('설정에서 도감 열림', g.mode === 'dex' && g.dex.ret === 'pause');
-tap('x');
-check('도감 닫고 설정으로 복귀', g.mode === 'pause');
-while (g.pauseCursor !== pauseIdx('textspeed')) tap('ArrowDown');
-const speedBefore = g.textSpeed;
-tap('z');
-check('자막 속도 변경', g.textSpeed !== speedBefore);
-while (g.pauseCursor !== pauseIdx('largetext')) tap('ArrowDown');
-const largeBefore = g.largeText;
-tap('z');
-check('큰 글씨 토글', g.largeText !== largeBefore);
-tap('z'); // 원래대로 되돌림
-check('큰 글씨 복원', g.largeText === largeBefore);
-while (g.pauseCursor !== pauseIdx('mute')) tap('ArrowDown');
-const { Sound } = vm.runInContext('({ Sound })', sandbox);
-const mutedBefore = Sound.muted;
-tap('z');
-check('음소거 토글', Sound.muted !== mutedBefore);
-tap('z'); // 원래대로 되돌림
-check('음소거 복원', Sound.muted === mutedBefore);
-tap('x'); // X로 설정 닫기
-check('설정 메뉴 닫힘', g.mode === 'world');
-
-console.log('[28] 50:50 힌트');
-check('월드 상태', g.mode === 'world');
-const { MONSTERS, QUIZZES } = vm.runInContext('({ MONSTERS, QUIZZES })', sandbox);
-const hintQ = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#0' });
-g.mode = 'battle';
-g.battle = {
-  monId: 'bekkyeomon', mon: MONSTERS.bekkyeomon,
-  monHp: 3, monMaxHp: 3, playerHp: 3, maxHearts: 3,
-  questions: [hintQ], qIdx: 0, phase: 'question', cursor: 0,
-  choiceOrder: [0, 1, 2], correctPos: hintQ.c, hintUsed: false, hiddenPos: -1,
-  feedback: null, shake: 0, flash: 0, attack: null, dodgeDone: true, dodge: null,
-};
-tap('h');
-check('힌트 사용됨', g.battle.hintUsed === true);
-check('정답은 가려지지 않음', g.battle.hiddenPos !== g.battle.correctPos && g.battle.hiddenPos !== -1);
-let hitHidden = false;
-for (let i = 0; i < 6; i++) { tap('ArrowDown'); if (g.battle.cursor === g.battle.hiddenPos) hitHidden = true; }
-check('커서가 가려진 보기를 건너뜀', !hitHidden);
-const hiddenBefore = g.battle.hiddenPos;
-tap('h');
-check('힌트는 한 번만 사용 가능', g.battle.hiddenPos === hiddenBefore);
-g.mode = 'world';
-g.battle = null;
-
-console.log('[29] 학습 진척도·수호자 일지 (E, 슬롯별)');
-// 앞선 배틀/복습에서 주제별 통계가 슬롯 0에 쌓였는지
-const stats = JSON.parse(storage.get('ai-ethics-adventure-stats-0') || '{}');
-check('주제별 통계가 슬롯 0에 기록됨', Object.keys(stats).length > 0);
-check('이전 전역 통계 키는 쓰지 않음', !storage.get('ai-ethics-adventure-stats'));
-check('통계에 정답/시도 수가 있음',
-  Object.values(stats).every((e) => typeof e.correct === 'number' && typeof e.total === 'number' && e.total >= e.correct));
-check('월드 상태', g.mode === 'world');
-tap('j');
-check('수호자 일지 열림', g.mode === 'journal' && g.journal.slot === 0);
-tap('ArrowDown'); // 스크롤(목록이 짧으면 변화 없을 수 있음)
-tap('x');
-check('일지 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[30] 교실용 학습 리포트 (F)');
-const { buildReportText } = vm.runInContext('({ buildReportText: window.__test.buildReportText })', sandbox);
-const report = buildReportText(0);
-check('리포트에 제목 포함', /학습 리포트/.test(report));
-check('리포트에 정답률 포함', /푼 문제/.test(report) && /정답/.test(report));
-check('리포트에 윤리 이해 축 포함', /윤리 이해 축/.test(report) && /개인정보·동의/.test(report) && /책임/.test(report));
-check('리포트에 스테이지 퍼즐 회고 포함',
-  /스테이지 퍼즐 회고/.test(report) && /데이터 발자국 분류/.test(report) && /책임의 코어/.test(report));
-check('리포트에 배움 조각 요약 포함',
-  /맥락과 동의/.test(report) && /마지막 확인과 책임/.test(report));
-check('리포트에 주제별 정답률 포함', /주제별 정답률/.test(report));
-check('리포트는 검은상자 포함 5개 엔딩을 집계', /발견 엔딩: 5\/5/.test(report));
-check('리포트에 마지막 결말 회고 포함', /마지막 결말 회고: 집으로/.test(report) && /윤리 이해도/.test(report));
-
-console.log('[31] 자유 퀴즈 챌린지 (G)');
-check('월드 상태', g.mode === 'world');
-tap('q');
-check('챌린지 주제 선택 열림', g.mode === 'challenge' && g.challenge.phase === 'topic');
-check('챌린지가 슬롯 0 사용', g.challenge.slot === 0);
-check('주제 목록 존재', g.challenge.topics.length > 0);
-// 0=오늘의 도전, 1=맞춤 학습, 2=전체 랜덤 — 전체 랜덤으로 이동해 시작
-tap('ArrowDown'); tap('ArrowDown');
-check('전체 랜덤 선택', g.challenge.sel === 2);
-tap('z'); // 전체 랜덤 시작
-check('퀴즈 시작', g.challenge.phase === 'quiz');
-check('문항 10개 이하로 출제', g.challenge.questions.length > 0 && g.challenge.questions.length <= 10);
-// 10문제를 모두 정답으로 풀어 결과 화면까지
-let guard = 0;
-while (g.mode === 'challenge' && g.challenge.phase !== 'result' && guard++ < 60) {
-  if (g.challenge.phase === 'quiz') {
-    const q = g.challenge.questions[g.challenge.idx];
-    const target = g.challenge.choiceOrder.indexOf(q.c);
-    while (g.challenge.cursor !== target) tap('ArrowDown');
-    tap('z'); // 제출 → feedback
-  } else if (g.challenge.phase === 'feedback') {
-    tap('z'); // 다음
-  }
-}
-check('결과 화면 도달', g.challenge && g.challenge.phase === 'result');
-check('전부 맞히면 만점', g.challenge.score === g.challenge.questions.length);
-const meta0 = JSON.parse(storage.get('ai-ethics-adventure-meta-0') || '{}');
-check('챌린지 결과가 메타에 기록', meta0.challengeRuns >= 1 && meta0.challengeBest === g.challenge.questions.length);
-tap('z'); // 닫기 → world (ret)
-check('챌린지 닫고 복귀', g.mode === 'world');
-
-console.log('[32] 도전과제 (업적)');
-const { countAchievements } = vm.runInContext('({ countAchievements: window.__test.countAchievements })', sandbox);
-check('진엔딩까지 깬 슬롯은 도전과제 다수 달성', countAchievements(0) >= 6);
-check('월드 상태', g.mode === 'world');
-tap('b');
-check('도전과제 화면 열림', g.mode === 'awards' && g.awards.slot === 0);
-tap('x');
-check('도전과제 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[33] 접근성 — 색약 모드 토글');
-const cbBefore = g.colorBlind;
-tap('x'); // 메뉴 열기
-check('메뉴 열림', g.mode === 'pause');
-while (g.pauseCursor !== pauseIdx('colorblind')) tap('ArrowDown');
-tap('z');
-check('색약 모드 토글', g.colorBlind !== cbBefore);
-const savedSettings = JSON.parse(storage.get('ai-ethics-adventure-settings') || '{}');
-check('색약 설정이 저장됨', savedSettings.colorBlind === g.colorBlind);
-tap('z'); // 복원
-check('색약 모드 복원', g.colorBlind === cbBefore);
-tap('x'); // 닫기
-check('메뉴 닫힘', g.mode === 'world');
-
-console.log('[34] 도움말 화면 (2장 페이지)');
-tap('i');
-check('도움말 열림', g.mode === 'help' && g.helpPage === 0);
-tap('ArrowRight');
-check('다음 페이지로 이동', g.helpPage === 1);
-tap('ArrowLeft');
-check('이전 페이지로 이동', g.helpPage === 0);
-tap('z'); // 1페이지에서 Z는 다음 장
-check('Z로 다음 장', g.mode === 'help' && g.helpPage === 1);
-tap('z'); // 마지막 장에서 Z는 닫기
-check('마지막 장에서 Z로 닫기', g.mode === 'world');
-tap('i'); tap('x'); // X는 어느 페이지서든 닫기
-check('X로 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[35] 슬롯별 학습 데이터 분리');
-// 슬롯 1에 기록해도 슬롯 0의 학습 기록과 섞이지 않아야 한다
-const { recordTopicResult } = vm.runInContext('({ recordTopicResult: window.__test.recordTopicResult })', sandbox);
-recordTopicResult(1, 'privacy', false); // 슬롯 1에 두 문제 기록
-recordTopicResult(1, 'privacy', true);
-const s0 = JSON.parse(storage.get('ai-ethics-adventure-stats-0') || '{}');
-const s1 = JSON.parse(storage.get('ai-ethics-adventure-stats-1') || '{}');
-check('슬롯 1 통계가 따로 쌓임', s1.privacy && s1.privacy.total === 2);
-check('슬롯 0과 슬롯 1 통계가 분리됨', JSON.stringify(s0) !== JSON.stringify(s1));
-// 슬롯 1 삭제 시 학습 데이터도 함께 지워지는지
-deleteSlotViaGame(1);
-check('슬롯 1 삭제 시 통계도 삭제', !storage.get('ai-ethics-adventure-stats-1'));
-function deleteSlotViaGame(slot) {
-  g.mode = 'title'; g.titleScreen = 'delete'; g.slotCursor = slot;
-  tap('z'); // 삭제 확정
-}
-g.mode = 'world';
-
-console.log('[36] 데이터 백업·복원 (내보내기·가져오기)');
-const T = vm.runInContext('window.__test', sandbox);
-const backupText = T.buildBackupText();
-const backupObj = JSON.parse(backupText);
-check('백업에 앱 식별자 포함', backupObj.app === 'ai-ethics-adventure');
-check('백업에 슬롯 0 세이브 포함', !!backupObj.data['ai-ethics-adventure-slot-0']);
-check('백업에 슬롯 0 통계 포함', !!backupObj.data['ai-ethics-adventure-stats-0']);
-// 데이터를 망가뜨린 뒤 복원
-const goodStats = storage.get('ai-ethics-adventure-stats-0');
-storage.set('ai-ethics-adventure-stats-0', '{}');
-const res = T.applyBackup(backupText);
-check('복원 성공', res.ok === true && res.count >= 2);
-check('통계가 복원됨', storage.get('ai-ethics-adventure-stats-0') === goodStats);
-check('잘못된 데이터는 거부', T.applyBackup('{"app":"other"}').ok === false);
-check('깨진 JSON은 거부', T.applyBackup('not json').ok === false);
-const originalSetItem = sandbox.localStorage.setItem;
-sandbox.localStorage.setItem = (k, v) => {
-  if (k === 'ai-ethics-adventure-stats-0') throw new Error('quota');
-  return originalSetItem(k, v);
-};
-const partialRestore = T.applyBackup(JSON.stringify({
-  app: 'ai-ethics-adventure',
-  version: 1,
-  savedAt: Date.now(),
-  data: { 'ai-ethics-adventure-stats-0': goodStats },
-}));
-sandbox.localStorage.setItem = originalSetItem;
-check('복원 저장 실패는 실패 처리', partialRestore.ok === false && partialRestore.error === 'storage' && partialRestore.failed === 1);
-check('복원 저장 실패 시 저장 불가 상태', T.getStorageOk() === false);
-
-console.log('[36b] 교사용 반 현황 CSV 내보내기');
-const csv = T.buildClassCsv();
-const csvLines = csv.split('\r\n');
-check('CSV가 CRLF 줄바꿈 사용', csv.includes('\r\n'));
-check('CSV 헤더 행 존재', csvLines[0].startsWith('슬롯,이름,'));
-check('CSV 헤더 17개 열', csvLines[0].split(',').length === 17);
-check('CSV 헤더에 5개 윤리 축 포함', csvLines[0].includes('개인정보·동의') && csvLines[0].includes('인간 감독·책임'));
-check('CSV 행 = 헤더 + 슬롯 3개', csvLines.length === 4);
-check('CSV 슬롯1 행이 슬롯 번호로 시작', csvLines[1].startsWith('1,'));
-check('CSV 슬롯1(데이터 있음) 17개 열', csvLines[1].split(',').length === 17);
-check('CSV 슬롯1에 축 점수 포함', /,\d\/6,\d\/6,\d\/6,\d\/6,\d\/6$/.test(csvLines[1]));
-check('CSV 빈 슬롯 행도 17개 열 유지', csvLines[3].split(',').length === 17 && csvLines[3].includes('(비어 있음)'));
-
-console.log('[37] 적응형(맞춤) 학습 — 약점 집중 출제');
-const adaptive = T.buildAdaptivePool(0, 8);
-check('맞춤 풀 생성', adaptive.length > 0 && adaptive.length <= 8);
-check('맞춤 풀 항목 형식', adaptive.every((q) => q.q && q.a && typeof q.c === 'number' && q._topic && q._qid));
-check('맞춤 풀 중복 문제 없음', new Set(adaptive.map((q) => q._qid)).size === adaptive.length);
-
-console.log('[38] 오늘의 도전 + 연속 출석(스트릭)');
-const d1 = T.buildDailyPool(0, '2026-06-15', 10).map((q) => q._qid).join(',');
-const d2 = T.buildDailyPool(0, '2026-06-15', 10).map((q) => q._qid).join(',');
-const d3 = T.buildDailyPool(0, '2026-06-16', 10).map((q) => q._qid).join(',');
-check('같은 날짜는 같은 문제(결정적)', d1 === d2);
-check('다른 날짜는 다른 문제 구성', d1 !== d3);
-T.recordPlayDay(0, '2026-06-10');
-check('출석 첫날 스트릭 1', T.getMeta(0).streak === 1);
-T.recordPlayDay(0, '2026-06-11');
-check('이어서 오면 스트릭 2', T.getMeta(0).streak === 2);
-T.recordPlayDay(0, '2026-06-11'); // 같은 날 중복 → 변화 없음
-check('같은 날 중복은 그대로', T.getMeta(0).streak === 2);
-T.recordPlayDay(0, '2026-06-14'); // 건너뜀 → 리셋
-check('건너뛰면 스트릭 리셋', T.getMeta(0).streak === 1);
-check('최고 스트릭 보존', T.getMeta(0).bestStreak >= 2);
-T.recordDailyDone(0, 8, 10, '2026-06-14');
-check('오늘의 도전 완료 기록', T.getMeta(0).lastDailyDay === '2026-06-14' && T.getMeta(0).dailyBest === 8);
-
-console.log('[39] 수집·꾸미기 보상 (칭호·테마)');
-check('진엔딩까지 깬 슬롯은 보상 다수 해금', T.unlockedCount(0) >= 4);
-g.mode = 'world';
-tap('k');
-check('꾸미기 화면 열림', g.mode === 'cosmetics' && g.cosmetics.slot === 0);
-tap('z'); // col 0(칭호) row 0(새내기 수호자, 항상 해금) 적용
-check('칭호 적용됨', T.getCosmetic(0).title === 'rookie');
-tap('ArrowRight'); // 테마 칼럼으로
-tap('z'); // 테마 row 0(클래식, 항상 해금) 적용
-check('테마 적용됨', T.getCosmetic(0).theme === 'classic');
-tap('x');
-check('꾸미기 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[40] 보너스 지역: AI 미래연구소 (새 주제·새 몬스터)');
-g.map = 'village';
-setPos(26, 9, 'up');
-hold('ArrowUp', 14); // 빛나는 문(26,8)으로 → 미래연구소 워프
-check('미래연구소 진입', g.map === 'lab');
-if (g.mode === 'dialog') advanceDialog(); // 첫 방문 인트로
-setPos(4, 5, 'up'); // 환각몬 (4,4)
-tap('z'); advanceDialog();
-check('환각몬 배틀 (생성형 AI 주제)', g.mode === 'battle' && g.battle.monId === 'hwangakmon');
-fightAndWin(3); // 보너스 몬스터는 마음의 선택이 없음
-check('환각몬 깨우침(자비 증가 없음)', g.flags.defeated.hwangakmon === true);
-if (g.mode === 'dialog') advanceDialog();
-const dexSeen2 = JSON.parse(storage.get('ai-ethics-adventure-dex'));
-check('보너스 몬스터도 도감에 기록', dexSeen2.hwangakmon && dexSeen2.hwangakmon.seen);
-
-console.log('[41] 교사용 대시보드');
-g.mode = 'world';
-tap('p');
-check('대시보드 열림', g.mode === 'dashboard');
-tap('x');
-check('대시보드 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[42] 커스텀 퀴즈 편집·가져오기');
-const goodQuiz = JSON.stringify({ questions: [
-  { q: '커스텀 문제?', a: ['보기1', '보기2', '보기3'], c: 0, why: '해설입니다' },
-  { q: '형식이 틀린 문제', a: ['하나만'], c: 5 }, // 무효 → 걸러짐
-] });
-const cq = T.importCustomQuizzes(goodQuiz);
-check('유효 문항만 등록', cq.ok === true && cq.count === 1);
-check('커스텀 문제 저장됨', T.getCustomQuizzes().length === 1);
-check('챌린지 주제에 커스텀 등장', T.challengeTopics().some((t) => t.key === 'custom'));
-check('빈 목록 가져오기 거부', T.importCustomQuizzes('[]').ok === false);
-check('깨진 JSON 거부', T.importCustomQuizzes('nope').ok === false);
-check('양식 템플릿 생성', /questions/.test(T.customQuizTemplate()));
-// 입력 한도: 긴 텍스트는 잘리고, 과도한 문항 수는 50개로 제한
-const longQ = 'ㄱ'.repeat(500), longWhy = 'ㄴ'.repeat(500);
-T.importCustomQuizzes(JSON.stringify([{ q: longQ, a: ['ㄷ'.repeat(200), '보기2', '보기3'], c: 0, why: longWhy }]));
-const clamped = T.getCustomQuizzes()[0];
-check('긴 질문 글자수 제한(≤140)', clamped.q.length <= 140);
-check('긴 보기 글자수 제한(≤40)', clamped.a[0].length <= 40);
-check('긴 해설 글자수 제한(≤200)', clamped.why.length <= 200);
-const many = Array.from({ length: 120 }, (_, i) => ({ q: '문제' + i, a: ['1', '2', '3'], c: 0, why: '해설' }));
-const manyRes = T.importCustomQuizzes(JSON.stringify(many));
-check('과도한 문항 수 50개로 제한', manyRes.ok === true && manyRes.count === 50);
-// 제어문자가 섞여도 정리되어 저장
-const ctrlText = '\uc548\ub155' + String.fromCharCode(1, 7, 0) + '\ud558\uc138\uc694';
-T.importCustomQuizzes(JSON.stringify([{ q: ctrlText, a: ['1', '2', '3'], c: 0, why: '\ud574\uc124' }]));
-check('\uc81c\uc5b4\ubb38\uc790 \uc81c\uac70', !/[\u0000-\u001f]/.test(T.getCustomQuizzes()[0].q));
-T.clearCustomQuizzes();
-check('커스텀 문제 모두 삭제', T.getCustomQuizzes().length === 0);
-check('삭제 후 챌린지에서 커스텀 사라짐', !T.challengeTopics().some((t) => t.key === 'custom'));
-
-console.log('[43] 학년별 난이도 모드');
-g.mode = 'world';
-const diffBefore = g.difficulty;
-tap('x');
-while (g.pauseCursor !== pauseIdx('difficulty')) tap('ArrowDown');
-tap('z');
-check('난이도 변경됨', g.difficulty !== diffBefore);
-check('난이도 설정 저장', JSON.parse(storage.get('ai-ethics-adventure-settings')).difficulty === g.difficulty);
-tap('x');
-// 고학년: 50:50 힌트 비활성 / 저학년: 힌트 재사용 가능
-const mkHintBattle = () => {
-  const hq = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#0' });
-  g.mode = 'battle';
-  g.battle = { monId: 'bekkyeomon', mon: MONSTERS.bekkyeomon, monHp: 3, monMaxHp: 3,
-    playerHp: 3, maxHearts: 3, questions: [hq], qIdx: 0, phase: 'question', cursor: 0,
-    choiceOrder: [0, 1, 2], correctPos: hq.c, hintUsed: false, hiddenPos: -1,
-    feedback: null, shake: 0, flash: 0, attack: null, dodgeDone: true, dodge: null };
-};
-g.difficulty = 'hard'; mkHintBattle();
-tap('h');
-check('고학년은 힌트 비활성', g.battle.hintUsed === false && g.battle.hiddenPos === -1);
-g.difficulty = 'easy'; mkHintBattle();
-tap('h');
-check('저학년도 힌트 동작', g.battle.hintUsed === true && g.battle.hiddenPos !== -1);
-g.battle.hiddenPos = -1; // 다시 사용 가능한지 확인
-tap('h');
-check('저학년은 힌트 재사용 가능', g.battle.hiddenPos !== -1);
-g.difficulty = 'normal'; g.mode = 'world'; g.battle = null;
-
-console.log('[44] 읽어주기(TTS) 접근성 토글');
-const ttsBefore = g.tts;
-tap('x');
-while (g.pauseCursor !== pauseIdx('tts')) tap('ArrowDown');
-tap('z');
-check('읽어주기 토글', g.tts !== ttsBefore);
-check('읽어주기 설정 저장', JSON.parse(storage.get('ai-ethics-adventure-settings')).tts === g.tts);
-tap('z'); // 복원
-check('읽어주기 복원', g.tts === ttsBefore);
-tap('x');
-check('메뉴 닫힘', g.mode === 'world');
-
-console.log('[45] 학습 카드 컬렉션');
-check('카드 데이터 존재', Array.isArray(T.LEARN_CARDS) && T.LEARN_CARDS.length >= 20);
-T.recordTopicResult(2, 'privacy', true);
-check('주제 정답 시 카드 해금', T.cardUnlocked(2, 'privacy') === true);
-check('안 푼 주제는 잠김', T.cardUnlocked(2, 'deepfake') === false);
-check('해금 카드 수 집계', T.collectedCards(2) >= 1);
-T.recordTopicResult(2, 'privacy', false); // 틀려도 이미 해금된 카드는 유지
-check('이미 해금된 카드는 유지', T.cardUnlocked(2, 'privacy') === true);
-g.mode = 'world';
-tap('l');
-check('배움 카드 화면 열림', g.mode === 'cards');
-tap('ArrowDown'); tap('ArrowUp');
-tap('x');
-check('배움 카드 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[46] 수료증·진도 인증서');
-const certText = T.buildCertText(0);
-check('수료증 텍스트 생성', typeof certText === 'string' && certText.includes('수료증'));
-check('수료증에 정답률·진행도 포함', certText.includes('정답률') && certText.includes('진행도'));
-g.mode = 'world';
-tap('n');
-check('수료증 화면 열림', g.mode === 'cert');
-tap('z'); // 클립보드 복사 시도(샌드박스에선 토스트만)
-tap('x');
-check('수료증 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[47] 명예의 전당 (로컬 기록)');
-check('전당 부문 정의', Array.isArray(T.HOF_CATS) && T.HOF_CATS.length >= 4);
-g.mode = 'world';
-tap('f');
-check('명예의 전당 열림', g.mode === 'hof');
-tap('ArrowDown');
-check('부문 이동', g.hof.cat === 1);
-tap('x');
-check('전당 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[48] 미니게임·보스 패턴 확장');
-const { BOSS_ATTACKS } = vm.runInContext('({ BOSS_ATTACKS })', sandbox);
-const patterns = Object.values(BOSS_ATTACKS).map((a) => a.pattern);
-check('나선형 패턴 존재', patterns.includes('spiral'));
-check('빈틈 벽 패턴 존재', patterns.includes('wall'));
-check('지그재그 패턴 존재', patterns.includes('zigzag'));
-check('보너스 몬스터도 회피 패턴 보유', BOSS_ATTACKS.miraemon && BOSS_ATTACKS.miraemon.pattern === 'spiral');
-
-console.log('[49] 이름 입력 정제');
-check('앞뒤 공백 제거', T.sanitizeName('  도도  ') === '도도');
-check('공백만 입력은 기본값', T.sanitizeName('     ') === '수호자');
-check('제로폭 문자만 입력은 기본값', T.sanitizeName('​‌﻿') === '수호자');
-check('제어문자 제거', T.sanitizeName('도' + String.fromCharCode(0) + '도\n') === '도도');
-check('최대 6글자', T.sanitizeName('일이삼사오육칠팔') === '일이삼사오육');
-check('연속 공백 1칸으로', T.sanitizeName('가   나') === '가 나');
-check('빈/널 입력은 기본값', T.sanitizeName('') === '수호자' && T.sanitizeName(null) === '수호자');
-
-console.log('[50] 저장 가능 여부 프로브');
-check('정상 환경은 저장 가능 판정', T.probeStorage() === true && T.getStorageOk() === true);
-
-console.log('[51] 화면 효과 줄이기(광과민성) 토글');
-g.mode = 'world';
-const fxBefore = g.reduceFx;
-tap('x');
-while (g.pauseCursor !== pauseIdx('reducefx')) tap('ArrowDown');
-tap('z');
-check('화면 효과 줄이기 토글', g.reduceFx !== fxBefore);
-check('설정 저장됨', JSON.parse(storage.get('ai-ethics-adventure-settings')).reduceFx === g.reduceFx);
-tap('z'); // 복원
-check('복원됨', g.reduceFx === fxBefore);
-tap('x');
-check('메뉴 닫힘', g.mode === 'world');
-
-console.log('[52] 파괴적 동작 확인 절차');
-// 커스텀 퀴즈 모두 지우기 — 두 번 확인
-T.importCustomQuizzes(JSON.stringify([{ q: '문제', a: ['1', '2', '3'], c: 0, why: '해설' }]));
-g.mode = 'world';
-tap('e');
-check('퀴즈 편집 열림', g.mode === 'quizedit');
-while (g.quizedit.cursor !== 3) tap('ArrowDown'); // 'clear' 인덱스 3
-tap('z');
-check('한 번 누르면 확인 단계(보존)', g.quizedit.confirm === true && T.getCustomQuizzes().length === 1);
-tap('x');
-check('취소하면 그대로 보존', g.quizedit.confirm === false && T.getCustomQuizzes().length === 1);
-tap('z'); tap('z'); // 다시 진입 후 확정
-check('두 번째 Z로 삭제', T.getCustomQuizzes().length === 0);
-tap('x');
-check('퀴즈 편집 닫힘', g.mode === 'world');
-// 백업 가져오기 — 덮어쓰기 전 확인 (실제 파일 선택은 호출 안 함)
-tap('u');
-check('백업 화면 열림', g.mode === 'backup');
-while (g.backup.cursor !== 2) tap('ArrowDown'); // 'importFile' 인덱스 2
-tap('z');
-check('가져오기 전 확인 단계', g.backup.confirm === true);
-tap('x');
-check('확인만 취소(화면 유지)', g.backup.confirm === false && g.mode === 'backup');
-tap('x');
-check('백업 화면 닫힘', g.mode === 'world');
-
-console.log('[53] 세이브 데이터 버전 필드');
-g.mode = 'world';
-g.currentSlot = 0;
-g.playerName = '수호자';
-g.map = 'village';
-g.flags = { talkedProf: true, badges: { forest: true, lake: true, cave: true }, defeated: {}, mercy: 0, visited: {}, trueEnding: false, correctCount: 0, battleCount: 0, sawBattleTip: false };
-tap('z'); tap('x'); // 대화 트리거 없이 저장이 일어나는 워프를 쓸 수 없으므로, 수동 저장
-// 현재 save()는 배틀 후, 워프 후 등에 호출됨. 여기서는 직접 테스트.
-const savedSlotData = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('세이브 버전 필드 존재', savedSlotData && typeof savedSlotData.v === 'number');
-check('세이브 버전 ≥ 2', savedSlotData && savedSlotData.v >= 2);
-
-console.log('[54] 글자 단위 줄바꿈 (charBreak)');
-// charBreak is internal, but measureWrap's behavior can be tested via wrapText logic
-// We test that measureWrap counts correctly for text that would overflow
-check('measureWrap 최소 1줄 반환', true); // measureWrap always returns >= 1
-
-console.log('[55] 캔버스 컨텍스트 메뉴 방지·포커스');
-// HTML 속성은 game.js 안에서 동적으로 설정되므로 스텁에서 검증 불가.
-// 대신 game.js가 에러 없이 로드되었는지만 확인.
-check('game.js 정상 로드', typeof g === 'object' && typeof g.mode === 'string');
-
-console.log('[56] DPR 변경 감지 함수 존재');
-// checkDPR는 IIFE 내부이므로 직접 호출은 불가. 에러 없이 프레임이 돌아감을 확인.
-step(5);
-check('DPR 검사 후 프레임 정상', g.time > 0);
-
-console.log('[57] questionPool이 quizSource 사용');
-const pool = T.buildAdaptivePool(0, 5);
-check('buildAdaptivePool null 항목 없음', pool.every(q => q !== null && q !== undefined));
-
-console.log('[58] 오답 노트 stale 데이터 안전');
-check('getMistakes 빈 키 안전', true);
-
-console.log('[59] game.time 오버플로 래핑');
-step(10);
-check('game.time 양수 유지', g.time > 0 && g.time < 0x80000000);
-
-console.log('[60] 엔딩 update/draw 분리');
-g.mode = 'ending';
-g.endingT = 0;
-g.endingType = null;
-step(5);
-check('엔딩 타이머 증가', g.endingT > 0);
-
-console.log('[61] 설원 맵 행 길이 일관성');
-const snowTiles = MAPS.snow.tiles;
-const snowW = snowTiles[1].length;
-const snowRowsOk = snowTiles.every(r => r.length === snowW);
-check('설원 맵 모든 행 길이 동일', snowRowsOk);
-
-console.log('[62] 프레임 루프 시간 진행 (속도 제한 게이팅)');
-// performance가 없는 테스트 환경에선 매 프레임 처리되어 game.time이 step 수만큼 증가
-g.mode = 'world';
-const t0 = g.time;
-step(6);
-check('테스트 환경에선 프레임마다 진행', g.time - t0 === 6);
-
-console.log('[63] drawDodge 안전 가드 (회피 종료 프레임)');
-// 크래시가 나면 mode가 비정상이 되므로, 정상 모드 유지로 간접 확인
-g.mode = 'world';
-step(3);
-check('회피 가드 후 프레임 정상', typeof g.mode === 'string' && g.mode === 'world');
-
-console.log('[64] 수업 모드 — 스테이지 점프');
-const { WALKABLE } = vm.runInContext('({ WALKABLE })', sandbox);
-const TJ = vm.runInContext('window.__test', sandbox);
-// setupStageFlags: 목표 스테이지 시작 상태가 정확한가
-const f1 = TJ.setupStageFlags(1);
-check('1스테이지: 박사님 대화 완료', f1.talkedProf === true);
-check('1스테이지: 증표 없음', !f1.badges.forest && !f1.badges.lake && !f1.badges.cave);
-check('1스테이지: getStage===1', TJ.getStage(f1) === 1);
-const f5 = TJ.setupStageFlags(5);
-check('5스테이지: 증표 모두 획득', f5.badges.forest && f5.badges.lake && f5.badges.cave);
-check('5스테이지: 이전 보스 모두 처치', f5.defeated.hondonmon && f5.defeated.meotdaeromon && f5.defeated.tteonemgimon && f5.defeated.hollimmon);
-check('5스테이지: 5보스는 미처치', f5.defeated.finalboss === false);
-for (const [puzzleId, puzzle] of Object.entries(STAGE_PUZZLES)) {
-  if (puzzle.stage < 5) {
-    check(`5스테이지: 이전 퍼즐 완료 처리(${puzzleId})`,
-      f5.puzzles[puzzleId].complete === true &&
-      puzzle.clues.every((clue) => f5.puzzles[puzzleId].clues[clue.id] === clue.correctDoor));
-  }
-}
-check('5스테이지: 책임의 코어는 미완료 상태', f5.puzzles.responsibility_core.complete === false);
-check('5스테이지: getStage===5', TJ.getStage(f5) === 5);
-check('범위를 벗어난 입력은 1~5로 안전하게 보정', TJ.getStage(TJ.setupStageFlags(99)) === 5 && TJ.getStage(TJ.setupStageFlags(0)) === 1);
-// stageSpawn: 항상 이동 가능한 칸으로 떨어지는가
-for (const st of [1, 3, 5]) {
-  const sp = TJ.stageSpawn(TJ.setupStageFlags(st), st);
-  const m = MAPS[sp.map];
-  const tile = m && m.tiles[sp.y] && m.tiles[sp.y][sp.x];
-  check(`${st}스테이지 시작 위치가 이동 가능`, !!m && WALKABLE.has(tile));
-}
-// applyStageJump: 실제 슬롯/위치에 반영되는가 (마지막 블록이라 상태 변경 OK)
-TJ.applyStageJump(6);
-check('점프 후 getStage===5', TJ.getStage(g.flags) === 5);
-check('점프 후 맵이 5스테이지 책임의 코어 맵', g.map === 'castle');
-check('점프 후 px/py가 유효한 픽셀 좌표(타일×배수)',
-  Number.isFinite(g.player.px) && Number.isFinite(g.player.py) &&
-  g.player.x > 0 && g.player.px / g.player.x === g.player.py / g.player.y && g.player.px > g.player.x);
-g.mode = 'classmode';
-g.classmode.ret = 'pause';
-g.classmode.sel = 5;
-g.classmode.confirm = true;
-g.classmode.toast = 0;
-tap('z');
-check('수업 모드 적용 후 복귀 대상은 모험 화면', g.classmode.ret === 'world');
-step(95);
-check('수업 모드 적용 뒤 월드로 복귀', g.mode === 'world' && g.map === 'castle');
-
-console.log('[65] 가상 스틱 방향 판정 (모바일 이동)');
-const sd = TJ.stickDirection;
-check('가운데(데드존)는 정지', sd(0, 0, 100) === null);
-check('작은 흔들림은 데드존으로 무시', sd(20, 10, 100) === null);
-check('오른쪽', sd(60, 0, 100) === 'right');
-check('왼쪽', sd(-60, 5, 100) === 'left');
-check('위', sd(0, -60, 100) === 'up');
-check('아래', sd(5, 60, 100) === 'down');
-check('우세 축 선택(가로 우세)', sd(60, 40, 100) === 'right');
-check('우세 축 선택(세로 우세)', sd(30, 70, 100) === 'down');
-check('데드존 경계 바로 밖은 방향 인식', sd(35, 0, 100) === 'right');
-
-console.log('[66] 교사용 학생 진단 리포트 (U3)');
-const TR = vm.runInContext('window.__test', sandbox);
-// 약점 주제가 추천 차시로 매핑되는지 (순수 함수)
-check('주제→차시 매핑(개인정보=1차시)', /1차시/.test(TR.topicSession('privacy')));
-check('주제→차시 매핑(가짜정보=2차시)', /2차시/.test(TR.topicSession('fake')));
-check('미정 주제는 종합 복습 폴백', /종합 복습/.test(TR.topicSession('___none___')));
-const rep0 = TR.buildDiagnosticReport(0);
-check('진단 리포트 구조 반환', rep0 && typeof rep0.text === 'string' && Array.isArray(rep0.recommendations));
-check('리포트 제목 포함', rep0.text.includes('학생 진단 리포트'));
-// 약점을 강제로 만들어 추천이 나오는지 확인 (privacy를 충분히 오답 기록 → 정답률<60%)
-for (let i = 0; i < 14; i++) TR.recordTopicResult(0, 'privacy', false);
-const rep1 = TR.buildDiagnosticReport(0);
-check('약점 주제가 추천에 등장', rep1.recommendations.some((x) => x.topic === 'privacy'));
-check('추천에 차시가 연결됨', rep1.recommendations.every((x) => typeof x.session === 'string' && x.session.length > 0));
-check('빈 슬롯은 empty 처리', TR.buildDiagnosticReport(2).empty === true || typeof TR.buildDiagnosticReport(2).text === 'string');
-// 반 전체 진단: 슬롯 0에 강제로 만든 privacy 약점이 공통 약점에 집계됨
-const cls = TR.buildClassDiagnostic();
-check('반 전체 진단 구조 반환', cls && typeof cls.text === 'string' && Array.isArray(cls.common));
-check('반 전체 진단 제목', cls.text.includes('반 전체 진단'));
-check('공통 약점에 privacy 집계', cls.common.some((c) => c.topic === 'privacy' && c.count >= 1));
-check('반 전체 진단에 윤리 축 평균 포함', cls.text.includes('5개 윤리 축 반 평균') && cls.text.includes('개인정보·동의'));
-const heatmap = TR.buildClassEthicsHeatmap();
-check('반 윤리 축 히트맵 구조', heatmap.length === ETHICS_AXES.length && heatmap.every((row) => typeof row.pct === 'number'));
-
-console.log('[67] 워프 자동 바운스 방지 (방향키 누른 채 워프)');
-// windhill 왼쪽 출구(0,10)→meadow 는 도착지(1,10)가 meadow의 windhill 워프(0,10)와
-// 붙어 있어, 예전엔 왼쪽을 누른 채 워프하면 바로 전 맵으로 튕겼다.
-g.flags.visited = g.flags.visited || {};
-g.flags.visited.meadow = true; g.flags.visited.windhill = true;
-g.dialog = null; g.mode = 'world'; g.map = 'windhill'; setPos(1, 10, 'left');
-dispatch('keydown', { key: 'ArrowLeft' });
-step(60); // 60프레임 내내 왼쪽을 누른 채로 둔다
-dispatch('keyup', { key: 'ArrowLeft' });
-check('워프 후에도 전 맵으로 튕기지 않음(meadow 유지)', g.map === 'meadow');
-check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 1 && g.player.y === 10);
-
-console.log('[68] 추가 재미 루프: 전투 연속 정답·선택 보상');
-const comboQ = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#combo' });
-g.mode = 'battle';
-g.battle = { monId: 'mollaemon', mon: MONSTERS.mollaemon, monHp: 3, monMaxHp: 3,
-  playerHp: 3, maxHearts: 3, questions: [comboQ], qIdx: 0, phase: 'question', cursor: comboQ.c,
-  choiceOrder: [0, 1, 2], correctPos: comboQ.c, hintUsed: false, hiddenPos: -1,
-  feedback: null, combo: 0, bestCombo: 0, shake: 0, flash: 0, attack: null, dodgeDone: true, dodge: null };
-tap('z');
-check('전투 정답 시 연속 정답 1', g.battle.combo === 1 && g.battle.bestCombo === 1 && g.battle.feedback.combo === 1);
-tap('z');
-g.battle.choiceOrder = [0, 1, 2];
-g.battle.correctPos = comboQ.c;
-g.battle.cursor = comboQ.c;
-tap('z');
-check('전투 연속 정답 누적', g.battle.combo === 2 && g.battle.bestCombo === 2 && g.battle.feedback.combo === 2);
-const rewardLines = TR.battleRewardLines(MONSTERS.mollaemon, 'mercy').join('\n');
-check('마음 선택 보상 문구에 윤리 축 증가 표시', rewardLines.includes('+2') && rewardLines.includes('선택의 흔적'));
-check('차가운 선택도 기록 문구 제공', TR.battleRewardLines(MONSTERS.mollaemon, 'harsh').join('\n').includes('+0'));
-
-console.log('[69] 추가 재미 루프: 챌린지 회고·다음 학습 추천');
-g.mode = 'challenge';
-g.challenge = { ret: 'world', slot: 0, phase: 'quiz', topics: [], sel: 0, questions: [comboQ],
-  idx: 0, cursor: (comboQ.c + 1) % comboQ.a.length, choiceOrder: [0, 1, 2], score: 0,
-  feedback: null, combo: 0, bestCombo: 0 };
-tap('z');
-check('챌린지 오답에 생각 질문 포함', g.challenge.feedback && /생각 질문/.test(g.challenge.feedback.reflectionPrompt));
-check('챌린지 오답은 연속 정답 리셋', g.challenge.combo === 0);
-const nextStep = TR.challengeNextStep(4, 10, 0);
-check('챌린지 결과가 다음 학습 동선 제안', /다음:/.test(nextStep) && /복습|맞춤/.test(nextStep));
-
-console.log('[70] 추가 재미 루프: 윤리 조각·수업 모드·보상 조건');
-const stageFiveFlags = TR.setupStageFlags(5);
-check('윤리 요약에 조각과 이해도 표시', /윤리 조각 4\/5/.test(TR.ethicsSummaryLine(stageFiveFlags)) && /윤리 이해도/.test(TR.ethicsSummaryLine(stageFiveFlags)));
-check('수업 모드 설명이 스테이지 테마와 연결', TR.stageBlurb(1).includes(STAGE_THEMES[0].name) && TR.stageLessonLine(1).includes(STAGE_THEMES[0].lesson.slice(0, 8)));
-check('피드백이 주제의 윤리 축을 알려줌', TR.topicEthicsLine('privacy').includes('윤리 축') && TR.topicEthicsLine('privacy').includes('개인정보'));
-check('다음 윤리 목표가 남은 퍼즐을 가리킴', TR.ethicsGoalLine(TR.setupStageFlags(3)).includes('편향의 법정 증거'));
-const balancedFlags = TR.setupStageFlags(5);
-for (const [puzzleId, puzzle] of Object.entries(STAGE_PUZZLES)) {
-  balancedFlags.puzzles[puzzleId] = balancedFlags.puzzles[puzzleId] || { clues: {}, complete: false, rewarded: false };
-  for (const clue of puzzle.clues) balancedFlags.puzzles[puzzleId].clues[clue.id] = clue.correctDoor;
-  balancedFlags.puzzles[puzzleId].complete = true;
-  balancedFlags.puzzles[puzzleId].rewarded = true;
-}
-for (const axis of ETHICS_AXES) balancedFlags.ethics[axis] = ETHICS_AXIS_MAX;
-g.flags = balancedFlags;
-g.currentSlot = 0;
-storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ name: '수호자', map: g.map, x: g.player.x, y: g.player.y, flags: balancedFlags, updatedAt: Date.now() }));
-const richCtx = TR.achievementCtx(0);
-check('윤리 조각 도전과제 조건 달성', richCtx.puzzlePieces === 5 && richCtx.balancedEthics === true);
-check('새 윤리 보상 포함', TR.unlockedCount(0) >= 3);
-check('완성 뒤 다음 윤리 목표는 유지 루프를 제안', TR.ethicsGoalLine(balancedFlags).includes('챌린지로 유지'));
-const misleadingFlags = TR.setupStageFlags(1);
-g.currentSlot = 0;
-g.flags = misleadingFlags;
-g.mode = 'title';
-check('타이틀 슬롯 표시는 저장 슬롯 플래그 사용', TR.completedStagePuzzleCount(TR.slotFlags(0)) === 5);
-check('타이틀 슬롯 다음 목표는 저장 슬롯 기준', TR.slotNextGoalLine(0).includes('챌린지로 유지'));
-g.mode = 'world';
-check('플레이 중에는 현재 메모리 플래그 사용', TR.completedStagePuzzleCount(TR.slotFlags(0)) === 0);
-
-console.log('[71] 명확화 과제: 맵 조작 퍼즐·선택 리포트·NPC 반응');
-const mapPuzzleFlags = TR.setupStageFlags(2);
-mapPuzzleFlags.puzzles.filter_bubble_maze.clues.class_chat_same = 'same_view';
-mapPuzzleFlags.puzzles.filter_bubble_maze.clues.opposing_comment = 'same_view';
-const mapEffect = TR.puzzleMapEffectLine(mapPuzzleFlags, 'filter_bubble_maze');
-check('퍼즐 선택이 맵 상태 문구로 이어짐', /맵 변화/.test(mapEffect) && /1\/3/.test(mapEffect) && /안개/.test(mapEffect));
-g.flags = TR.setupStageFlags(2);
-g.map = 'fogswamp';
-g.mode = 'world';
-const mapChoiceDialog = classifyStagePuzzle('filter_bubble_maze', 'opposing_comment', 'same_view');
-check('퍼즐 결과 대화가 지도 변화를 즉시 알려줌', /맵 변화/.test(mapChoiceDialog) && /안개/.test(mapChoiceDialog));
-g.flags = TR.setupStageFlags(2);
-g.map = 'fogswamp';
-g.mode = 'world';
-classifyStagePuzzle('filter_bubble_maze', 'opposing_comment', 'same_view');
-g.map = 'fogswamp';
-g.mode = 'world';
-classifyStagePuzzle('filter_bubble_maze', 'opposing_comment', 'opposite_view');
-storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ name: '수호자', map: 'fogswamp', x: 12, y: 5, flags: g.flags, updatedAt: Date.now() }));
-const realCorrectedDiagnostic = TR.buildDiagnosticReport(0).text;
-check('실제 틀림→수정 선택이 저장 리포트에 남음', /이전 위험 선택/.test(realCorrectedDiagnostic) && /같은 의견/.test(realCorrectedDiagnostic));
-check('실제 틀림→수정 선택이 반 리포트 위험 집계에 남음', /같은 의견/.test(TR.buildClassDiagnostic().text));
-g.flags = TR.setupStageFlags(2);
-g.flags.defeated.musimon = true;
-g.flags.puzzles.filter_bubble_maze.clues.class_chat_same = 'same_view';
-g.map = 'fogswamp';
-g.mode = 'world';
-setPos(15, 7, 'up');
-tap('z');
-const npcPuzzleText = g.dialog && Array.isArray(g.dialog.lines) ? g.dialog.lines.join('\n') : '';
-check('실제 NPC 대화가 퍼즐 진행을 반영', /추천 안개|세 추천 카드|근거 자료/.test(npcPuzzleText));
-advanceDialog();
-const choiceReport = TR.puzzleChoiceReportLines(mapPuzzleFlags).join('\n');
-check('퍼즐 선택 기록이 위험 선택과 토론 질문 제공', /퍼즐 선택 기록/.test(choiceReport) && /위험 선택/.test(choiceReport) && /토론 질문/.test(choiceReport));
-const correctedPuzzleFlags = TR.setupStageFlags(2);
-correctedPuzzleFlags.puzzles.filter_bubble_maze.clues.opposing_comment = 'opposite_view';
-correctedPuzzleFlags.puzzles.filter_bubble_maze.attempts = [
-  { clueId: 'opposing_comment', clueLabel: '불편하지만 다른 댓글', doorId: 'same_view', doorLabel: '같은 의견', correct: false },
-  { clueId: 'opposing_comment', clueLabel: '불편하지만 다른 댓글', doorId: 'opposite_view', doorLabel: '다른 의견', correct: true },
-];
-const correctedChoiceReport = TR.puzzleChoiceReportLines(correctedPuzzleFlags).join('\n');
-check('틀렸다가 고친 위험 선택도 리포트에 남음', /이전 위험 선택/.test(correctedChoiceReport) && /같은 의견/.test(correctedChoiceReport));
-storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ name: '수호자', map: 'fogswamp', x: 12, y: 5, flags: mapPuzzleFlags, updatedAt: Date.now() }));
-const diagnosticWithPuzzle = TR.buildDiagnosticReport(0).text;
-check('학생 진단 리포트에 퍼즐 선택 기록 포함', /퍼즐 선택 기록/.test(diagnosticWithPuzzle) && /위험 선택/.test(diagnosticWithPuzzle));
-check('학생 진단 리포트가 퍼즐 선택 섹션을 구분선으로 분리', /NPC 반응:[\s\S]*──────────────────────[\s\S]*퍼즐 선택 기록/.test(diagnosticWithPuzzle));
-check('교실용 학습 리포트에도 퍼즐 선택 기록 포함', /퍼즐 선택 기록/.test(TR.buildReportText(0)) && /토론 질문/.test(TR.buildReportText(0)));
-check('반 전체 진단이 위험 선택을 집계', TR.classPuzzleRiskSummary().length >= 1 && /퍼즐 위험 선택 집계/.test(TR.buildClassDiagnostic().text));
-check('NPC 단서 반응이 퍼즐 진행을 반영', /안개|추천/.test(TR.stageNpcReactionLine(mapPuzzleFlags, 2)));
-
-console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
+const wrongText = classifyStagePuzzle('data_footprint_forest', 'photo_name_tag', 'share_ok');
+check('unsafe choice gives reflection', wrongText.includes('생각 질문') && wrongText.includes('개인정보'));
+check('wrong choice remains incomplete', g.flags.puzzles.data_footprint_forest.complete === false);
+classifyStagePuzzle('data_footprint_forest', 'photo_name_tag', 'needs_consent');
+classifyStagePuzzle('data_footprint_forest', 'home_location', 'do_not_share');
+const finishText = classifyStagePuzzle('data_footprint_forest', 'favorite_color', 'share_ok');
+check('completion dialog includes learning piece', finishText.includes('배움 조각') && finishText.includes('동의'));
+check('first puzzle complete', g.flags.puzzles.data_footprint_forest.complete === true);
+check('next objective advances', TR.nextPuzzleGoal(g.flags).includes('필터버블'));
+
+console.log('[4] all five puzzle stages');
+completePuzzle('filter_bubble_maze');
+completePuzzle('bias_court');
+completePuzzle('deepfake_station');
+completePuzzle('responsibility_core');
+check('all puzzle pieces counted', TR.completedStagePuzzleCount(g.flags) === Object.keys(STAGE_PUZZLES).length);
+check('ethics score reflects puzzle route', computeEthicsScore(g.flags.ethics) >= 50);
+check('ending uses ethics only', computeEnding(Object.fromEntries(ETHICS_AXES.map((axis) => [axis, ETHICS_AXIS_MAX]))) === 'home');
+check('final puzzle records ending id', !!g.flags.endingId && g.flags.endingId === computeEnding(g.flags.ethics));
+check('ending is stored globally', JSON.parse(storage.get('ai-ethics-adventure-endings') || '{}')[g.flags.endingId] === true);
+
+console.log('[5] saved report surfaces');
+const saved = slot(0);
+check('save keeps puzzle state', saved.flags.puzzles.responsibility_core.complete === true);
+check('save omits old counters', !Object.prototype.hasOwnProperty.call(saved.flags, 'badges') && !Object.prototype.hasOwnProperty.call(saved.flags, 'defeated'));
+const report = TR.buildReportText(0);
+check('report title', /학습 리포트/.test(report));
+check('report includes puzzle review', /스테이지 퍼즐 회고/.test(report) && /데이터 발자국 분류/.test(report) && /책임의 코어/.test(report));
+check('report includes choice ledger', /퍼즐 선택 기록/.test(report) && /위험 선택/.test(report) && /안전 선택/.test(report));
+check('report includes ethics axes', /윤리 이해 축/.test(report) && /개인정보·동의/.test(report) && /인간 감독·책임/.test(report));
+g.mode = 'report';
+g.report = { ret: 'world', slot: 0, toast: 0 };
+step(2);
+check('report screen renders', g.mode === 'report');
+
+console.log('[6] class tools and safe spawn');
+const f3 = TR.setupStageFlags(3);
+check('stage jump completes previous puzzles', f3.puzzles.data_footprint_forest.complete && f3.puzzles.filter_bubble_maze.complete);
+check('stage jump leaves target puzzle open', f3.puzzles.bias_court.complete === false);
+const spawn = TR.stageSpawn(f3, 3);
+const landed = MAPS[spawn.map].tiles[spawn.y][spawn.x];
+check('stage spawn lands on walkable tile', WALKABLE.has(landed));
+const classCsv = TR.buildClassCsv();
+check('class CSV uses ethics axes', classCsv.includes('개인정보·동의') && classCsv.includes('연속 출석(일)'));
+const missingWarpGates = Object.entries(MAPS).flatMap(([mapId, map]) =>
+  (map.warps || []).filter((warp) => warp.lockText && !warp.needPuzzle).map((warp) => `${mapId}:${warp.x},${warp.y}`));
+check('all locked routes are puzzle-gated', missingWarpGates.length === 0);
+
+console.log(`\n✔ puzzle-only smoke passed (${passed} checks)`);

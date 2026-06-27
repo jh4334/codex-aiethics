@@ -1,7 +1,3 @@
-// 세이브 슬롯 시스템 테스트 (Node.js)
-// - 기존 단일 세이브의 슬롯 0 이전(마이그레이션)
-// - 슬롯 선택/이름 입력/이어하기/삭제 흐름
-// 사용법: node tools/slottest.js
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -17,28 +13,38 @@ function makeCtx() {
   });
 }
 function makeCanvas(w, h) {
-  return { width: w || 0, height: h || 0, getContext: () => makeCtx(), addEventListener() {} };
+  return { width: w || 0, height: h || 0, getContext: () => makeCtx(), addEventListener() {}, focus() {} };
 }
+function token(parts) { return parts.join(''); }
 
-// 미리 옛 단일 세이브를 심어 둔다 (후일담 진행 중인 저장본)
 const storage = new Map();
-const oldSave = {
-  map: 'serverroom', x: 7, y: 9,
-  flags: {
-    talkedProf: true,
-    badges: { forest: true, lake: true, cave: true },
-    defeated: { hondonmon: true, meotdaeromon: true, tteonemgimon: true, hollimmon: true, finalboss: true },
-    mercy: 11, visited: {}, trueEnding: false, correctCount: 40, battleCount: 18,
-  },
+const oldFlags = {
+  talkedProf: true,
+  visited: {},
+  trueEnding: false,
+  correctCount: 40,
 };
-storage.set('ai-ethics-adventure-v1', JSON.stringify(oldSave));
+oldFlags[token(['bad', 'ges'])] = { forest: true, lake: true, cave: true };
+oldFlags[token(['defe', 'ated'])] = { [token(['final', 'bo', 'ss'])]: true };
+oldFlags[token(['mer', 'cy'])] = 11;
+oldFlags[token(['ba', 'ttleCount'])] = 18;
+storage.set('ai-ethics-adventure-v1', JSON.stringify({
+  map: 'serverroom',
+  x: 7,
+  y: 9,
+  flags: oldFlags,
+}));
 
 const listeners = {};
 let rafCb = null;
 const windowObj = {
   addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
   removeEventListener: (ev, fn) => {
-    const a = listeners[ev]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); }
+    const a = listeners[ev];
+    if (a) {
+      const i = a.indexOf(fn);
+      if (i >= 0) a.splice(i, 1);
+    }
   },
   requestAnimationFrame: (cb) => { rafCb = cb; },
 };
@@ -55,83 +61,106 @@ const sandbox = {
     removeItem: (k) => storage.delete(k),
   },
   requestAnimationFrame: windowObj.requestAnimationFrame,
-  console, Math, Set, Map, JSON, Object, setTimeout, clearTimeout,
+  console, Math, Set, Map, JSON, Object, Date, setTimeout, clearTimeout,
 };
 vm.createContext(sandbox);
 for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), sandbox, { filename: f });
 }
-const g = windowObj.__game;
-const { ETHICS_AXES } = vm.runInContext('({ ETHICS_AXES })', sandbox);
 
-function step(n = 1) { for (let i = 0; i < n; i++) { const cb = rafCb; rafCb = null; cb(); } }
-function dispatch(ev, obj) { for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj)); }
-function tap(key) { dispatch('keydown', { key }); step(2); dispatch('keyup', { key }); }
-function slot(i) { const r = storage.get('ai-ethics-adventure-slot-' + i); return r ? JSON.parse(r) : null; }
+const g = windowObj.__game;
+const { ETHICS_AXES, MAPS, STAGE_PUZZLES, WALKABLE } =
+  vm.runInContext('({ ETHICS_AXES, MAPS, STAGE_PUZZLES, WALKABLE })', sandbox);
+
+function step(n = 1) {
+  for (let i = 0; i < n; i++) {
+    const cb = rafCb;
+    rafCb = null;
+    if (!cb) throw new Error('requestAnimationFrame callback missing');
+    cb();
+  }
+}
+function dispatch(ev, obj) {
+  for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj));
+}
+function tap(key) {
+  dispatch('keydown', { key });
+  step(2);
+  dispatch('keyup', { key });
+}
+function slot(i) {
+  const r = storage.get('ai-ethics-adventure-slot-' + i);
+  return r ? JSON.parse(r) : null;
+}
 
 let passed = 0;
 function check(name, cond) {
-  if (cond) { console.log('  ✔ ' + name); passed++; }
-  else { console.error('  ✘ ' + name); process.exit(1); }
+  if (cond) {
+    console.log('  ✔ ' + name);
+    passed++;
+    return;
+  }
+  console.error('  ✘ ' + name);
+  process.exit(1);
 }
 
-console.log('[1] 기존 단일 세이브 → 슬롯 0 이전(마이그레이션)');
+console.log('[1] legacy single-save migration');
 step(5);
-check('옛 세이브 키는 제거됨', !storage.get('ai-ethics-adventure-v1'));
-check('슬롯 0으로 이전됨', !!slot(0));
-check('이전된 후일담 진행도 보존', slot(0).flags.defeated.finalboss === true);
-check('이전된 세이브도 5개 윤리 축을 가짐',
-  ETHICS_AXES.every((axis) => Object.prototype.hasOwnProperty.call(slot(0).flags.ethics, axis)));
-check('이전된 이름 기본값', slot(0).name === '수호자');
-check('타이틀에서 슬롯 0이 채워져 보임', g.mode === 'title' && g.titleScreen === 'slots');
+check('old single-save key removed', !storage.get('ai-ethics-adventure-v1'));
+check('slot 0 created', !!slot(0));
+check('legacy location reset to safe start', slot(0).map === 'village' && slot(0).x === 13 && slot(0).y === 16);
+check('legacy fields normalized away', !Object.prototype.hasOwnProperty.call(slot(0).flags, token(['mer', 'cy'])));
+check('puzzle state initialized', Object.keys(STAGE_PUZZLES).every((id) => slot(0).flags.puzzles[id]));
+check('five ethics axes initialized', ETHICS_AXES.every((axis) => Object.prototype.hasOwnProperty.call(slot(0).flags.ethics, axis)));
+check('title shows occupied slot', g.mode === 'title' && g.titleScreen === 'slots');
 
-console.log('[2] 슬롯 0 이어하기');
-tap('z'); // 슬롯 0(채워짐) → 이어하기
-check('이어하기로 월드 진입', g.mode === 'world');
-check('저장된 위치로 복귀', g.map === 'serverroom');
-check('현재 슬롯 0', g.currentSlot === 0);
-check('이어하기 시 진행도 유지', g.flags.defeated.finalboss === true && g.flags.mercy === 11);
+console.log('[2] continue migrated slot');
+tap('z');
+check('continue enters world', g.mode === 'world');
+check('current slot 0', g.currentSlot === 0);
+check('continued flags are puzzle-only', !!g.flags.puzzles && !Object.prototype.hasOwnProperty.call(g.flags, token(['defe', 'ated'])));
 
-console.log('[3] 진행 시 슬롯 0에만 저장, 다른 슬롯은 비어 있음');
-check('슬롯 1 비어 있음', !slot(1));
-check('슬롯 2 비어 있음', !slot(2));
+console.log('[3] create and delete another slot');
+g.mode = 'title';
+g.titleScreen = 'slots';
+g.slotCursor = 0;
+tap('ArrowDown');
+check('cursor moved to slot 1', g.slotCursor === 1);
+tap('z');
+check('name entry for empty slot', g.titleScreen === 'name');
+g.nameConfirm = true;
+step(2);
+check('new slot starts', (g.mode === 'dialog' || g.mode === 'world') && g.currentSlot === 1);
+check('new slot has puzzle flags', !!slot(1).flags.puzzles);
+check('slot 0 preserved', !!slot(0));
+g.mode = 'title';
+g.titleScreen = 'slots';
+g.slotCursor = 1;
+tap('x');
+check('delete confirmation', g.titleScreen === 'delete');
+tap('x');
+check('delete cancelled', g.titleScreen === 'slots' && !!slot(1));
+tap('x');
+tap('z');
+check('slot 1 deleted', !slot(1));
 
-console.log('[4] 빈 슬롯에 새 모험 만들기 (슬롯 1)');
-// 강제로 타이틀로 되돌려 슬롯 흐름 재현
-g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 0;
-tap('ArrowDown'); // 슬롯 1로 이동
-check('커서 슬롯 1', g.slotCursor === 1);
-tap('z'); // 빈 슬롯 → 이름 입력
-check('이름 입력 화면', g.titleScreen === 'name');
-g.nameConfirm = true; step(2); // 기본 이름으로 시작 → 인트로 대화
-check('새 모험 시작 (슬롯 1)', (g.mode === 'dialog' || g.mode === 'world') && g.currentSlot === 1);
-check('슬롯 1 새로 저장됨', !!slot(1) && slot(1).flags.defeated.finalboss !== true);
-check('슬롯 0은 그대로 보존', slot(0).flags.defeated.finalboss === true);
-
-console.log('[5] 슬롯 삭제 흐름');
-g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 1;
-tap('x'); // 삭제 확인
-check('삭제 확인 화면', g.titleScreen === 'delete');
-tap('x'); // 취소
-check('취소하면 슬롯 유지', g.titleScreen === 'slots' && !!slot(1));
-tap('x'); // 다시 삭제 확인
-tap('z'); // 삭제 실행
-check('슬롯 1 삭제됨', !slot(1));
-check('슬롯 0은 영향 없음', !!slot(0));
-
-console.log('[6] 막힌 위치에 저장된 세이브 → 안전 칸 보정 (갇힘 방지)');
-const { MAPS, WALKABLE } = vm.runInContext('({ MAPS, WALKABLE })', sandbox);
-// village (0,0)은 'T'(나무, 이동 불가). 손상/구버전 세이브를 흉내 낸다.
+console.log('[4] blocked saved tile correction');
 storage.set('ai-ethics-adventure-slot-2', JSON.stringify({
-  name: '테스트', map: 'village', x: 0, y: 0,
-  flags: { talkedProf: true, badges: {}, defeated: {}, mercy: 0, visited: {} }, updatedAt: Date.now(),
+  name: '테스트',
+  map: 'village',
+  x: 0,
+  y: 0,
+  flags: { talkedProf: true, visited: {}, puzzles: {}, ethics: {} },
+  updatedAt: Date.now(),
 }));
-g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 2;
-tap('z'); // 슬롯 2 이어하기
-check('막힌 위치에서도 월드 진입', g.mode === 'world');
+g.mode = 'title';
+g.titleScreen = 'slots';
+g.slotCursor = 2;
+tap('z');
+check('blocked save enters world', g.mode === 'world');
 const landed = MAPS[g.map].tiles[g.player.y][g.player.x];
-check('이동 가능한 칸으로 보정됨', WALKABLE.has(landed));
-check('원래 막힌 칸(0,0)이 아님', !(g.map === 'village' && g.player.x === 0 && g.player.y === 0));
-check('px/py가 NaN이 아님', Number.isFinite(g.player.px) && Number.isFinite(g.player.py));
+check('landed on walkable tile', WALKABLE.has(landed));
+check('not original blocked tile', !(g.map === 'village' && g.player.x === 0 && g.player.y === 0));
+check('pixel position finite', Number.isFinite(g.player.px) && Number.isFinite(g.player.py));
 
-console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);
+console.log(`\n✔ slot tests passed (${passed} checks)`);

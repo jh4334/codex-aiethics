@@ -36,7 +36,6 @@ function drawIcon(size, maskable) {
   return cv;
 }
 
-// 픽셀 하트를 비트맵 패턴으로 그린다 (언더테일 소울 느낌)
 function drawPixelHeart(c, cx, cy, w) {
   const pat = [
     '0110110',

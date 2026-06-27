@@ -7,7 +7,7 @@ try {
   ({ chromium } = require('playwright'));
 } catch (error) {
   console.error('Playwright is required for browser smoke tests.');
-  console.error('Install it with: npm install --no-save playwright && npx playwright install chromium');
+  console.error('Install it with: npm install && npx playwright install chromium');
   process.exit(1);
 }
 
@@ -172,14 +172,14 @@ async function runMobileChecks(browser, baseUrl, errors) {
     label: el.getAttribute('aria-label'),
     tabIndex: el.tabIndex,
   })));
-  assert(touchButtons.length === 4, 'expected four touch buttons');
+  assert(touchButtons.length === 3, 'expected three touch buttons');
   assert(touchButtons.every((btn) => btn.tag === 'BUTTON' && btn.type === 'button'), 'touch controls must be native buttons');
   assert(touchButtons.every((btn) => btn.label && btn.tabIndex >= 0), 'touch buttons need labels and keyboard focus');
   await landscapePage.focus('#t-menu');
   await landscapePage.keyboard.down('Space');
   await landscapePage.waitForTimeout(45);
   await landscapePage.keyboard.up('Space');
-  await expectMode(landscapePage, 'dex');
+  await expectMode(landscapePage, 'journal');
   assert(await landscapePage.$eval('#name-overlay', (el) => getComputedStyle(el).display) === 'none', 'touch menu key activation leaked to title action');
   await tapKey(landscapePage, 'KeyX');
   await expectMode(landscapePage, 'title');
