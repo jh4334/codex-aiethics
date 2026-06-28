@@ -6,7 +6,8 @@
   "scripts": {
     "validate": "node tools/validate.js",
     "test:invariant": "node tools/puzzle-only-invariant.js",
-    "test": "npm run test:invariant && node tools/smoketest.js && node tools/slottest.js",
+    "test:sw": "node tools/serviceworker-test.js",
+    "test": "npm run test:invariant && npm run test:sw && node tools/smoketest.js && node tools/slottest.js",
     "test:browser": "node tools/browser-smoketest.js",
     "test:pack": "npm run pack && node tools/packtest.js",
     "test:release-docs": "node tools/release-docs-test.js",
